@@ -1,0 +1,46 @@
+spring:
+  # 默认激活开发环境配置
+  profiles:
+    active: dev
+  application:
+    name: scheduler
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+  web:
+    resources:
+      add-mappings: false   # 关闭默认的 /static、/public、/resources、/META-INF/resources 映射
+# MyBatis-Plus 通用配置
+mybatis-plus:
+  # Mapper.xml文件位置
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 实体类别名扫描路径
+  type-aliases-package: com.sjdt.scheduler.domain.po
+  # 全局配置
+  global-config:
+    db-config:
+      # 主键类型统一使用UUID
+      id-type: assign_uuid
+
+# Sa-Token 通用配置
+sa-token:
+  # Token名称 (出现在Cookie或Header中的key)
+  token-name: "Sa-Token"
+  # Token风格
+  token-style: "simple-uuid"
+  # 在创建 Token 时就将当前账号的 Session 会话创建好
+  is-create-session: true
+  # 从请求头中读取 Token
+  is-read-header: true
+
+# 定时任务配置
+scheduled:
+  task:
+    # H4A员工信息同步到ES的定时任务
+    sync-staff-to-es:
+      # 支持三种格式：
+      # 1. cron表达式: "0 0 3 * * ?" (每天凌晨3点)
+      # 2. fixedDelay: "PT1H" (间隔1小时)
+      # 3. initialDelay + fixedDelay: 启动后延迟后每隔一段时间执行
+      cron: "0 0 3 * * ?"  # 生产环境：每天凌晨3点执行
+      # 测试环境请在对应配置文件中覆盖此配置
