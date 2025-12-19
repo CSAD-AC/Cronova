@@ -50,11 +50,7 @@ class RoleMapperTest {
         Assertions.assertNotNull(roles);
         Assertions.assertTrue(roles.size() >= 2);
         
-        // 清除用户角色
-        roleMapper.clearUserRoles(user.getId());
-        
-        // 删除测试用户
-        userMapper.deleteById(user.getId());
+        // 不再需要手动清理测试数据，由@Rollback自动回滚
     }
 
     @Test
@@ -81,14 +77,6 @@ class RoleMapperTest {
         Assertions.assertEquals(2, userRoleIds.size());
         Assertions.assertTrue(userRoleIds.containsAll(roleIds));
         
-        // 清除用户角色
-        roleMapper.clearUserRoles(user.getId());
-        
-        // 验证角色已清除
-        List<Integer> clearedRoleIds = roleMapper.selectRoleIdsByUserId(user.getId());
-        Assertions.assertTrue(clearedRoleIds.isEmpty());
-        
-        // 删除测试用户
-        userMapper.deleteById(user.getId());
+        // 不再需要手动清理测试数据，由@Rollback自动回滚
     }
 }

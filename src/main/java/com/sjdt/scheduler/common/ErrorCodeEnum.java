@@ -16,6 +16,7 @@ public enum ErrorCodeEnum {
     INVALID_ENUM_VALUE(1001, "枚举值非法"),
     USER_IS_EXISTS(1002, "用户已经存在"),
     USER_NOT_FOUND(1003, "用户不存在"),
+    TAG_NOT_FOUND(1004, "标签不存在"),
 
     // 文件相关错误 2001-2099
     FILE_UPLOAD_ERROR(2001, "文件上传失败"),

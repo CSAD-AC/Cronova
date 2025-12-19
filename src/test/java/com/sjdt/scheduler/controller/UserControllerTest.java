@@ -61,7 +61,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);
@@ -87,7 +86,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);
@@ -117,7 +115,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);
@@ -151,7 +148,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);
@@ -174,7 +170,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);
@@ -201,7 +196,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);
@@ -211,8 +205,10 @@ class UserControllerTest {
 
     @Test
     void testGetUserRoles() throws Exception {
-        // 模拟服务层返回结果
+        // 创建测试角色ID列表
         List<Integer> roleIds = List.of(1, 2);
+        
+        // 模拟服务层返回结果
         Result<List<Integer>> result = Result.success(roleIds);
         Mockito.when(userService.getUserRoles(Mockito.anyString())).thenReturn(result);
         
@@ -225,7 +221,6 @@ class UserControllerTest {
         // 验证响应
         String content = mvcResult.getResponse().getContentAsString();
         Assertions.assertNotNull(content);
-        // 不再检查内容是否为空，因为即使成功也可能返回空的JSON对象
         
         if (!content.isEmpty()) {
             Result<?> responseResult = objectMapper.readValue(content, Result.class);

@@ -26,7 +26,7 @@ class UserMapperTest {
     void testSelectById() {
         // 创建测试用户
         User user = User.builder()
-                .username("testuser")
+                .username("testuser-" + System.currentTimeMillis())
                 .nickname("测试用户")
                 .password("password123")
                 .createTime(LocalDateTime.now())
@@ -43,15 +43,14 @@ class UserMapperTest {
         Assertions.assertNotNull(foundUser);
         Assertions.assertEquals(user.getUsername(), foundUser.getUsername());
         
-        // 删除测试用户
-        userMapper.deleteById(user.getId());
+        // 不再需要手动清理测试数据，由@Rollback自动回滚
     }
 
     @Test
     void testSelectByUsername() {
         // 创建测试用户
         User user = User.builder()
-                .username("testuser2")
+                .username("testuser2-" + System.currentTimeMillis())
                 .nickname("测试用户2")
                 .password("password123")
                 .createTime(LocalDateTime.now())
@@ -63,22 +62,21 @@ class UserMapperTest {
         
         // 根据用户名查询
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(User::getUsername, "testuser2");
+        queryWrapper.eq(User::getUsername, user.getUsername());
         User foundUser = userMapper.selectOne(queryWrapper);
         
         // 验证查询结果
         Assertions.assertNotNull(foundUser);
         Assertions.assertEquals(user.getUsername(), foundUser.getUsername());
         
-        // 删除测试用户
-        userMapper.deleteById(user.getId());
+        // 不再需要手动清理测试数据，由@Rollback自动回滚
     }
 
     @Test
     void testUpdate() {
         // 创建测试用户
         User user = User.builder()
-                .username("testuser3")
+                .username("testuser3-" + System.currentTimeMillis())
                 .nickname("测试用户3")
                 .password("password123")
                 .createTime(LocalDateTime.now())
@@ -100,15 +98,14 @@ class UserMapperTest {
         Assertions.assertNotNull(updatedUser);
         Assertions.assertEquals("更新后的测试用户", updatedUser.getNickname());
         
-        // 删除测试用户
-        userMapper.deleteById(user.getId());
+        // 不再需要手动清理测试数据，由@Rollback自动回滚
     }
 
     @Test
     void testDelete() {
         // 创建测试用户
         User user = User.builder()
-                .username("testuser4")
+                .username("testuser4-" + System.currentTimeMillis())
                 .nickname("测试用户4")
                 .password("password123")
                 .createTime(LocalDateTime.now())

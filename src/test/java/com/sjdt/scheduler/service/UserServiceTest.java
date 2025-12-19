@@ -13,6 +13,7 @@ import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * UserService测试类
@@ -38,10 +39,12 @@ class UserServiceTest {
 
     @Test
     void testCreateAndGetUser() {
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+        
         // 创建测试用户
         User user = User.builder()
-                .username("testuser7")
-                .nickname("测试用户7")
+                .username("testuser7-" + uniqueId)
+                .nickname("测试用户7-" + uniqueId)
                 .password("password123")
                 .build();
         
@@ -62,15 +65,17 @@ class UserServiceTest {
         Assertions.assertNotNull(getResult);
         Assertions.assertEquals(200, getResult.getCode());
         Assertions.assertNotNull(getResult.getData());
-        Assertions.assertEquals("testuser7", getResult.getData().getUsername());
+        Assertions.assertEquals("testuser7-" + uniqueId, getResult.getData().getUsername());
     }
 
     @Test
     void testUpdateUser() {
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+        
         // 创建测试用户
         User user = User.builder()
-                .username("testuser8")
-                .nickname("测试用户8")
+                .username("testuser8-" + uniqueId)
+                .nickname("测试用户8-" + uniqueId)
                 .password("password123")
                 .build();
         
@@ -81,7 +86,7 @@ class UserServiceTest {
         
         // 测试更新用户信息
         UserUpdateDTO updateDTO = new UserUpdateDTO();
-        updateDTO.setNickname("更新后的测试用户8");
+        updateDTO.setNickname("更新后的测试用户8-" + uniqueId);
         updateDTO.setPassword("newpassword123");
         
         Result<UserVO> updateResult = userService.updateUser(userId, updateDTO);
@@ -94,10 +99,12 @@ class UserServiceTest {
 
     @Test
     void testAssignAndGetRoles() {
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+        
         // 创建测试用户
         User user = User.builder()
-                .username("testuser9")
-                .nickname("测试用户9")
+                .username("testuser9-" + uniqueId)
+                .nickname("测试用户9-" + uniqueId)
                 .password("password123")
                 .build();
         
@@ -126,10 +133,12 @@ class UserServiceTest {
 
     @Test
     void testDeleteUser() {
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+        
         // 创建测试用户
         User user = User.builder()
-                .username("testuser10")
-                .nickname("测试用户10")
+                .username("testuser10-" + uniqueId)
+                .nickname("测试用户10-" + uniqueId)
                 .password("password123")
                 .build();
         
