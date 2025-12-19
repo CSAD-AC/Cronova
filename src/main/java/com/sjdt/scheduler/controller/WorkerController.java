@@ -1,20 +1,21 @@
 package com.sjdt.scheduler.controller;
 
+import cn.hutool.core.util.IdUtil;
 import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.dto.WorkerRegisterDTO;
 import com.sjdt.scheduler.domain.dto.WorkerStatusDTO;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.AKSK;
+import com.sjdt.scheduler.domain.po.Tag;
 import com.sjdt.scheduler.domain.po.Worker;
+import com.sjdt.scheduler.domain.po.WorkerTag;
 import com.sjdt.scheduler.domain.vo.WorkerRegisterVO;
-import com.sjdt.scheduler.service.IAKSKService;
-import com.sjdt.scheduler.service.IWorkerService;
+import com.sjdt.scheduler.mapper.AKSKMapper;
+import com.sjdt.scheduler.mapper.TagMapper;
+import com.sjdt.scheduler.mapper.WorkerMapper;
+import com.sjdt.scheduler.mapper.WorkerTagMapper;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -27,13 +28,21 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/worker")
-@Tag(name = "Worker执行器API", description = "处理Worker执行器的注册、心跳、状态报告等请求")
+@io.swagger.v3.oas.annotations.tags.Tag(name = "Worker执行器API", description = "处理Worker执行器的注册、心跳、状态报告等请求")
 @Slf4j
-@RequiredArgsConstructor
 public class WorkerController {
 
-    private final IWorkerService workerService;
-    private final IAKSKService akskService;
+    private final WorkerMapper workerMapper;
+    private final AKSKMapper akskMapper;
+    private final WorkerTagMapper workerTagMapper;
+    private final TagMapper tagMapper;
+
+    public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper, TagMapper tagMapper) {
+        this.workerMapper = workerMapper;
+        this.akskMapper = akskMapper;
+        this.workerTagMapper = workerTagMapper;
+        this.tagMapper = tagMapper;
+    }
 
     /**
      * Worker 注册接口
@@ -47,35 +56,28 @@ public class WorkerController {
         log.info("收到Worker注册请求，主机名: {}, IP: {}", registerDTO.getHost(), registerDTO.getIp());
         
         // 检查 Worker 是否已存在（根据主机名或 IP）
-        Worker existingWorker = workerService.lambdaQuery()
-                .eq(Worker::getHost, registerDTO.getHost())
-                .or()
-                .eq(Worker::getIp, registerDTO.getIp())
-                .one();
+        Worker existingWorker = workerMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Worker>()
+                        .eq(Worker::getHost, registerDTO.getHost())
+                        .or()
+                        .eq(Worker::getIp, registerDTO.getIp())
+        );
 
         WorkerRegisterVO registerVO = new WorkerRegisterVO();
 
         if (existingWorker != null) {
             log.info("Worker已存在，ID: {}", existingWorker.getId());
             // Worker 已存在，检查是否已有 AKSK
-            AKSK aksk = akskService.lambdaQuery()
-                    .eq(AKSK::getWorkerId, existingWorker.getId())
-                    .eq(AKSK::getStatus, "active")
-                    .one();
-
-            if (aksk == null) {
-                log.info("Worker不存在有效AKSK，为其生成新的AKSK");
-                // 生成新的 AKSK
-                aksk = akskService.generateAKSK(existingWorker.getId());
-            }
+            AKSK aksk = akskMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AKSK>()
+                            .eq(AKSK::getWorkerId, existingWorker.getId())
+                            .eq(AKSK::getStatus, "active")
+            );
 
             // 更新 Worker 状态
             existingWorker.setStatus(WorkerStatus.online);
             existingWorker.setLastHeartbeat(LocalDateTime.now());
-            existingWorker.setCpuUsage(registerDTO.getCpuUsage());
-            existingWorker.setMemUsage(registerDTO.getMemUsage());
-            existingWorker.setRunningTasks(registerDTO.getRunningTasks());
-            workerService.updateById(existingWorker);
+            workerMapper.updateById(existingWorker);
 
             // 设置返回结果
             registerVO.setWorkerId(existingWorker.getId());
@@ -89,16 +91,60 @@ public class WorkerController {
         log.info("Worker不存在，创建新的Worker记录");
         // Worker 不存在，创建新的 Worker
         Worker newWorker = new Worker();
-        BeanUtils.copyProperties(registerDTO, newWorker);
+        newWorker.setHost(registerDTO.getHost());
+        newWorker.setIp(registerDTO.getIp());
         newWorker.setStatus(WorkerStatus.online);
         newWorker.setLastHeartbeat(LocalDateTime.now());
         newWorker.setCreateTime(LocalDateTime.now());
         newWorker.setUpdateTime(LocalDateTime.now());
-        workerService.save(newWorker);
+        workerMapper.insert(newWorker);
 
         // 生成 AKSK
-        AKSK aksk = akskService.generateAKSK(newWorker.getId());
-        log.info("为新Worker生成AKSK，WorkerID: {}", newWorker.getId());
+        // 复制 AKSKServiceImpl.generateAKSK 的逻辑
+        String accessKey = "AK" + IdUtil.fastSimpleUUID().toUpperCase();
+        String secretKey = "SK" + IdUtil.fastSimpleUUID().toUpperCase();
+        
+        AKSK aksk = new AKSK();
+        aksk.setAccessKey(accessKey);
+        aksk.setSecretKey(secretKey);
+        aksk.setWorkerId(newWorker.getId());
+        aksk.setStatus("active");
+        aksk.setCreateTime(LocalDateTime.now());
+        aksk.setUpdateTime(LocalDateTime.now());
+        akskMapper.insert(aksk);
+        log.info("为新Worker生成AKSK，WorkerID: {}, AccessKey: {}", newWorker.getId(), aksk.getAccessKey());
+
+        // 处理标签
+        if (registerDTO.getTags() != null && !registerDTO.getTags().isEmpty()) {
+            log.info("为新Worker处理标签，WorkerID: {}, 标签数量: {}", newWorker.getId(), registerDTO.getTags().size());
+            for (Tag tagDto : registerDTO.getTags()) {
+                // 根据name、operator和version查询标签，不存在则创建
+                Tag tag = tagMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Tag>()
+                                .eq(Tag::getName, tagDto.getName())
+                                .eq(Tag::getOperator, "==")
+                                .eq(Tag::getVersion, tagDto.getVersion())
+                );
+                
+                if (tag == null) {
+                    // 创建新标签
+                    tag = new Tag();
+                    tag.setName(tagDto.getName());
+                    tag.setOperator("==");
+                    tag.setVersion(tagDto.getVersion());
+                    tag.setCreateTime(LocalDateTime.now());
+                    tagMapper.insert(tag);
+                    log.info("创建了新标签，名称: {}, 操作符: {}, 版本: {}, ID: {}", tag.getName(), tag.getOperator(), tag.getVersion(), tag.getId());
+                }
+                
+                // 关联标签到Worker
+                WorkerTag workerTag = new WorkerTag();
+                workerTag.setWorkerId(newWorker.getId());
+                workerTag.setTagId(tag.getId());
+                workerTag.setCreateTime(LocalDateTime.now());
+                workerTagMapper.insert(workerTag);
+            }
+        }
 
         // 设置返回结果
         registerVO.setWorkerId(newWorker.getId());
@@ -121,7 +167,7 @@ public class WorkerController {
         log.info("收到Worker心跳请求，WorkerID: {}", workerId);
         
         // 更新 Worker 最后心跳时间和状态
-        Worker worker = workerService.getById(workerId);
+        Worker worker = workerMapper.selectById(workerId);
         if (worker == null) {
             log.warn("Worker不存在，WorkerID: {}", workerId);
             return Result.error(404, "Worker not found");
@@ -129,7 +175,7 @@ public class WorkerController {
 
         worker.setStatus(WorkerStatus.online);
         worker.setLastHeartbeat(LocalDateTime.now());
-        workerService.updateById(worker);
+        workerMapper.updateById(worker);
         log.info("Worker心跳更新成功，WorkerID: {}", workerId);
 
         return Result.success();
@@ -148,7 +194,7 @@ public class WorkerController {
         log.info("收到Worker状态报告，WorkerID: {}", workerId);
         
         // 更新 Worker 状态
-        Worker worker = workerService.getById(workerId);
+        Worker worker = workerMapper.selectById(workerId);
         if (worker == null) {
             log.warn("Worker不存在，WorkerID: {}", workerId);
             return Result.error(404, "Worker not found");
@@ -166,7 +212,7 @@ public class WorkerController {
         worker.setStatus(WorkerStatus.online);
         worker.setLastHeartbeat(LocalDateTime.now());
         worker.setUpdateTime(LocalDateTime.now());
-        workerService.updateById(worker);
+        workerMapper.updateById(worker);
         log.info("Worker状态更新成功，WorkerID: {}", workerId);
 
         return Result.success();
@@ -184,7 +230,10 @@ public class WorkerController {
         log.info("收到AKSK验证请求，AccessKey: {}", accessKey);
         
         // 检查 AKSK 是否有效
-        AKSK aksk = akskService.getByAccessKey(accessKey);
+        AKSK aksk = akskMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AKSK>()
+                        .eq(AKSK::getAccessKey, accessKey)
+        );
         Map<String, Boolean> resultMap = new HashMap<>();
 
         if (aksk != null && "active".equals(aksk.getStatus())) {

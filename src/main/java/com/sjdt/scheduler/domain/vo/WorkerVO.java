@@ -1,8 +1,10 @@
 package com.sjdt.scheduler.domain.vo;
 
+import com.sjdt.scheduler.domain.po.Tag;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 /**
  * Worker 详细信息 VO
@@ -39,5 +41,8 @@ public class WorkerVO {
 
     /** 更新时间 */
     private LocalDateTime updateTime;
+
+    /** 环境标签 */
+    private Set<Tag> tags;
 
 }

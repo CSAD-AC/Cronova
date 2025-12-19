@@ -1,6 +1,8 @@
 package com.sjdt.scheduler.Interceptor;
 
 import cn.hutool.core.io.IoUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.service.IAKSKService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -20,6 +22,9 @@ public class AKSKInterceptor implements HandlerInterceptor {
 
     @Autowired
     private IAKSKService akskService;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
 
     /**
      * 请求头中的 Access Key 字段名
@@ -54,7 +59,9 @@ public class AKSKInterceptor implements HandlerInterceptor {
         // 2. 检查必填字段是否存在
         if (accessKey == null || signature == null || timestamp == null) {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
-            response.getWriter().write("Missing AKSK authentication headers");
+            response.setContentType("application/json;charset=utf-8");
+            Result<Void> result = Result.error(HttpStatus.UNAUTHORIZED.value(), "Missing AKSK authentication headers");
+            response.getWriter().write(objectMapper.writeValueAsString(result));
             return false;
         }
 
@@ -65,7 +72,9 @@ public class AKSKInterceptor implements HandlerInterceptor {
         boolean isValid = akskService.validateAKSK(accessKey, signature, timestamp, requestBody);
         if (!isValid) {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
-            response.getWriter().write("Invalid AKSK authentication");
+            response.setContentType("application/json;charset=utf-8");
+            Result<Void> result = Result.error(HttpStatus.UNAUTHORIZED.value(), "Invalid AKSK authentication");
+            response.getWriter().write(objectMapper.writeValueAsString(result));
             return false;
         }
 

@@ -1,6 +1,9 @@
 package com.sjdt.scheduler.domain.dto;
 
+import com.sjdt.scheduler.domain.po.Tag;
 import lombok.Data;
+
+import java.util.Set;
 
 /**
  * Worker 注册请求 DTO
@@ -14,13 +17,7 @@ public class WorkerRegisterDTO {
     /** 内网 IP 地址 */
     private String ip;
 
-    /** CPU 使用率（百分比） */
-    private Double cpuUsage;
-
-    /** 内存使用率（百分比） */
-    private Double memUsage;
-
-    /** 当前运行的任务数 */
-    private Integer runningTasks;
+    /** 标签 */
+    private Set<Tag> tags;
 
 }

@@ -1,6 +1,5 @@
 package com.sjdt.scheduler.service.impl;
 
-import com.baomidou.mybatisplus.extension.service.IService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.AKSK;
@@ -9,6 +8,7 @@ import com.sjdt.scheduler.mapper.WorkerMapper;
 import com.sjdt.scheduler.service.IAKSKService;
 import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.service.IWorkerService;
+import com.sjdt.scheduler.service.IWorkerTagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,6 +29,9 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
 
     @Autowired
     private ITaskService taskService;
+
+    @Autowired
+    private IWorkerTagService workerTagService;
 
     /**
      * 根据主机名或 IP 查询 Worker
@@ -113,7 +116,7 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
 
     /**
      * 删除 Worker
-     * 同步删除关联的 AKSK 和相关任务
+     * 同步删除关联的 AKSK、WorkerTag 和相关任务
      * @param id Worker ID
      */
     @Override
@@ -128,12 +131,19 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
                 .remove();
         log.info("关联的AKSK记录删除成功，WorkerID: {}", id);
 
-        // 2. 更新关联的任务记录，将 target_worker 设置为 null
+        // 2. 删除关联的 WorkerTag 记录
+        log.info("开始删除关联的WorkerTag记录，WorkerID: {}", id);
+        workerTagService.lambdaUpdate()
+                .eq(com.sjdt.scheduler.domain.po.WorkerTag::getWorkerId, id)
+                .remove();
+        log.info("关联的WorkerTag记录删除成功，WorkerID: {}", id);
+
+        // 3. 更新关联的任务记录，将 target_worker 设置为 null
         log.info("开始更新关联的任务记录，将target_worker设置为null，WorkerID: {}", id);
         taskService.updateTargetWorkerToNullByWorkerId(id);
         log.info("关联的任务记录更新成功，WorkerID: {}", id);
 
-        // 3. 删除 Worker 记录
+        // 4. 删除 Worker 记录
         log.info("开始删除Worker记录，WorkerID: {}", id);
         this.removeById(id);
         log.info("Worker删除成功，WorkerID: {}", id);

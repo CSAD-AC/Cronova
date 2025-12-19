@@ -1,6 +1,7 @@
 package com.sjdt.scheduler.domain.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
@@ -13,6 +14,8 @@ import lombok.NoArgsConstructor;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.Set;
+
 /**
  * Worker 执行器节点实体
  */
@@ -32,6 +35,10 @@ public class Worker implements Serializable {
 
     /** 主机名 */
     private String host;
+
+    /** 环境标签 */
+    @TableField(exist = false)
+    private Set<Tag> tags;
 
     /** 内网 IP 地址 */
     private String ip;

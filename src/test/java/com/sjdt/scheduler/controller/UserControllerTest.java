@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjdt.scheduler.common.Result;
-import com.sjdt.scheduler.config.SaTokenConfigure;
+import com.sjdt.scheduler.config.AuthConfigure;
 import com.sjdt.scheduler.domain.dto.UserUpdateDTO;
 import com.sjdt.scheduler.domain.vo.UserVO;
 import com.sjdt.scheduler.service.IUserService;
@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(value = UserController.class, 
            excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, 
-                                                classes = SaTokenConfigure.class))
+                                                classes = {AuthConfigure.class, com.sjdt.scheduler.Interceptor.AKSKInterceptor.class}))
 class UserControllerTest {
 
     @Autowired

@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * Sa-Token 权限拦截配置
  */
 @Configuration
-public class SaTokenConfigure implements WebMvcConfigurer {
+public class AuthConfigure implements WebMvcConfigurer {
 
     @Autowired
     private AKSKInterceptor akskInterceptor;
@@ -36,6 +36,7 @@ public class SaTokenConfigure implements WebMvcConfigurer {
 
         // 2. AKSK 拦截器，用于 Worker 执行器的 HTTP 通信鉴权
         registry.addInterceptor(akskInterceptor)
-                .addPathPatterns("/api/worker/**");
+                .addPathPatterns("/api/worker/**")
+                .excludePathPatterns("/api/worker/register");
     }
 }
