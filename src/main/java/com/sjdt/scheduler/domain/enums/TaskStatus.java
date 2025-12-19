@@ -7,9 +7,9 @@ import lombok.AllArgsConstructor;
 @Getter
 @AllArgsConstructor
 public enum TaskStatus {
-    ACTIVE("active", "活跃"),
-    PAUSED("paused", "暂停"),
-    DELETED("deleted", "已删除");
+    active("active", "活跃"),
+    paused("paused", "暂停"),
+    deleted("deleted", "已删除");
 
     /**
      * 存在数据库/对外传输的字面值

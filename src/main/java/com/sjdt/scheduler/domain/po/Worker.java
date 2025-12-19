@@ -3,6 +3,7 @@ package com.sjdt.scheduler.domain.po;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,7 +37,7 @@ public class Worker implements Serializable {
     private String ip;
 
     /** Worker 状态：online / offline / busy */
-    private String status;
+    private WorkerStatus status;
 
     /** CPU 使用率（百分比） */
     private Double cpuUsage;

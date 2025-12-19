@@ -7,9 +7,9 @@ import lombok.AllArgsConstructor;
 @Getter
 @AllArgsConstructor
 public enum WorkerStatus {
-    ONLINE("online", "在线"),
-    OFFLINE("offline", "离线"),
-    BUSY("busy", "忙碌");
+    online("online", "在线"),
+    offline("offline", "离线"),
+    busy("busy", "忙碌");
 
     /**
      * 存在数据库/对外传输的字面值

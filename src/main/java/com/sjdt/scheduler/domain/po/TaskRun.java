@@ -3,6 +3,7 @@ package com.sjdt.scheduler.domain.po;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -40,7 +41,7 @@ public class TaskRun implements Serializable {
      * 执行状态：
      * pending / running / success / failed / timeout
      */
-    private String status;
+    private TaskRunStatus status;
 
     /** 进程退出码 */
     private Integer exitCode;
@@ -59,5 +60,6 @@ public class TaskRun implements Serializable {
 
     /** 创建时间（实例生成时间） */
     private LocalDateTime createTime;
+
 }
 

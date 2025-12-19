@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.sjdt.scheduler.domain.enums.ScriptType;
+import com.sjdt.scheduler.domain.enums.TaskStatus;
+import com.sjdt.scheduler.domain.enums.TaskType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,13 +37,19 @@ public class Task implements Serializable {
     /** 任务名称 */
     private String name;
 
+    /** 任务描述 */
+    private String description;
+
+    /** 脚本类型：java/python/go */
+    private ScriptType type;
+
     /** 脚本id */
     @TableField(value = "script_id")
     private String scriptId;
 
     /** 任务类型：once / cron */
     @TableField(value = "task_type")
-    private String taskType;
+    private TaskType taskType;
 
     /**
      * Cron 表达式
@@ -62,7 +71,7 @@ public class Task implements Serializable {
     private String targetWorker;
 
     /** 任务状态：active / paused / deleted */
-    private String status;
+    private TaskStatus status;
 
     /** 创建人 */
     @TableField(value = "created_by")

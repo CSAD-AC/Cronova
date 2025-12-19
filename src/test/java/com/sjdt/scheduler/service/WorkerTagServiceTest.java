@@ -1,6 +1,7 @@
 package com.sjdt.scheduler.service;
 
 import com.sjdt.scheduler.common.Result;
+import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.Tag;
 import com.sjdt.scheduler.domain.po.Worker;
 import org.junit.jupiter.api.Assertions;
@@ -37,7 +38,7 @@ class WorkerTagServiceTest {
         Worker worker = Worker.builder()
                 .host("localhost")
                 .ip("127.0.0.1")
-                .status("online")
+                .status(WorkerStatus.valueOf(WorkerStatus.online.getValue()))
                 .cpuUsage(0.0)
                 .memUsage(0.0)
                 .runningTasks(0)
@@ -81,7 +82,7 @@ class WorkerTagServiceTest {
         Worker worker = Worker.builder()
                 .host("localhost")
                 .ip("127.0.0.1")
-                .status("online")
+                .status(WorkerStatus.valueOf(WorkerStatus.online.getValue()))
                 .cpuUsage(0.0)
                 .memUsage(0.0)
                 .runningTasks(0)
@@ -135,7 +136,7 @@ class WorkerTagServiceTest {
         Worker worker = Worker.builder()
                 .host("localhost")
                 .ip("127.0.0.1")
-                .status("online")
+                .status(WorkerStatus.valueOf(WorkerStatus.online.getValue()))
                 .cpuUsage(0.0)
                 .memUsage(0.0)
                 .runningTasks(0)
@@ -182,7 +183,7 @@ class WorkerTagServiceTest {
         Worker worker = Worker.builder()
                 .host("localhost")
                 .ip("127.0.0.1")
-                .status("online")
+                .status(WorkerStatus.valueOf(WorkerStatus.online.getValue()))
                 .cpuUsage(0.0)
                 .memUsage(0.0)
                 .runningTasks(0)
@@ -249,7 +250,7 @@ class WorkerTagServiceTest {
         Worker worker1 = Worker.builder()
                 .host("localhost")
                 .ip("127.0.0.1")
-                .status("online")
+                .status(WorkerStatus.valueOf(WorkerStatus.online.getValue()))
                 .cpuUsage(0.0)
                 .memUsage(0.0)
                 .runningTasks(0)
@@ -262,7 +263,7 @@ class WorkerTagServiceTest {
         Worker worker2 = Worker.builder()
                 .host("localhost")
                 .ip("127.0.0.1")
-                .status("online")
+                .status(WorkerStatus.valueOf(WorkerStatus.online.getValue()))
                 .cpuUsage(0.0)
                 .memUsage(0.0)
                 .runningTasks(0)

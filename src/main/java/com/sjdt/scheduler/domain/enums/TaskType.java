@@ -7,8 +7,8 @@ import lombok.AllArgsConstructor;
 @Getter
 @AllArgsConstructor
 public enum TaskType {
-    ONCE("once", "一次性任务"),
-    CRON("cron", "定时任务");
+    once("once", "一次性任务"),
+    cron("cron", "定时任务");
 
     /**
      * 存在数据库/对外传输的字面值
