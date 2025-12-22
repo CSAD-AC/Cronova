@@ -1,6 +1,7 @@
 package com.sjdt.scheduler.domain.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -11,6 +12,7 @@ import lombok.NoArgsConstructor;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Data
 @Builder
@@ -31,6 +33,10 @@ public class Script implements Serializable {
 
     /** 脚本路径 */
     private String path;
+
+    /** 标签 */
+    @TableField(exist = false)
+    private Set<Tag> tags;
 
     /** 创建时间 */
     private LocalDateTime createTime;
