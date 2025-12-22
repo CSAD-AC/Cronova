@@ -15,4 +15,19 @@ public interface ITaskService extends IService<Task> {
      */
     void updateTargetWorkerToNullByWorkerId(String workerId);
 
+    /**
+     * 发布任务
+     * 根据任务类型（公共/定向）发送到RocketMQ
+     *
+     * @param taskId 任务ID
+     */
+    void publishTask(String taskId);
+
+    /**
+     * 发布立即执行的任务
+     * 用于一次性任务的立即执行
+     *
+     * @param task 任务对象
+     */
+    void publishImmediateTask(Task task);
 }

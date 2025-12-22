@@ -2,18 +2,27 @@ package com.sjdt.scheduler.controller;
 
 import cn.hutool.core.util.IdUtil;
 import com.sjdt.scheduler.common.Result;
-import com.sjdt.scheduler.domain.dto.WorkerRegisterDTO;
-import com.sjdt.scheduler.domain.dto.WorkerStatusDTO;
+import com.sjdt.scheduler.domain.message.WorkerRegisterDTO;
+import com.sjdt.scheduler.domain.message.WorkerStatusDTO;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.AKSK;
 import com.sjdt.scheduler.domain.po.Tag;
+import com.sjdt.scheduler.domain.po.TaskLog;
+import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.domain.po.Worker;
 import com.sjdt.scheduler.domain.po.WorkerTag;
 import com.sjdt.scheduler.domain.vo.WorkerRegisterVO;
 import com.sjdt.scheduler.mapper.AKSKMapper;
 import com.sjdt.scheduler.mapper.TagMapper;
+import com.sjdt.scheduler.mapper.TaskLogMapper;
+import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.mapper.WorkerMapper;
 import com.sjdt.scheduler.mapper.WorkerTagMapper;
+import com.sjdt.scheduler.domain.enums.TaskRunStatus;
+import com.sjdt.scheduler.domain.message.TaskResultMessage;
+import com.sjdt.scheduler.service.IWorkerTagService;
+import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.domain.po.Task;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -36,12 +45,18 @@ public class WorkerController {
     private final AKSKMapper akskMapper;
     private final WorkerTagMapper workerTagMapper;
     private final TagMapper tagMapper;
+    private final TaskRunMapper taskRunMapper;
+    private final TaskLogMapper taskLogMapper;
+    private final ITaskService taskService;
 
-    public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper, TagMapper tagMapper) {
+    public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper, TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, ITaskService taskService) {
         this.workerMapper = workerMapper;
         this.akskMapper = akskMapper;
         this.workerTagMapper = workerTagMapper;
         this.tagMapper = tagMapper;
+        this.taskRunMapper = taskRunMapper;
+        this.taskLogMapper = taskLogMapper;
+        this.taskService = taskService;
     }
 
     /**
@@ -244,6 +259,92 @@ public class WorkerController {
             resultMap.put("valid", false);
             log.warn("AKSK验证失败，AccessKey: {}", accessKey);
             return Result.error(401, "AKSK is invalid or inactive");
+        }
+    }
+
+    /**
+     * Worker 任务结果报告接口
+     * 用于 Worker 定期报告任务执行结果，更新任务状态
+     * @param workerId Worker ID
+     * @param resultMessage 任务执行结果消息
+     * @return 状态报告结果
+     */
+    @PostMapping("/task-result/{workerId}")
+    @Operation(summary = "Worker任务结果报告", description = "Worker执行器定期报告任务执行结果，更新task_run表的数据")
+    public Result<Void> reportTaskResult(@PathVariable String workerId, @RequestBody TaskResultMessage resultMessage) {
+        log.info("收到Worker任务结果报告，WorkerID: {}, TaskID: {}, TaskRunID: {}", 
+                workerId, resultMessage.getTaskId(), resultMessage.getTaskRunId());
+        
+        // 检查 Worker 是否存在
+        Worker worker = workerMapper.selectById(workerId);
+        if (worker == null) {
+            log.warn("Worker不存在，WorkerID: {}", workerId);
+            return Result.error(404, "Worker not found");
+        }
+
+        // 转换任务结果消息为TaskRun对象
+        TaskRun taskRun = TaskRun.builder()
+                .id(resultMessage.getTaskRunId())
+                .taskId(resultMessage.getTaskId())
+                .workerId(workerId)
+                .status(TaskRunStatus.of(resultMessage.getStatus()))
+                .exitCode(resultMessage.getExitCode())
+                .startTime(resultMessage.getStartTime())
+                .endTime(resultMessage.getEndTime())
+                .durationMs(resultMessage.getDurationMs())
+                .errorMessage(resultMessage.getErrorMessage())
+                .build();
+
+        // 更新或插入task_run表
+        TaskRun existingTaskRun = taskRunMapper.selectById(resultMessage.getTaskRunId());
+        if (existingTaskRun != null) {
+            // 更新现有记录
+            taskRunMapper.updateById(taskRun);
+            log.info("任务执行结果更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
+        } else {
+            // 插入新记录
+            taskRunMapper.insert(taskRun);
+            log.info("任务执行结果插入成功，TaskRunID: {}", resultMessage.getTaskRunId());
+        }
+        
+        // 保存日志路径到task_log表
+        if (resultMessage.getLogPath() != null && !resultMessage.getLogPath().isEmpty()) {
+            TaskLog taskLog = TaskLog.builder()
+                    .runId(resultMessage.getTaskRunId())
+                    .stdoutPath(resultMessage.getLogPath())
+                    .stderrPath(resultMessage.getLogPath()) // 目前只支持单个日志路径，stdout和stderr使用相同路径
+                    .createTime(LocalDateTime.now())
+                    .build();
+            
+            taskLogMapper.insert(taskLog);
+            log.info("任务日志路径保存成功，TaskRunID: {}, LogPath: {}", resultMessage.getTaskRunId(), resultMessage.getLogPath());
+        }
+
+        return Result.success();
+    }
+
+    /**
+     * 发布任务接口
+     * 用于前端调用，发布任务到指定Worker或公共任务池
+     * @param taskId 任务ID
+     * @return 发布结果
+     */
+    @PostMapping("/task/publish/{taskId}")
+    @Operation(summary = "发布任务", description = "前端调用，发布任务到指定Worker或公共任务池")
+    public Result<Void> publishTask(@PathVariable String taskId) {
+        log.info("收到前端任务发布请求，TaskID: {}", taskId);
+        
+        try {
+            // 调用TaskService发布任务
+            taskService.publishTask(taskId);
+            log.info("任务发布成功，TaskID: {}", taskId);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            log.warn("任务发布失败，TaskID: {}, 原因: {}", taskId, e.getMessage());
+            return Result.error(404, e.getMessage());
+        } catch (Exception e) {
+            log.error("任务发布失败，TaskID: {}, 异常: {}", taskId, e.getMessage(), e);
+            return Result.error(500, "任务发布失败: " + e.getMessage());
         }
     }
 

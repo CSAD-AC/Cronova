@@ -1,4 +1,4 @@
-package com.sjdt.scheduler.domain.dto;
+package com.sjdt.scheduler.domain.message;
 
 import lombok.Data;
 

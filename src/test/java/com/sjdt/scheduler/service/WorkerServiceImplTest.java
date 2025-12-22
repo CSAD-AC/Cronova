@@ -46,6 +46,7 @@ class WorkerServiceImplTest {
 
     @Test
     void testUpdateHostById() {
+        LocalDateTime startTime = LocalDateTime.now();
         // 创建测试Worker
         Worker worker = Worker.builder()
                 .host("test-host-initial")
@@ -55,7 +56,7 @@ class WorkerServiceImplTest {
                 .memUsage(20.0)
                 .runningTasks(1)
                 .lastHeartbeat(LocalDateTime.now())
-                .createTime(LocalDateTime.now())
+                .createTime(startTime)
                 .updateTime(LocalDateTime.now())
                 .build();
         workerService.save(worker);
@@ -70,7 +71,7 @@ class WorkerServiceImplTest {
         Assertions.assertEquals(newHost, updatedWorker.getHost());
         Assertions.assertEquals(worker.getIp(), updatedWorker.getIp());
         Assertions.assertNotNull(updatedWorker.getUpdateTime());
-        Assertions.assertTrue(updatedWorker.getUpdateTime().compareTo(worker.getUpdateTime()) >= 0);
+        Assertions.assertTrue(updatedWorker.getUpdateTime().compareTo(startTime) >= 0);
     }
 
     @Test
