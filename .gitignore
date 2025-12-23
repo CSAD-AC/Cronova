@@ -1,3 +1,7 @@
+### 本地测试使用文件 ###
+minio.exe
+frpc/
+
 HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
@@ -19,6 +23,9 @@ target/
 *.iml
 *.ipr
 
+### Trae ###
+.trae/
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
@@ -31,3 +38,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### 本地文档信息 ###
+doc/
+
