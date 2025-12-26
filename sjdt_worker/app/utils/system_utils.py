@@ -1,5 +1,9 @@
 import psutil
 from threading import Lock
+from app.utils.log_utils import get_logger
+
+# 初始化日志器
+logger = get_logger(__name__)
 
 
 class SystemUtils:
@@ -23,7 +27,7 @@ class SystemUtils:
         """增加运行中任务数（线程安全）"""
         with SystemUtils._lock:
             SystemUtils._running_tasks += 1
-            print(f"运行中任务数+1，当前：{SystemUtils._running_tasks}")
+            logger.debug("运行中任务数+1，当前：%d", SystemUtils._running_tasks)
 
     @staticmethod
     def decrement_running_tasks() -> None:
@@ -31,7 +35,7 @@ class SystemUtils:
         with SystemUtils._lock:
             if SystemUtils._running_tasks > 0:
                 SystemUtils._running_tasks -= 1
-            print(f"运行中任务数-1，当前：{SystemUtils._running_tasks}")
+            logger.debug("运行中任务数-1，当前：%d", SystemUtils._running_tasks)
 
     @staticmethod
     def get_running_tasks() -> int:

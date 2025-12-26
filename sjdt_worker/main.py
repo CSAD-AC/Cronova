@@ -5,36 +5,46 @@ from app.mq_consumer import MQConsumer
 from app.service.auth_service import AuthService
 from app.service.register_service import RegisterService
 from app.service.report_service import ReportService
+from app.utils.log_utils import get_logger
+
+# 初始化日志器
+logger = get_logger(__name__)
 
 
 def main():
     # 1. 加载配置并验证有效性
+    logger.info("开始加载配置...")
     config_loaded = Config.load_local_config()
 
     # 2. 验证AK/SK有效性（如果配置已加载）
     if config_loaded:
+        logger.info("配置加载成功，开始验证AK/SK有效性...")
         if not AuthService.validate_aksk():
-            print("AK/SK验证失败，尝试重新注册...")
+            logger.warning("AK/SK验证失败，尝试重新注册...")
             config_loaded = False  # 标记为需要重新注册
 
     # 3. 若配置无效或未加载，执行注册流程
     if not config_loaded:
-        print("开始Worker注册流程...")
+        logger.info("开始Worker注册流程...")
         if not RegisterService.register_worker():
-            print("Worker注册失败，程序退出")
+            logger.error("Worker注册失败，程序退出")
             return
+        logger.info("Worker注册成功")
 
     # 4. 启动MQ消费者
+    logger.info("启动MQ消费者...")
     mq_consumer = MQConsumer()
     mq_thread = threading.Thread(target=mq_consumer.start, daemon=True)
     mq_thread.start()
+    logger.info("MQ消费者启动成功")
 
     # 5. 启动定时任务
+    logger.info("启动定时任务...")
     scheduler = BackgroundScheduler()
     scheduler.add_job(ReportService.send_heartbeat, "interval", seconds=Config.HEARTBEAT_INTERVAL)
     scheduler.add_job(ReportService.report_status, "interval", seconds=Config.STATUS_REPORT_INTERVAL)
     scheduler.start()
-    print("程序启动成功，开始运行...")
+    logger.info("程序启动成功，开始运行...")
 
     # 保持主线程
     try:

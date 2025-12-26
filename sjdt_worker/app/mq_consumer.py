@@ -3,6 +3,10 @@ from rocketmq.client import PushConsumer
 from app.config import Config
 from app.model.task import TaskExecuteMessage
 from app.service.task_service import TaskService
+from app.utils.log_utils import get_logger
+
+# 初始化日志器
+logger = get_logger(__name__)
 
 
 class MQConsumer:
@@ -20,44 +24,50 @@ class MQConsumer:
     def _message_listener(self, msg):
         """消息监听回调函数（返回 True/False 表示消费状态）"""
         if not Config.WORKER_ID:
-            print("未注册Worker，拒绝处理任务")
+            logger.warning("未注册Worker，拒绝处理任务")
             return True  # 未注册时直接确认消费，避免重复投递
 
         try:
             # 解析消息体
             task_body = msg.body.decode("utf-8")
             task = TaskExecuteMessage.from_mq_message(task_body)
-            print(f"收到任务：{task.taskId}，类型：{task.taskType}")
+            logger.info("收到任务：%s，类型：%s，脚本类型：%s", task.taskId, task.taskType, task.scriptType)
 
             # 定向任务过滤：仅处理目标为当前Worker的任务
             if task.targetWorkerId and task.targetWorkerId != Config.WORKER_ID:
-                print(f"任务{task.taskId}定向到Worker {task.targetWorkerId}，当前Worker为{Config.WORKER_ID}，跳过处理")
+                logger.debug("任务%s定向到Worker %s，当前Worker为%s，跳过处理", 
+                           task.taskId, task.targetWorkerId, Config.WORKER_ID)
                 return True  # 跳过但确认消费
 
             # 处理任务
+            logger.info("开始处理任务：%s", task.taskId)
             success = self.task_service.process_task(task)
+            if success:
+                logger.info("任务处理成功：%s", task.taskId)
+            else:
+                logger.error("任务处理失败：%s", task.taskId)
             return success  # 任务处理成功返回True，失败返回False
 
         except Exception as e:
-            print(f"任务处理失败：{str(e)}")
+            logger.error("任务处理失败：%s，错误信息：%s", msg.body.decode("utf-8"), str(e), exc_info=True)
             return False  # 异常时返回False，触发重试
 
     def start(self):
         """启动消费者"""
         try:
-            print("启动RocketMQ消费者...")
+            logger.info("启动RocketMQ消费者...")
             self.consumer.start()
             # 阻塞主线程
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("收到中断信号，准备关闭...")
+            logger.info("收到中断信号，准备关闭...")
         except Exception as e:
-            print(f"MQ消费者运行异常：{str(e)}")
+            logger.error("MQ消费者运行异常：%s", str(e), exc_info=True)
         finally:
             self.shutdown()
 
     def shutdown(self):
         """关闭消费者"""
-        print("关闭RocketMQ消费者...")
+        logger.info("关闭RocketMQ消费者...")
         self.consumer.shutdown()

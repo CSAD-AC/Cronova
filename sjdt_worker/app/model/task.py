@@ -13,7 +13,7 @@ class ScriptInfo(BaseModel):
     id: str
     name: str
     path: str
-    tags: List[ScriptTag]
+    tags: Optional[List[ScriptTag]] = None
 
 
 class TaskExecuteMessage(BaseModel):

@@ -29,7 +29,7 @@ public class WorkerHeartbeatCheckTask {
     /**
      * 每 15 秒执行一次心跳检查
      */
-    @Scheduled(fixedRate = 1500)
+    @Scheduled(fixedRate = 15000)
     public void checkHeartbeat() {
         // 获取当前时间
         LocalDateTime now = LocalDateTime.now();

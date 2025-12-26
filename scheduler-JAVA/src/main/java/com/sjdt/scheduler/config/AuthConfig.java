@@ -37,6 +37,7 @@ public class AuthConfig implements WebMvcConfigurer {
         // 2. AKSK 拦截器，用于 Worker 执行器的 HTTP 通信鉴权
         registry.addInterceptor(akskInterceptor)
                 .addPathPatterns("/api/worker/**")
-                .excludePathPatterns("/api/worker/register");
+                .excludePathPatterns("/api/worker/register")
+                .excludePathPatterns("/api/worker/validate-aksk");
     }
 }

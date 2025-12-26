@@ -36,16 +36,10 @@ class AuthUtils:
 
         # 生成待签名字符串：timestamp + "\n" + requestBody
         sign_str = timestamp + "\n" + body_str
-        print(f"签名字符串为{sign_str}, SK为{Config.SECRET_KEY}")
-        print()
-        print(list(sign_str.encode("utf-8")))
-
         # 生成签名
         signature = hmac.new(
             Config.SECRET_KEY.encode("utf-8"),
             sign_str.encode("utf-8"),
             hashlib.sha256
         ).hexdigest()
-
-        print(f"签名为{signature}")
         return signature

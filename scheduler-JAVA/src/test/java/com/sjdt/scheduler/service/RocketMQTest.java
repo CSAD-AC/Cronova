@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RocketMQTest {
 
-    private static final String NAMESRV_ADDR = "localhost:9876";
+    private static final String NAMESRV_ADDR = "127.0.0.1:9876";
     private static final String TOPIC = "TASK_EXECUTE";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();

@@ -7,6 +7,10 @@ from app.service.task_handler.base_handler import BaseHandler
 from app.utils.minio_utils import get_minio_file_object, minio_upload_file
 from app.config import Config
 from rocketmq.client import Producer, Message
+from app.utils.log_utils import get_logger
+
+# 初始化日志器
+logger = get_logger(__name__)
 
 
 class PythonHandler(BaseHandler):
@@ -32,40 +36,50 @@ class PythonHandler(BaseHandler):
         )
 
         try:
-            # 1. 解析脚本路径
-            script_path = task.script.path
-            if script_path.startswith("minio://"):
-                script_path = script_path[8:]
-            script_bucket, script_object = self._parse_minio_path(script_path)
+            logger.info("开始执行Python脚本，任务ID：%s，脚本路径：%s", task.taskId, task.script.path)
+            
+            # 1. 使用配置中的bucket名称和脚本路径
+            script_bucket = Config.MINIO_BUCKET_NAME
+            script_object = task.script.path
+            logger.debug("使用配置的bucket：%s，object：%s", script_bucket, script_object)
 
             # 2. 从MinIO下载Python脚本到本地临时文件
+            logger.info("从MinIO下载脚本，bucket：%s，object：%s", script_bucket, script_object)
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
                 script_content = get_minio_file_object(script_bucket, script_object).read().decode('utf-8')
                 f.write(script_content)
                 temp_script_path = f.name
+            logger.debug("脚本下载成功，保存到临时文件：%s", temp_script_path)
 
             # 3. 准备日志存储
             log_bucket = "task-logs"
             log_object = f"{task.taskId}.log"
 
             # 4. 执行脚本（带超时控制）
+            # 处理超时时间为0的情况，设置默认值300秒
+            timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
+            logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
             process = subprocess.Popen(
-                ['python', temp_script_path],
+                ['python3', temp_script_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True
             )
 
             try:
-                stdout, _ = process.communicate(timeout=task.timeoutSeconds)
+                stdout, _ = process.communicate(timeout=timeout_seconds)
                 exit_code = process.returncode
+                logger.info("脚本执行完成，退出码：%d", exit_code)
 
                 # 上传日志
+                logger.debug("开始上传日志到MinIO，bucket：%s，object：%s", log_bucket, log_object)
                 self._upload_log(log_bucket, log_object, stdout)
+                logger.debug("日志上传成功")
 
                 # 更新结果
                 result = self._build_success_result(result, exit_code, log_bucket, log_object, start_time)
                 self._send_task_result(result)
+                logger.info("任务执行结果已发送，任务ID：%s", task.taskId)
                 return exit_code == 0
 
             except subprocess.TimeoutExpired:
@@ -73,15 +87,14 @@ class PythonHandler(BaseHandler):
                 raise TimeoutError(f"脚本执行超时（{task.timeoutSeconds}秒）")
 
         except Exception as e:
-            import traceback
-            print(f"PythonHandler 执行任务失败（{task.taskId}）：{str(e)}")
-            print("错误堆栈：\n" + traceback.format_exc())  # 新增：输出堆栈信息
+            logger.error("PythonHandler 执行任务失败（%s）：%s", task.taskId, str(e), exc_info=True)
             result = self._build_error_result(result, str(e), start_time)
             self._send_task_result(result)
             return False
         finally:
             if 'temp_script_path' in locals() and os.path.exists(temp_script_path):
                 os.unlink(temp_script_path)
+                logger.debug("临时脚本文件已删除：%s", temp_script_path)
 
     # 辅助方法
     def _parse_minio_path(self, path: str) -> tuple:
@@ -101,6 +114,7 @@ class PythonHandler(BaseHandler):
         return TaskResultMessage(
             workerId=result.workerId,
             taskId=result.taskId,
+            taskRunId=result.taskRunId,
             status="success" if exit_code == 0 else "failed",
             exitCode=exit_code,
             startTime=result.startTime,
@@ -115,6 +129,7 @@ class PythonHandler(BaseHandler):
         return TaskResultMessage(
             workerId=result.workerId,
             taskId=result.taskId,
+            taskRunId=result.taskRunId,
             status="failed",
             exitCode=1,
             startTime=result.startTime,

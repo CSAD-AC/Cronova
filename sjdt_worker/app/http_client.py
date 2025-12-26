@@ -23,8 +23,8 @@ class HttpClient:
     ) -> Optional[Dict]:
         try:
             headers = {}
-            # 排除注册请求，其他POST请求添加认证头
-            if url != Config.WORKER_REGISTER_URL:
+            # 排除注册请求和AKSK验证请求，其他POST请求添加认证头
+            if url != Config.WORKER_REGISTER_URL and url != Config.AKSK_VALIDATE_URL:
                 # 生成时间戳
                 timestamp = AuthUtils.get_timestamp()
                 # 生成签名
