@@ -1,0 +1,407 @@
+package com.sjdt.scheduler.controller;
+
+import com.sjdt.scheduler.common.Result;
+import com.sjdt.scheduler.domain.message.TaskPauseMessage;
+import com.sjdt.scheduler.domain.message.TaskResumeMessage;
+import com.sjdt.scheduler.domain.message.TaskStopMessage;
+import com.sjdt.scheduler.domain.po.TaskLog;
+import com.sjdt.scheduler.domain.po.TaskRun;
+import com.sjdt.scheduler.mapper.TaskLogMapper;
+import com.sjdt.scheduler.mapper.TaskRunMapper;
+import com.sjdt.scheduler.service.TaskControlProducerService;
+import io.minio.GetObjectArgs;
+import io.minio.MinioClient;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+/**
+ * 任务运行实例控制器
+ * 处理前端对任务运行实例的控制操作（暂停、恢复、停止、删除、查询、日志下载）
+ */
+@RestController
+@RequestMapping("/api/task-run")
+@io.swagger.v3.oas.annotations.tags.Tag(name = "任务运行实例API", description = "任务运行实例的查询、控制和日志管理")
+@Slf4j
+public class TaskRunController {
+
+    private final TaskRunMapper taskRunMapper;
+    private final TaskLogMapper taskLogMapper;
+    private final TaskControlProducerService taskControlProducerService;
+    private final MinioClient minioClient;
+
+    @Autowired
+    public TaskRunController(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, 
+                            TaskControlProducerService taskControlProducerService,
+                            MinioClient minioClient) {
+        this.taskRunMapper = taskRunMapper;
+        this.taskLogMapper = taskLogMapper;
+        this.taskControlProducerService = taskControlProducerService;
+        this.minioClient = minioClient;
+    }
+
+    /**
+     * 查询任务运行实例详情
+     */
+    @GetMapping("/{taskRunId}")
+    @Operation(summary = "查询任务运行实例详情", description = "获取任务运行实例的详细信息")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "查询成功"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<TaskRun> getTaskRun(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId) {
+        log.info("收到查询任务运行实例详情请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        return Result.success(taskRun);
+    }
+
+    /**
+     * 查询任务运行实例日志
+     */
+    @GetMapping("/{taskRunId}/logs")
+    @Operation(summary = "查询任务运行实例日志", description = "获取任务运行实例的日志信息（MinIO路径）")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "查询成功"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例或日志不存在")
+    })
+    public Result<TaskLog> getTaskRunLogs(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId) {
+        log.info("收到查询任务运行实例日志请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        TaskLog taskLog = taskLogMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
+                        .eq(TaskLog::getRunId, taskRunId)
+        );
+
+        if (taskLog == null) {
+            log.warn("任务日志不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskLog not found");
+        }
+
+        return Result.success(taskLog);
+    }
+
+    /**
+     * 下载任务运行实例日志文件
+     */
+    @GetMapping("/{taskRunId}/log/download")
+    @Operation(summary = "下载任务运行实例日志文件", description = "下载任务运行实例的日志文件")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "下载成功"),
+        @ApiResponse(responseCode = "400", description = "日志路径格式错误"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例或日志不存在")
+    })
+    public void downloadTaskRunLog(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            HttpServletResponse response) {
+        log.info("收到下载任务运行实例日志请求，TaskRunID: {}", taskRunId);
+        
+        try {
+            TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+            if (taskRun == null) {
+                log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                return;
+            }
+
+            TaskLog taskLog = taskLogMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
+                            .eq(TaskLog::getRunId, taskRunId)
+            );
+            if (taskLog == null) {
+                log.warn("日志记录不存在，TaskRunID: {}", taskRunId);
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                return;
+            }
+            
+            String logPath = taskLog.getStdoutPath();
+            log.info("日志文件路径：{}", logPath);
+            
+            int firstSlashIndex = logPath.indexOf('/');
+            if (firstSlashIndex == -1) {
+                log.error("日志路径格式错误，TaskRunID: {}，路径：{}", taskRunId, logPath);
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                return;
+            }
+            String bucketName = logPath.substring(0, firstSlashIndex);
+            String objectName = logPath.substring(firstSlashIndex + 1);
+            log.info("解析日志路径成功，桶名：{}，文件名：{}", bucketName, objectName);
+            
+            response.setContentType("application/octet-stream");
+            response.setHeader("Content-Disposition", "attachment; filename=task_log_" + taskRunId + ".log");
+            
+            try (InputStream inputStream = minioClient.getObject(
+                    GetObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectName)
+                            .build()
+            ); ServletOutputStream outputStream = response.getOutputStream()) {
+                byte[] buffer = new byte[1024 * 1024];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+                outputStream.flush();
+            }
+            
+            log.info("下载任务运行实例日志成功，TaskRunID: {}", taskRunId);
+        } catch (Exception e) {
+            log.error("下载任务运行实例日志失败，TaskRunID: {}", taskRunId, e);
+            try {
+                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            } catch (Exception ex) {
+                log.error("设置响应状态失败", ex);
+            }
+        }
+    }
+
+    /**
+     * 暂停任务运行实例
+     */
+    @PostMapping("/{taskRunId}/pause")
+    @Operation(summary = "暂停任务运行实例", description = "通过MQ向执行器发送暂停指令，暂停正在运行的任务实例")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "暂停指令发送成功"),
+        @ApiResponse(responseCode = "400", description = "参数错误或任务状态不允许暂停"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<Void> pauseTaskRun(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            @Parameter(description = "暂停原因") @RequestParam(required = false) String reason) {
+        log.info("收到暂停任务运行实例请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        if (!"running".equals(taskRun.getStatus().name())) {
+            log.warn("任务运行实例不是运行状态，无法暂停，TaskRunID: {}，状态: {}", taskRunId, taskRun.getStatus());
+            return Result.error(400, "TaskRun is not in running status");
+        }
+
+        if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
+            log.warn("任务运行实例未分配执行器，TaskRunID: {}", taskRunId);
+            return Result.error(400, "TaskRun has no assigned worker");
+        }
+
+        TaskPauseMessage message = TaskPauseMessage.builder()
+                .taskId(taskRun.getTaskId())
+                .taskRunId(taskRunId)
+                .targetWorkerId(taskRun.getWorkerId())
+                .reason(reason != null ? reason : "用户手动暂停")
+                .timestamp(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+                .build();
+
+        taskControlProducerService.sendPauseTask(message);
+        log.info("暂停任务运行实例消息已发送，TaskRunID: {}，WorkerID: {}", taskRunId, taskRun.getWorkerId());
+
+        return Result.success();
+    }
+
+    /**
+     * 恢复任务运行实例
+     */
+    @PostMapping("/{taskRunId}/resume")
+    @Operation(summary = "恢复任务运行实例", description = "通过MQ向执行器发送恢复指令，恢复已暂停的任务实例")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "恢复指令发送成功"),
+        @ApiResponse(responseCode = "400", description = "参数错误或任务状态不允许恢复"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<Void> resumeTaskRun(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            @Parameter(description = "恢复原因") @RequestParam(required = false) String reason) {
+        log.info("收到恢复任务运行实例请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        if (!"paused".equals(taskRun.getStatus().name())) {
+            log.warn("任务运行实例不是暂停状态，无法恢复，TaskRunID: {}，状态: {}", taskRunId, taskRun.getStatus());
+            return Result.error(400, "TaskRun is not in paused status");
+        }
+
+        if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
+            log.warn("任务运行实例未分配执行器，TaskRunID: {}", taskRunId);
+            return Result.error(400, "TaskRun has no assigned worker");
+        }
+
+        TaskResumeMessage message = TaskResumeMessage.builder()
+                .taskId(taskRun.getTaskId())
+                .taskRunId(taskRunId)
+                .targetWorkerId(taskRun.getWorkerId())
+                .reason(reason != null ? reason : "用户手动恢复")
+                .timestamp(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+                .build();
+
+        taskControlProducerService.sendResumeTask(message);
+        log.info("恢复任务运行实例消息已发送，TaskRunID: {}，WorkerID: {}", taskRunId, taskRun.getWorkerId());
+
+        return Result.success();
+    }
+
+    /**
+     * 停止任务运行实例（SIGTERM信号）
+     */
+    @PostMapping("/{taskRunId}/stop")
+    @Operation(summary = "停止任务运行实例", description = "通过MQ向执行器发送停止指令，使用SIGTERM信号正常终止任务")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "停止指令发送成功"),
+        @ApiResponse(responseCode = "400", description = "参数错误或任务状态不允许停止"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<Void> stopTaskRun(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            @Parameter(description = "停止原因") @RequestParam(required = false) String reason) {
+        log.info("收到停止任务运行实例请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        if (!"running".equals(taskRun.getStatus().name()) && !"paused".equals(taskRun.getStatus().name())) {
+            log.warn("任务运行实例不是运行或暂停状态，无法停止，TaskRunID: {}，状态: {}", taskRunId, taskRun.getStatus());
+            return Result.error(400, "TaskRun is not in running or paused status");
+        }
+
+        if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
+            log.warn("任务运行实例未分配执行器，TaskRunID: {}", taskRunId);
+            return Result.error(400, "TaskRun has no assigned worker");
+        }
+
+        TaskStopMessage message = TaskStopMessage.builder()
+                .taskId(taskRun.getTaskId())
+                .taskRunId(taskRunId)
+                .targetWorkerId(taskRun.getWorkerId())
+                .reason(reason != null ? reason : "用户手动停止")
+                .build();
+
+        taskControlProducerService.sendStopTask(message);
+        log.info("停止任务运行实例消息已发送，TaskRunID: {}，WorkerID: {}", taskRunId, taskRun.getWorkerId());
+
+        return Result.success();
+    }
+
+    /**
+     * 强制终止任务运行实例（SIGKILL信号）
+     */
+    @PostMapping("/{taskRunId}/kill")
+    @Operation(summary = "强制终止任务运行实例", description = "通过MQ向执行器发送强制终止指令，使用SIGKILL信号立即终止任务")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "强制终止指令发送成功"),
+        @ApiResponse(responseCode = "400", description = "参数错误或任务状态不允许强制终止"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<Void> killTaskRun(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            @Parameter(description = "终止原因") @RequestParam(required = false) String reason) {
+        log.info("收到强制终止任务运行实例请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        if (!"running".equals(taskRun.getStatus().name()) && !"paused".equals(taskRun.getStatus().name())) {
+            log.warn("任务运行实例不是运行或暂停状态，无法强制终止，TaskRunID: {}，状态: {}", taskRunId, taskRun.getStatus());
+            return Result.error(400, "TaskRun is not in running or paused status");
+        }
+
+        if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
+            log.warn("任务运行实例未分配执行器，TaskRunID: {}", taskRunId);
+            return Result.error(400, "TaskRun has no assigned worker");
+        }
+
+        TaskStopMessage message = TaskStopMessage.builder()
+                .taskId(taskRun.getTaskId())
+                .taskRunId(taskRunId)
+                .targetWorkerId(taskRun.getWorkerId())
+                .reason(reason != null ? reason : "用户强制终止")
+                .build();
+
+        taskControlProducerService.sendKillTask(message);
+        log.info("强制终止任务运行实例消息已发送，TaskRunID: {}，WorkerID: {}", taskRunId, taskRun.getWorkerId());
+
+        return Result.success();
+    }
+
+    /**
+     * 删除任务运行实例
+     */
+    @DeleteMapping("/{taskRunId}")
+    @Operation(summary = "删除任务运行实例", description = "删除任务运行实例记录，如果任务正在运行则先停止")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "删除成功"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<Void> deleteTaskRun(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            @Parameter(description = "删除原因") @RequestParam(required = false) String reason) {
+        log.info("收到删除任务运行实例请求，TaskRunID: {}", taskRunId);
+        
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+            return Result.error(404, "TaskRun not found");
+        }
+
+        if (taskRun.getWorkerId() != null && !taskRun.getWorkerId().isEmpty()) {
+            if ("running".equals(taskRun.getStatus().name()) || "paused".equals(taskRun.getStatus().name())) {
+                TaskStopMessage stopMessage = TaskStopMessage.builder()
+                        .taskId(taskRun.getTaskId())
+                        .taskRunId(taskRunId)
+                        .targetWorkerId(taskRun.getWorkerId())
+                        .reason(reason != null ? reason : "删除任务运行实例")
+                        .build();
+                
+                if ("running".equals(taskRun.getStatus().name())) {
+                    taskControlProducerService.sendStopTask(stopMessage);
+                    log.info("停止任务运行实例消息已发送，TaskRunID: {}", taskRunId);
+                } else {
+                    taskControlProducerService.sendKillTask(stopMessage);
+                    log.info("强制终止任务运行实例消息已发送，TaskRunID: {}", taskRunId);
+                }
+            }
+        }
+
+        taskRunMapper.deleteById(taskRunId);
+        taskLogMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
+                .eq(TaskLog::getRunId, taskRunId));
+        
+        log.info("任务运行实例已删除，TaskRunID: {}", taskRunId);
+
+        return Result.success();
+    }
+}

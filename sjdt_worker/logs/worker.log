@@ -95,3 +95,4 @@
 2026-01-15 15:00:12 - app.service.process_manager - INFO - 添加运行中进程，taskRunId: test-run-456
 2026-01-15 15:00:14 - app.service.process_manager - INFO - 成功终止任务进程，taskRunId: test-run-456
 2026-01-15 15:00:14 - app.service.process_manager - INFO - 从进程管理器中移除已终止进程，taskRunId: test-run-456
+2026-01-15 16:19:37 - app.service.task_instance_manager - INFO - 创建任务实例数据目录：task_instances

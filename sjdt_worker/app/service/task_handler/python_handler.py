@@ -60,10 +60,7 @@ class PythonHandler(BaseHandler):
         task_run_id = task.taskRunId
         
         try:
-            # 更新任务状态为运行中
-            task_instance_manager.update_status(task_run_id, "running")
-            
-            logger.info("开始执行Python脚本，任务ID：%s，脚本路径：%s", task.taskId, task.script.path)
+            logger.info("开始执行Python脚本，任务ID：%s，脚本路径：%s，taskRunId：%s", task.taskId, task.script.path, task_run_id)
             
             # 1. 下载脚本到临时文件
             script_bucket = Config.MINIO_BUCKET_NAME
@@ -83,13 +80,15 @@ class PythonHandler(BaseHandler):
             log_bucket = "task-logs"
             log_object = f"{task.taskId}/{task_run_id}.log"
             
-            # 更新任务实例的日志路径
+            logger.info("日志存储准备完成，bucket：%s，object：%s", log_bucket, log_object)
+            
+            # 3. 更新任务状态为运行中（包含日志路径）
             task_instance_manager.update_status(task_run_id, "running",
                                              log_bucket=log_bucket,
                                              log_object=log_object)
-            logger.info("日志存储准备完成，bucket：%s，object：%s", log_bucket, log_object)
+            logger.info("任务状态已更新为运行中，taskRunId：%s", task_run_id)
 
-            # 3. 启动子进程执行脚本
+            # 4. 启动子进程执行脚本
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
             

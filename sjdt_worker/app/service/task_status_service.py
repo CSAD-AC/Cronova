@@ -59,6 +59,15 @@ class TaskStatusService:
         """报告单个任务状态"""
         logger.info("报告任务状态，taskRunId: %s", task_run_id)
         
+        # 获取任务的真实状态
+        from app.service.task_instance_manager import task_instance_manager
+        current_status = task_instance_manager.get_status(task_run_id)
+        
+        # 如果任务实例不存在，回退到running状态
+        if not current_status:
+            current_status = "running"
+            logger.warning("任务实例不存在，使用默认状态running，taskRunId: %s", task_run_id)
+        
         # 构建任务结果消息
         current_time = datetime.utcnow()
         # 构建完整的日志路径
@@ -67,7 +76,7 @@ class TaskStatusService:
             workerId=Config.WORKER_ID,
             taskId=process_info['task'].taskId,
             taskRunId=task_run_id,
-            status="running",
+            status=current_status,
             exitCode=0,
             startTime=start_time.isoformat() + "Z",
             endTime="",
@@ -75,6 +84,8 @@ class TaskStatusService:
             errorMessage=None,
             logPath=log_path
         )
+        
+        logger.debug("状态报告详细信息，taskRunId: %s，状态: %s", task_run_id, current_status)
         
         # 发送状态报告
         try:
