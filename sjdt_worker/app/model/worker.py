@@ -6,7 +6,7 @@ from typing import List, Optional, Dict
 class AKSKValidateResponse(BaseModel):
     code: int
     message: str
-    data: Dict[str, bool]
+    data: Optional[Dict[str, bool]] = None
 
 
 # Worker注册请求模型

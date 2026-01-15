@@ -5,6 +5,7 @@ from app.mq_consumer import MQConsumer
 from app.service.auth_service import AuthService
 from app.service.register_service import RegisterService
 from app.service.report_service import ReportService
+from app.service.task_status_service import task_status_service
 from app.utils.log_utils import get_logger
 
 # 初始化日志器
@@ -43,6 +44,7 @@ def main():
     scheduler = BackgroundScheduler()
     scheduler.add_job(ReportService.send_heartbeat, "interval", seconds=Config.HEARTBEAT_INTERVAL)
     scheduler.add_job(ReportService.report_status, "interval", seconds=Config.STATUS_REPORT_INTERVAL)
+    scheduler.add_job(task_status_service.report_task_status, "interval", seconds=5)  # 每5秒报告一次任务状态
     scheduler.start()
     logger.info("程序启动成功，开始运行...")
 
@@ -51,9 +53,44 @@ def main():
         while True:
             threading.Event().wait()
     except KeyboardInterrupt:
+        logger.info("收到中断信号，开始清理任务...")
+        
+        # 1. 关闭定时任务调度器
         scheduler.shutdown()
+        
+        # 2. 清理所有运行中的任务
+        from app.service.process_manager import process_manager
+        from app.service.task_service import TaskService
+        from app.model.task import TaskStopMessage
+        
+        # 获取所有运行中的进程
+        running_processes = process_manager.get_all_processes()
+        if running_processes:
+            logger.info("开始终止 %d 个运行中的任务...", len(running_processes))
+            
+            task_service = TaskService()
+            for task_run_id, process_info in running_processes.items():
+                task = process_info.get('task')
+                if task:
+                    logger.info("终止任务：%s，taskRunId：%s", task.taskId, task_run_id)
+                    
+                    # 创建停止消息
+                    stop_message = TaskStopMessage(
+                        taskId=task.taskId,
+                        taskRunId=task_run_id,
+                        targetWorkerId=Config.WORKER_ID,
+                        reason="执行器收到中断信号，任务被终止"
+                    )
+                    
+                    # 停止任务
+                    task_service.stop_task(stop_message)
+            
+            logger.info("所有任务已终止")
+        
+        # 3. 关闭MQ消费者
         mq_consumer.shutdown()
-        print("程序正常退出")
+        
+        logger.info("程序正常退出")
 
 
 if __name__ == "__main__":

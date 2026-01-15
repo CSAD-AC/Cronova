@@ -65,11 +65,8 @@ public class AKSKInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 3. 读取请求体
-        String requestBody = IoUtil.read(request.getInputStream(), StandardCharsets.UTF_8);
-
-        // 4. 验证 AKSK 签名
-        boolean isValid = akskService.validateAKSK(accessKey, signature, timestamp, requestBody);
+        // 3. 验证 AKSK 签名（不再需要请求体）
+        boolean isValid = akskService.validateAKSK(accessKey, signature, timestamp, "");
         if (!isValid) {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.setContentType("application/json;charset=utf-8");

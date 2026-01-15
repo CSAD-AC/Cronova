@@ -34,8 +34,8 @@ class AuthUtils:
         else:
             body_str = "{}"
 
-        # 生成待签名字符串：timestamp + "\n" + requestBody
-        sign_str = timestamp + "\n" + body_str
+        # 生成待签名字符串：仅使用timestamp，不再包含requestBody
+        sign_str = timestamp
         # 生成签名
         signature = hmac.new(
             Config.SECRET_KEY.encode("utf-8"),

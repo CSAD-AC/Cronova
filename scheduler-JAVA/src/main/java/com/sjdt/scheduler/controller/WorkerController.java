@@ -24,6 +24,9 @@ import com.sjdt.scheduler.service.IWorkerTagService;
 import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.domain.po.Task;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -350,6 +353,85 @@ public class WorkerController {
         } catch (Exception e) {
             log.error("任务发布失败，TaskID: {}, 异常: {}", taskId, e.getMessage(), e);
             return Result.error(500, "任务发布失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Worker任务状态持续报告接口
+     * 用于Worker执行器持续报告正在运行的任务状态
+     *
+     * @param taskRunId 任务执行ID
+     * @param taskStatus 任务状态报告消息
+     * @return 状态报告结果
+     */
+    @PostMapping("/task-status/{taskRunId}")
+    @Operation(summary = "Worker任务状态持续报告", description = "Worker执行器持续报告正在运行的任务状态")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "任务状态报告成功"),
+        @ApiResponse(responseCode = "400", description = "参数错误或任务不存在"),
+        @ApiResponse(responseCode = "500", description = "系统内部错误")
+    })
+    public Result<Void> reportTaskStatus(@Parameter(description = "任务执行ID", required = true, example = "123456")
+                                      @PathVariable String taskRunId,
+                                      @RequestBody TaskResultMessage taskStatus) {
+        log.info("收到任务状态持续报告，TaskRunID: {}, WorkerID: {}", taskRunId, taskStatus.getWorkerId());
+        
+        try {
+            // 检查任务执行记录是否存在
+            TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+            if (taskRun == null) {
+                log.warn("任务执行记录不存在，TaskRunID: {}", taskRunId);
+                return Result.error(400, "TaskRun not found");
+            }
+            
+            // 更新任务的运行状态和持续时间
+            if ("running".equals(taskStatus.getStatus())) {
+                // 更新任务的持续时间
+                taskRun.setDurationMs(taskStatus.getDurationMs());
+                
+                // 更新任务的Worker ID（如果为空）
+                if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
+                    taskRun.setWorkerId(taskStatus.getWorkerId());
+                    log.info("更新任务Worker ID，TaskRunID: {}, WorkerID: {}", taskRunId, taskStatus.getWorkerId());
+                }
+                
+                taskRunMapper.updateById(taskRun);
+                
+                log.debug("任务状态更新成功，TaskRunID: {}, 状态: {}, 持续时间: {}ms, WorkerID: {}", 
+                           taskRunId, taskStatus.getStatus(), taskStatus.getDurationMs(), taskStatus.getWorkerId());
+            }
+            
+            // 如果有日志路径信息，更新任务日志信息
+            if (taskStatus.getLogPath() != null && !taskStatus.getLogPath().isEmpty()) {
+                // 检查是否已有日志记录
+                TaskLog existingTaskLog = taskLogMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
+                                .eq(TaskLog::getRunId, taskRunId)
+                );
+                
+                if (existingTaskLog == null) {
+                    // 创建新的日志记录
+                    TaskLog newTaskLog = TaskLog.builder()
+                            .runId(taskRunId)
+                            .stdoutPath(taskStatus.getLogPath())
+                            .stderrPath(taskStatus.getLogPath())
+                            .createTime(LocalDateTime.now())
+                            .build();
+                    taskLogMapper.insert(newTaskLog);
+                    log.info("创建任务日志记录，TaskRunID: {}, LogPath: {}", taskRunId, taskStatus.getLogPath());
+                } else {
+                    // 更新现有的日志路径
+                    existingTaskLog.setStdoutPath(taskStatus.getLogPath());
+                    existingTaskLog.setStderrPath(taskStatus.getLogPath());
+                    taskLogMapper.updateById(existingTaskLog);
+                    log.debug("更新任务日志路径，TaskRunID: {}, LogPath: {}", taskRunId, taskStatus.getLogPath());
+                }
+            }
+            
+            return Result.success();
+        } catch (Exception e) {
+            log.error("任务状态报告处理失败，TaskRunID: {}", taskRunId, e);
+            return Result.error(500, "Failed to process task status report: " + e.getMessage());
         }
     }
 

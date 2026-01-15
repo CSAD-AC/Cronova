@@ -3,10 +3,10 @@ from typing import Optional, List
 
 
 class ScriptTag(BaseModel):
-    id: int
-    name: str
-    operator: str
-    version: str
+    id: Optional[int] = None
+    name: Optional[str] = None
+    operator: Optional[str] = None
+    version: Optional[str] = None
 
 
 class ScriptInfo(BaseModel):
@@ -15,33 +15,63 @@ class ScriptInfo(BaseModel):
     path: str
     tags: Optional[List[ScriptTag]] = None
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "ScriptInfo":
+        """从字典创建ScriptInfo对象，增强健壮性"""
+        # 确保tags字段存在且是列表
+        if "tags" not in data or data["tags"] is None:
+            data["tags"] = []
+        elif not isinstance(data["tags"], list):
+            data["tags"] = []
+        else:
+            # 处理tags列表，只保留ScriptTag需要的字段
+            processed_tags = []
+            for tag_item in data["tags"]:
+                if isinstance(tag_item, dict):
+                    # 只保留id、name、operator、version字段，忽略其他字段
+                    processed_tag = {
+                        k: v for k, v in tag_item.items() 
+                        if k in ["id", "name", "operator", "version"]
+                    }
+                    processed_tags.append(processed_tag)
+            data["tags"] = processed_tags
+        return cls(**data)
+
 
 class TaskExecuteMessage(BaseModel):
     """任务执行消息模型（对应TASK_EXECUTE主题）"""
     taskId: str  # 任务ID
     taskName: str  # 任务名称
-    taskRunId: str  # 任务运行实例ID
+    taskRunId: str = None  # 任务运行实例ID
     description: Optional[str] = None  # 任务描述
     scriptType: str  # 脚本类型（java/python/bash等）
-    script: ScriptInfo  # 脚本信息
+    script: ScriptInfo = None  # 脚本信息
     taskType: str  # 任务类型（once/cron）
-    timeoutSeconds: int  # 超时时间（秒）
+    cronExpr: Optional[str] = None  # Cron表达式（仅cron任务使用）
+    timeoutSeconds: int = 60  # 超时时间（秒）
     targetWorkerId: Optional[str] = None  # 目标执行器ID（定向任务）
 
     class Config:
         extra = "ignore"
+        arbitrary_types_allowed = True
 
     @classmethod
     def from_mq_message(cls, msg_body: str) -> "TaskExecuteMessage":
-        """从MQ消息体解析为TaskExecuteMessage对象"""
+        """从MQ消息体解析为TaskExecuteMessage对象，增强健壮性"""
         import json
         try:
             msg_dict = json.loads(msg_body)
-            return cls(** msg_dict)
+            
+            # 特殊处理script字段，确保ScriptInfo能正确解析
+            if "script" in msg_dict and isinstance(msg_dict["script"], dict):
+                msg_dict["script"] = ScriptInfo.from_dict(msg_dict["script"])
+            
+            return cls(**msg_dict)
         except json.JSONDecodeError as e:
             raise ValueError(f"MQ消息体JSON解析失败：{str(e)}")
         except Exception as e:
-            raise ValueError(f"转换为TaskExecuteMessage失败：{str(e)}")
+            # 提供更详细的错误信息，便于调试
+            raise ValueError(f"转换为TaskExecuteMessage失败：{str(e)}，消息体：{msg_body[:500]}...")
 
 
 class TaskResultMessage(BaseModel):
@@ -60,3 +90,62 @@ class TaskResultMessage(BaseModel):
     def to_json(self) -> str:
         """转换为JSON字符串"""
         return self.model_dump_json(ensure_ascii=False)
+
+
+class TaskControlMessage(BaseModel):
+    """任务控制消息基类"""
+    taskId: str  # 任务ID
+    taskRunId: str  # 任务运行实例ID
+    targetWorkerId: Optional[str] = None  # 目标执行器ID
+    reason: Optional[str] = None  # 控制原因
+
+    class Config:
+        extra = "ignore"
+        arbitrary_types_allowed = True
+
+    @classmethod
+    def from_mq_message(cls, msg_body: str) -> "TaskControlMessage":
+        """从MQ消息体解析为TaskControlMessage对象，增强健壮性"""
+        import json
+        try:
+            msg_dict = json.loads(msg_body)
+            
+            # 确保必要字段存在且类型正确
+            # taskId和taskRunId是必填字段，确保它们存在且是字符串
+            if "taskId" in msg_dict and not isinstance(msg_dict["taskId"], str):
+                msg_dict["taskId"] = str(msg_dict["taskId"])
+            if "taskRunId" in msg_dict and not isinstance(msg_dict["taskRunId"], str):
+                msg_dict["taskRunId"] = str(msg_dict["taskRunId"])
+            
+            # 可选字段处理
+            if "targetWorkerId" in msg_dict and msg_dict["targetWorkerId"] in [None, ""]:
+                msg_dict["targetWorkerId"] = None
+            if "reason" in msg_dict and msg_dict["reason"] in [None, ""]:
+                msg_dict["reason"] = None
+            
+            return cls(**msg_dict)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"MQ消息体JSON解析失败：{str(e)}")
+        except Exception as e:
+            # 提供更详细的错误信息，便于调试
+            raise ValueError(f"转换为TaskControlMessage失败：{str(e)}，消息体：{msg_body[:500]}...")
+
+
+class TaskStopMessage(TaskControlMessage):
+    """任务停止消息模型"""
+    pass
+
+
+class TaskPauseMessage(TaskControlMessage):
+    """任务暂停消息模型"""
+    pass
+
+
+class TaskResumeMessage(TaskControlMessage):
+    """任务恢复消息模型"""
+    pass
+
+
+class TaskDeleteMessage(TaskControlMessage):
+    """任务删除消息模型"""
+    pass

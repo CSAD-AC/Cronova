@@ -37,7 +37,12 @@ def minio_upload_file(bucket_name: str, file_name: str, file_content: io.BytesIO
     try:
         # 检查并创建存储桶
         if not minio_client.bucket_exists(bucket_name):
-            minio_client.make_bucket(bucket_name)
+            try:
+                minio_client.make_bucket(bucket_name)
+            except S3Error as e:
+                # 忽略桶已存在的错误，继续执行
+                if e.code != 'BucketAlreadyOwnedByYou':
+                    raise
         # 上传文件
         minio_client.put_object(
             bucket_name=bucket_name,

@@ -94,8 +94,8 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
             return false;
         }
 
-        // 3. 生成待签名字符串：timestamp + "\n" + requestBody
-        String signString = timestamp + "\n" + requestBody;
+        // 3. 生成待签名字符串：仅使用timestamp，不再包含requestBody
+        String signString = timestamp;
 
         // 4. 使用 Secret Key 生成 HMAC-SHA256 签名
         HMac hMac = new HMac(HmacAlgorithm.HmacSHA256, aksk.getSecretKey().getBytes());

@@ -20,7 +20,9 @@ class AuthService:
         # 解析响应
         try:
             validate_resp = AKSKValidateResponse(**response)
-            return validate_resp.code == 200 and validate_resp.data.get("valid", False)
+            # 处理data字段为None的情况
+            is_valid = validate_resp.data.get("valid", False) if validate_resp.data else False
+            return validate_resp.code == 200 and is_valid
         except Exception as e:
             print(f"解析AKSK验证响应失败：{str(e)}")
             return False
