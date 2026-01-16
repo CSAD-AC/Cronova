@@ -1,7 +1,6 @@
 """
-数据同步回调示例（适配新版 ScheduledJobBase）
+数据同步回调示例
 
-- 不再继承自动路由注册逻辑
 - 子类仅实现业务，路由由外部显式注册
 """
 
@@ -40,7 +39,6 @@ class DataSyncCallback(ScheduledJobBase):
     """数据同步任务处理器"""
 
     def __init__(self):
-        # 不再接收 app，不自动注册路由
         self._service = DataSyncService()
 
     def secret_key(self) -> str:

@@ -39,6 +39,9 @@ public abstract class ScheduledJobBase {
 
     private static final ThreadLocal<ObjectMapper> MAPPER_LOCAL = ThreadLocal.withInitial(ObjectMapper::new);
 
+    private static final String DEFAULT_SECRET_KEY = "default-secret-key-placeholder";
+    private static final String PLACEHOLDER_CLASS_NAME = "ScheduledJobBase";
+
     /**
      * 返回密钥，用于 X-Secret 校验
      * 子类必须重写此方法
@@ -72,6 +75,7 @@ public abstract class ScheduledJobBase {
         }
 
         try {
+            validateMethodOverrides(requestId);
             validateSecret(request);
             Result<?> result = runJob(param == null ? Map.of() : param);
             if (result == null) result = Result.ok(null);
@@ -81,10 +85,35 @@ public abstract class ScheduledJobBase {
         } catch (SecurityException e) {
             log.warn("[{}] 密钥验证失败: {}", requestId, e.getMessage());
             return Result.fail(401, "密钥验证失败").setRequestId(requestId);
+        } catch (IllegalStateException e) {
+            log.error("[{}] 方法重写校验失败: {}", requestId, e.getMessage());
+            return Result.fail(500, "配置错误: " + e.getMessage()).setRequestId(requestId);
         } catch (Exception e) {
             log.error("[{}] 任务执行出错", requestId, e);
             return Result.fail(500, "执行失败").setRequestId(requestId);
         }
+    }
+
+    /**
+     * 防御性校验：验证子类是否正确重写了抽象方法
+     *
+     * @param requestId 请求ID，用于日志输出
+     * @throws IllegalStateException 如果方法未正确重写
+     */
+    private void validateMethodOverrides(String requestId) {
+        String className = this.getClass().getSimpleName();
+
+        if (className.equals(PLACEHOLDER_CLASS_NAME)) {
+            throw new IllegalStateException("请勿直接使用基类，请创建子类并重写 secretKey() 和 runJob() 方法");
+        }
+
+        String secretKey = secretKey();
+        if (secretKey == null || secretKey.isEmpty() || secretKey.equals(DEFAULT_SECRET_KEY)) {
+            log.error("[{}] 方法重写校验失败: {} 未正确重写 secretKey() 方法，返回了空或默认占位值", requestId, className);
+            throw new IllegalStateException(className + " 的 secretKey() 方法未正确实现，请返回实际的密钥字符串");
+        }
+
+        log.debug("[{}] 方法重写校验通过: {}", requestId, className);
     }
 
     private void validateSecret(HttpServletRequest request) {

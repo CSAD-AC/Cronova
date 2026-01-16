@@ -20,49 +20,28 @@ public class DataSyncCallback extends ScheduledJobBase {
 
     private final DataSyncService dataSyncService;
 
-    /**
-     * 统一回调入口
-     * 调度器通过此接口触发数据同步任务
-     */
     @PostMapping("/job")
     public Result<?> handle(@RequestBody(required = false) Map<String, Object> param, HttpServletRequest request) {
         return super.handle(request, param);
     }
 
-    /**
-     * 返回密钥，由调度器配置匹配
-     */
     @Override
     protected String secretKey() {
-        return "data-sync-secret-key-2026";
+        return "data-sync-secret-2026";
     }
 
-    /**
-     * 实现业务逻辑
-     */
     @Override
     protected Result<?> runJob(Map<String, Object> param) throws Exception {
-        String syncType = (String) param.get("syncType");
-        String date = (String) param.get("date");
-
-        log.info("开始执行数据同步任务, syncType={}, date={}", syncType, date);
-
-        // 调用业务服务
-        SyncResult result = dataSyncService.sync(syncType, date);
-
-        log.info("数据同步完成, 处理记录数={}, 耗时={}ms", result.getRecordsProcessed(), result.getDurationMs());
-
+        log.info("开始数据同步: syncType={}", param.get("syncType"));
+        DataSyncResult result = dataSyncService.sync(param);
+        log.info("数据同步完成: records={}", result.getRecordsProcessed());
         return Result.ok(result);
     }
 
-    /**
-     * 数据同步服务
-     */
     @Data
-    public static class SyncResult {
+    public static class DataSyncResult {
         private int recordsProcessed;
         private long durationMs;
         private String status;
-        private String message;
     }
 }

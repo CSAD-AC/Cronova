@@ -4,11 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"time"
 )
 
-// Result 统一返回对象
+const (
+	defaultSecretKey      = "default-secret-key-placeholder"
+	placeholderStructName = "ScheduledJobBase"
+)
+
 type Result struct {
 	Code       int         `json:"code"`
 	Msg        string      `json:"msg"`
@@ -17,29 +22,18 @@ type Result struct {
 	RequestID  string      `json:"request_id"`
 }
 
-// Ok 成功响应
 func Ok(data interface{}) *Result {
-	return &Result{
-		Code: 200,
-		Msg:  "success",
-		Data: data,
-	}
+	return &Result{Code: 200, Msg: "success", Data: data}
 }
 
-// Fail 失败响应
 func Fail(code int, msg string) *Result {
-	return &Result{
-		Code: code,
-		Msg:  msg,
-	}
+	return &Result{Code: code, Msg: msg}
 }
 
-// ToJSON 转换为JSON
 func (r *Result) ToJSON() ([]byte, error) {
 	return json.Marshal(r)
 }
 
-// SecurityException 安全异常
 type SecurityException struct {
 	Message string
 }
@@ -48,43 +42,12 @@ func (e *SecurityException) Error() string {
 	return e.Message
 }
 
-/*
-ScheduledJobBase 定时任务回调基类
-
-【使用说明】
-
-一、核心信息
-    - 请求方法：POST
-    - 请求头：X-Secret（密钥）、X-Request-Id（请求ID）
-    - 请求体：可选，不做强制要求
-
-二、子类必须实现的方法
-    1. RoutePath()   - 返回路由路径
-    2. SecretKey()   - 返回密钥，用于 X-Secret 校验
-    3. RunJob(param) - 执行业务逻辑，返回 *Result
-
-三、子类需开放的接口
-    - 提供 POST 接口接收回调请求，内部调用 Handle()
-
-四、日志规范
-    - 务必在日志中输出 requestId，便于快速定位日志
-    - 示例：fmt.Printf("[%s] 开始执行任务\n", requestId)
-
-【请求头示例】
-    X-Request-Id: abc123def456
-    X-Secret: your-secret-key
-
-*/
 type ScheduledJobBase interface {
-	// RoutePath 返回路由路径
 	RoutePath() string
-	// SecretKey 返回密钥，用于 X-Secret 校验
 	SecretKey() string
-	// RunJob 执行业务逻辑
 	RunJob(param map[string]interface{}) *Result
 }
 
-// Handle 处理请求
 func Handle(base ScheduledJobBase, w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	requestID := r.Header.Get("X-Request-Id")
@@ -92,8 +55,7 @@ func Handle(base ScheduledJobBase, w http.ResponseWriter, r *http.Request) {
 	if requestID == "" {
 		result := Fail(400, "缺少请求头 X-Request-Id")
 		result.CostMillis = time.Since(startTime).Milliseconds()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		writeJSON(w, result)
 		return
 	}
 
@@ -103,23 +65,28 @@ func Handle(base ScheduledJobBase, w http.ResponseWriter, r *http.Request) {
 			result := Fail(500, "执行失败")
 			result.RequestID = requestID
 			result.CostMillis = time.Since(startTime).Milliseconds()
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(result)
+			writeJSON(w, result)
 		}
 	}()
 
-	// 验证密钥
+	if err := validateMethodOverrides(base, requestID); err != nil {
+		fmt.Printf("[%s] 方法重写校验失败: %v\n", requestID, err)
+		result := Fail(500, "配置错误: "+err.Error())
+		result.RequestID = requestID
+		result.CostMillis = time.Since(startTime).Milliseconds()
+		writeJSON(w, result)
+		return
+	}
+
 	inputSecret := r.Header.Get("X-Secret")
 	if inputSecret != base.SecretKey() {
 		result := Fail(401, "密钥验证失败")
 		result.RequestID = requestID
 		result.CostMillis = time.Since(startTime).Milliseconds()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		writeJSON(w, result)
 		return
 	}
 
-	// 解析请求体
 	var param map[string]interface{}
 	if r.Body != nil {
 		json.NewDecoder(r.Body).Decode(&param)
@@ -128,7 +95,6 @@ func Handle(base ScheduledJobBase, w http.ResponseWriter, r *http.Request) {
 		param = make(map[string]interface{})
 	}
 
-	// 执行业务逻辑
 	result := base.RunJob(param)
 	if result == nil {
 		result = Ok(nil)
@@ -136,15 +102,37 @@ func Handle(base ScheduledJobBase, w http.ResponseWriter, r *http.Request) {
 
 	result.RequestID = requestID
 	result.CostMillis = time.Since(startTime).Milliseconds()
+	writeJSON(w, result)
+}
 
+func validateMethodOverrides(base ScheduledJobBase, requestID string) error {
+	val := reflect.ValueOf(base)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typeName := val.Type().Name()
+	if typeName == placeholderStructName {
+		return fmt.Errorf("请勿直接使用基类，请创建结构体并实现 RoutePath()、SecretKey() 和 RunJob() 方法")
+	}
+
+	secretKey := base.SecretKey()
+	if secretKey == "" || secretKey == defaultSecretKey {
+		return fmt.Errorf("%s 的 SecretKey() 方法未正确实现，返回了空或默认占位值", typeName)
+	}
+
+	fmt.Printf("[%s] 方法重写校验通过: %s\n", requestID, typeName)
+	return nil
+}
+
+func writeJSON(w http.ResponseWriter, result *Result) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
 
-// RegisterRoute 注册路由
 func RegisterRoute(mux *http.ServeMux, base ScheduledJobBase) {
 	mux.HandleFunc(base.RoutePath(), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
+		if r.Method == http.MethodPost {
 			Handle(base, w, r)
 		} else {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -152,7 +140,6 @@ func RegisterRoute(mux *http.ServeMux, base ScheduledJobBase) {
 	})
 }
 
-// GetInt 获取整数参数
 func GetInt(param map[string]interface{}, key string, defaultVal int) int {
 	if val, ok := param[key]; ok {
 		switch v := val.(type) {
@@ -169,7 +156,6 @@ func GetInt(param map[string]interface{}, key string, defaultVal int) int {
 	return defaultVal
 }
 
-// GetString 获取字符串参数
 func GetString(param map[string]interface{}, key string, defaultVal string) string {
 	if val, ok := param[key]; ok {
 		if v, ok := val.(string); ok {
