@@ -10,6 +10,7 @@ public enum TaskRunStatus {
 
     pending("pending", "等待中"),
     running("running", "运行中"),
+    paused("paused", "暂停"),
     success("success", "成功"),
     failed("failed", "失败"),
     timeout("timeout", "超时");

@@ -98,7 +98,8 @@ class PythonHandler(BaseHandler):
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,  # 行缓冲
-                universal_newlines=True
+                universal_newlines=True,
+                start_new_session=True
             )
             
             logger.info("子进程已启动，PID：%d", process.pid)
@@ -240,9 +241,12 @@ class PythonHandler(BaseHandler):
             # 收集所有输出
             all_output = remaining_stdout
             
+            # 定义本地日志路径
+            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
+            
             # 上传最终的完整日志
             if all_output:
-                self._upload_partial_log(log_bucket, log_object, all_output)
+                self._upload_partial_log_with_retry(log_bucket, log_object, all_output, local_log_path)
             
             # 构建最终结果
             end_time = datetime.utcnow()

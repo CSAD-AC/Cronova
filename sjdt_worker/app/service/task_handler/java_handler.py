@@ -110,7 +110,8 @@ class JavaHandler(BaseHandler):
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,  # 行缓冲
-                universal_newlines=True
+                universal_newlines=True,
+                start_new_session=True
             )
             
             # 6. 将进程添加到进程管理器
@@ -243,9 +244,12 @@ class JavaHandler(BaseHandler):
             # 读取所有剩余的输出
             remaining_output = process.stdout.read() if process.stdout else ""
             
+            # 定义本地日志路径
+            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
+            
             # 上传最终的完整日志
             if remaining_output:
-                self._upload_partial_log(log_bucket, log_object, remaining_output)
+                self._upload_partial_log_with_retry(log_bucket, log_object, remaining_output, local_log_path)
             
             # 构建最终结果
             end_time = datetime.utcnow()

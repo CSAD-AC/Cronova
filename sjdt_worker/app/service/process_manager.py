@@ -2,6 +2,7 @@ import os
 import signal
 import threading
 import subprocess
+import time
 from datetime import datetime
 from typing import Dict, Optional, Any
 from app.model.task import TaskExecuteMessage
@@ -88,16 +89,36 @@ class ProcessManager:
             return False
 
     def pause_process(self, task_run_id: str) -> bool:
-        """暂停指定任务进程（发送SIGSTOP信号）"""
+        """暂停指定任务进程（发送SIGSTOP信号到进程组）"""
         with self._lock:
             process_info = self._processes.get(task_run_id)
             if process_info:
                 process = process_info.get('process')
                 if process and process.poll() is None:
                     try:
-                        process.send_signal(signal.SIGSTOP)
+                        process_pid = process.pid
+                        process_group_id = os.getpgid(process_pid)
+                        
+                        logger.info("开始暂停任务进程，taskRunId: %s, PID: %d, PGID: %d", 
+                                   task_run_id, process_pid, process_group_id)
+                        
+                        try:
+                            os.killpg(process_group_id, signal.SIGSTOP)
+                            logger.info("暂停进程组成功(SIGSTOP到PGID)，taskRunId: %s, PGID: %d", 
+                                       task_run_id, process_group_id)
+                        except ProcessLookupError:
+                            logger.warning("进程组不存在，尝试暂停主进程，taskRunId: %s", task_run_id)
+                            process.send_signal(signal.SIGSTOP)
+                        
                         self._paused_processes[task_run_id] = True
-                        logger.info("暂停任务进程成功(SIGSTOP)，taskRunId: %s", task_run_id)
+                        
+                        time.sleep(0.1)
+                        
+                        if process.poll() is not None:
+                            logger.error("暂停后进程已终止，taskRunId: %s", task_run_id)
+                            return False
+                            
+                        logger.info("暂停任务进程成功，taskRunId: %s", task_run_id)
                         return True
                     except Exception as e:
                         logger.error("暂停任务进程失败，taskRunId: %s，错误: %s", task_run_id, str(e))
@@ -106,16 +127,30 @@ class ProcessManager:
             return False
 
     def resume_process(self, task_run_id: str) -> bool:
-        """恢复指定任务进程（发送SIGCONT信号）"""
+        """恢复指定任务进程（发送SIGCONT信号到进程组）"""
         with self._lock:
             process_info = self._processes.get(task_run_id)
             if process_info:
                 process = process_info.get('process')
                 if process and process.poll() is None:
                     try:
-                        process.send_signal(signal.SIGCONT)
+                        process_pid = process.pid
+                        process_group_id = os.getpgid(process_pid)
+                        
+                        logger.info("开始恢复任务进程，taskRunId: %s, PID: %d, PGID: %d", 
+                                   task_run_id, process_pid, process_group_id)
+                        
+                        try:
+                            os.killpg(process_group_id, signal.SIGCONT)
+                            logger.info("恢复进程组成功(SIGCONT到PGID)，taskRunId: %s, PGID: %d", 
+                                       task_run_id, process_group_id)
+                        except ProcessLookupError:
+                            logger.warning("进程组不存在，尝试恢复主进程，taskRunId: %s", task_run_id)
+                            process.send_signal(signal.SIGCONT)
+                        
                         self._paused_processes[task_run_id] = False
-                        logger.info("恢复任务进程成功(SIGCONT)，taskRunId: %s", task_run_id)
+                        
+                        logger.info("恢复任务进程成功，taskRunId: %s", task_run_id)
                         return True
                     except Exception as e:
                         logger.error("恢复任务进程失败，taskRunId: %s，错误: %s", task_run_id, str(e))

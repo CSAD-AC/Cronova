@@ -11,6 +11,7 @@ import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.domain.po.Worker;
 import com.sjdt.scheduler.domain.po.WorkerTag;
 import com.sjdt.scheduler.domain.vo.WorkerRegisterVO;
+import com.sjdt.scheduler.exception.InvalidEnumValueException;
 import com.sjdt.scheduler.mapper.AKSKMapper;
 import com.sjdt.scheduler.mapper.TagMapper;
 import com.sjdt.scheduler.mapper.TaskLogMapper;
@@ -321,12 +322,13 @@ public class WorkerController {
         
         try {
             TaskRun taskRun = taskRunMapper.selectById(taskRunId);
-            taskRun.setStatus(TaskRunStatus.valueOf(taskStatus.getStatus()));
             if (taskRun == null) {
                 log.warn("任务执行记录不存在，TaskRunID: {}", taskRunId);
                 return Result.error(400, "TaskRun not found");
             }
-            
+
+            taskRun.setStatus(TaskRunStatus.valueOf(taskStatus.getStatus()));
+
             if ("running".equals(taskStatus.getStatus())) {
                 taskRun.setDurationMs(taskStatus.getDurationMs());
                 
@@ -334,12 +336,11 @@ public class WorkerController {
                     taskRun.setWorkerId(taskStatus.getWorkerId());
                     log.info("更新任务Worker ID，TaskRunID: {}, WorkerID: {}", taskRunId, taskStatus.getWorkerId());
                 }
-                
-                taskRunMapper.updateById(taskRun);
-                
-                log.debug("任务状态更新成功，TaskRunID: {}, 状态: {}, 持续时间: {}ms, WorkerID: {}", 
-                           taskRunId, taskStatus.getStatus(), taskStatus.getDurationMs(), taskStatus.getWorkerId());
             }
+
+            taskRunMapper.updateById(taskRun);
+            log.debug("任务状态更新成功，TaskRunID: {}, 状态: {}, 持续时间: {}ms, WorkerID: {}",
+                    taskRunId, taskStatus.getStatus(), taskStatus.getDurationMs(), taskStatus.getWorkerId());
             
             if (taskStatus.getLogPath() != null && !taskStatus.getLogPath().isEmpty()) {
                 TaskLog existingTaskLog = taskLogMapper.selectOne(
@@ -365,6 +366,9 @@ public class WorkerController {
             }
             
             return Result.success();
+        } catch (IllegalArgumentException e) {
+            log.error("无效的任务状态，TaskRunID: {}, Status: {}", taskRunId, taskStatus.getStatus(), e);
+            return Result.error(400, "Invalid task status: " + taskStatus.getStatus());
         } catch (Exception e) {
             log.error("任务状态报告处理失败，TaskRunID: {}", taskRunId, e);
             return Result.error(500, "Failed to process task status report: " + e.getMessage());
