@@ -18,7 +18,9 @@ import java.time.LocalDateTime;
 
 /**
  * 任务定义实体
- * 支持一次性任务（once）和定时任务（cron）
+ * 支持脚本执行和HTTP回调任务
+ * 脚本执行：type 表示脚本语言，callbackConfigId 为 NULL
+ * HTTP回调：callbackConfigId 非 NULL，type 可为 NULL
  */
 @Data
 @Builder
@@ -40,14 +42,18 @@ public class Task implements Serializable {
     /** 任务描述 */
     private String description;
 
-    /** 脚本类型：java/python/go */
+    /** 脚本类型：java/python/go（脚本执行任务必填，HTTP回调任务可为NULL） */
     private ScriptType type;
 
-    /** 脚本id */
+    /** 脚本id（脚本执行类型必填） */
     @TableField(value = "script_id")
     private String scriptId;
 
-    /** 任务类型：once / cron */
+    /** 回调配置id（非NULL表示HTTP回调任务） */
+    @TableField(value = "callback_config_id")
+    private String callbackConfigId;
+
+    /** 任务调度类型：once / cron */
     @TableField(value = "task_type")
     private TaskType taskType;
 
@@ -59,7 +65,7 @@ public class Task implements Serializable {
     @TableField(value = "cron_expr")
     private String cronExpr;
 
-    /** 是否启用（主要用于定时任务） */
+    /** 是否启用 */
     private Boolean enabled;
 
     /** 超时时间（秒），0 表示不限制 */

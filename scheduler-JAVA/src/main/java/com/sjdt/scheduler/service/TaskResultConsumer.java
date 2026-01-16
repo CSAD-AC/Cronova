@@ -6,6 +6,7 @@ import com.sjdt.scheduler.domain.po.TaskLog;
 import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.mapper.TaskLogMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
+import com.sjdt.scheduler.task.TaskCallbackExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -29,10 +30,14 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
     /** 任务日志Mapper */
     private final TaskLogMapper taskLogMapper;
 
+    /** 任务回调执行器 */
+    private final TaskCallbackExecutor taskCallbackExecutor;
+
     @Autowired
-    public TaskResultConsumer(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper) {
+    public TaskResultConsumer(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, TaskCallbackExecutor taskCallbackExecutor) {
         this.taskRunMapper = taskRunMapper;
         this.taskLogMapper = taskLogMapper;
+        this.taskCallbackExecutor = taskCallbackExecutor;
     }
 
     /**
@@ -103,7 +108,40 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         } else {
             log.debug("未包含日志路径，跳过日志记录保存，TaskRunID: {}", resultMessage.getTaskRunId());
         }
+
+        // 执行任务回调
+        executeTaskCallback(resultMessage);
         
         log.info("任务执行结果处理完成，TaskRunID: {}", resultMessage.getTaskRunId());
+    }
+
+    /**
+     * 执行任务回调
+     *
+     * @param resultMessage 任务执行结果消息
+     */
+    private void executeTaskCallback(TaskResultMessage resultMessage) {
+        try {
+            // 构建任务结果字符串
+            String taskResult = String.format("{\"status\":\"%s\",\"exitCode\":%d,\"durationMs\":%d,\"errorMessage\":\"%s\"}",
+                    resultMessage.getStatus(),
+                    resultMessage.getExitCode(),
+                    resultMessage.getDurationMs(),
+                    resultMessage.getErrorMessage() != null ? resultMessage.getErrorMessage() : "");
+
+            // 执行回调
+            taskCallbackExecutor.executeCallback(
+                    resultMessage.getTaskId(),
+                    resultMessage.getTaskRunId(),
+                    taskResult,
+                    null // 可以扩展传递更多任务参数
+            );
+
+            log.info("任务回调执行完成，TaskID: {}, TaskRunID: {}", resultMessage.getTaskId(), resultMessage.getTaskRunId());
+
+        } catch (Exception e) {
+            log.error("执行任务回调时发生异常，TaskID: {}, TaskRunID: {}, Error: {}", 
+                    resultMessage.getTaskId(), resultMessage.getTaskRunId(), e.getMessage(), e);
+        }
     }
 }
