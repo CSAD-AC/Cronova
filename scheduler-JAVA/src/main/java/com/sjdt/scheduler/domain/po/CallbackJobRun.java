@@ -39,10 +39,6 @@ public class CallbackJobRun implements Serializable {
     @TableField(value = "config_id")
     private String configId;
 
-    /** 关联任务运行实例ID */
-    @TableField(value = "task_run_id")
-    private String taskRunId;
-
     /** 请求ID（X-Request-Id），用于请求追踪 */
     @TableField(value = "request_id")
     private String requestId;

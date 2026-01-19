@@ -14,7 +14,7 @@ import java.util.List;
  * Worker 心跳检查任务
  * 定期检查 Worker 的心跳时间，将超过 25 秒未心跳的 Worker 设置为离线状态
  */
-//@Component
+@Component
 public class WorkerHeartbeatCheckTask {
 
     @Autowired

@@ -89,18 +89,6 @@ public class CallbackJobRunServiceImpl extends ServiceImpl<CallbackJobRunMapper,
     }
 
     @Override
-    public List<CallbackJobRunVO> getByTaskRunId(String taskRunId) {
-        List<CallbackJobRun> runs = callbackJobRunMapper.selectList(
-                new LambdaQueryWrapper<CallbackJobRun>()
-                        .eq(CallbackJobRun::getTaskRunId, taskRunId)
-                        .orderByDesc(CallbackJobRun::getCreateTime)
-        );
-        return runs.stream()
-                .map(this::convertToVO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
     public CallbackJobRunVO getByRequestId(String requestId) {
         CallbackJobRun run = callbackJobRunMapper.selectOne(
                 new LambdaQueryWrapper<CallbackJobRun>()
@@ -291,9 +279,6 @@ public class CallbackJobRunServiceImpl extends ServiceImpl<CallbackJobRunMapper,
         }
         if (queryDTO.getConfigId() != null) {
             wrapper.eq(CallbackJobRun::getConfigId, queryDTO.getConfigId());
-        }
-        if (queryDTO.getTaskRunId() != null) {
-            wrapper.eq(CallbackJobRun::getTaskRunId, queryDTO.getTaskRunId());
         }
         if (queryDTO.getRequestId() != null) {
             wrapper.eq(CallbackJobRun::getRequestId, queryDTO.getRequestId());

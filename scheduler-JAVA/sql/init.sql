@@ -125,10 +125,10 @@ DROP TABLE IF EXISTS tasks;
 CREATE TABLE tasks (
                        id              VARCHAR(36) PRIMARY KEY COMMENT '任务 ID(UUID)',
                        name            VARCHAR(128) NOT NULL COMMENT '任务名称',
-                       type             VARCHAR(32) NOT NULL COMMENT '脚本类型: java / python / go（脚本执行任务必填，HTTP回调任务可为NULL）',
                        description      VARCHAR(256) COMMENT '任务描述',
-                       script_id        VARCHAR(36) COMMENT '关联 script.id（脚本执行类型必填）',
-                       callback_config_id VARCHAR(36) COMMENT '关联 callback_job_configs.id（非NULL表示HTTP回调任务）',
+                       execute_type     VARCHAR(16) NOT NULL COMMENT '执行类型: script(脚本执行) / callback(HTTP回调)',
+                       script_type      VARCHAR(16) COMMENT '脚本类型: java / python / go（script类型必填）',
+                       script_id        VARCHAR(36) COMMENT '关联 script.id（script类型必填）',
                        task_type       VARCHAR(16) NOT NULL COMMENT '任务调度类型: once / cron',
                        cron_expr       VARCHAR(64) COMMENT 'Cron 表达式，如: 0 0 * * *',
                        enabled         BOOLEAN DEFAULT TRUE COMMENT '是否启用',
@@ -137,7 +137,9 @@ CREATE TABLE tasks (
                        status          VARCHAR(16) NOT NULL COMMENT '任务状态: active/paused/deleted',
                        created_by      VARCHAR(64) COMMENT '创建人',
                        create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                       update_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+                       update_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                       INDEX idx_execute_type (execute_type),
+                       INDEX idx_task_type (task_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务定义表（支持脚本执行和HTTP回调）';
 
 -- 任务运行实例表

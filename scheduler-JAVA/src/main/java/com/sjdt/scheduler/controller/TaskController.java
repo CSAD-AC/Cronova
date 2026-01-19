@@ -4,12 +4,16 @@ import com.sjdt.scheduler.common.ErrorCodeEnum;
 import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.dto.TaskCreateDTO;
 import com.sjdt.scheduler.domain.dto.TaskUpdateDTO;
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
+import com.sjdt.scheduler.domain.po.CallbackJobConfig;
 import com.sjdt.scheduler.domain.po.Task;
 import com.sjdt.scheduler.domain.po.TaskRun;
+import com.sjdt.scheduler.domain.vo.CallbackJobConfigVO;
 import com.sjdt.scheduler.domain.vo.TaskVO;
+import com.sjdt.scheduler.mapper.CallbackJobConfigMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
-import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.service.impl.TaskServiceImpl;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -38,53 +42,40 @@ import java.util.stream.Collectors;
 public class TaskController {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskController.class);
-    
-    private final ITaskService taskService;
+
+    private final TaskServiceImpl taskService;
     private final TaskRunMapper taskRunMapper;
-    
+    private final CallbackJobConfigMapper callbackJobConfigMapper;
+
     @Autowired
-    public TaskController(ITaskService taskService, TaskRunMapper taskRunMapper) {
+    public TaskController(TaskServiceImpl taskService, TaskRunMapper taskRunMapper, CallbackJobConfigMapper callbackJobConfigMapper) {
         this.taskService = taskService;
         this.taskRunMapper = taskRunMapper;
+        this.callbackJobConfigMapper = callbackJobConfigMapper;
     }
 
     /**
      * 创建任务
+     * 支持一次性创建任务和回调配置（如果是callback类型）
      */
     @PostMapping
-    @Operation(summary = "创建任务", description = "创建一个新的任务，可以是一次性任务或定时任务")
+    @Operation(summary = "创建任务", description = "创建一个新的任务，可以是一次性任务或定时任务，支持脚本执行或HTTP回调")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "任务创建成功", 
+        @ApiResponse(responseCode = "200", description = "任务创建成功",
                      content = @Content(schema = @Schema(implementation = TaskVO.class))),
-        @ApiResponse(responseCode = "400", description = "参数校验失败", 
+        @ApiResponse(responseCode = "400", description = "参数校验失败",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
     public Result<TaskVO> createTask(@Valid @RequestBody TaskCreateDTO taskCreateDTO) {
-        logger.info("开始创建任务，任务名称：{}", taskCreateDTO.getName());
+        logger.info("开始创建任务，任务名称：{}，执行类型：{}", taskCreateDTO.getName(), taskCreateDTO.getExecuteType());
         try {
-            Task task = Task.builder()
-                    .name(taskCreateDTO.getName())
-                    .description(taskCreateDTO.getDescription())
-                    .type(taskCreateDTO.getType())
-                    .scriptId(taskCreateDTO.getScriptId())
-                    .taskType(taskCreateDTO.getTaskType())
-                    .cronExpr(taskCreateDTO.getCronExpr())
-                    .enabled(true)
-                    .timeoutSeconds(taskCreateDTO.getTimeoutSeconds() != null ? taskCreateDTO.getTimeoutSeconds() : 0)
-                    .targetWorker(taskCreateDTO.getTargetWorker())
-                    .status(TaskStatus.active)
-                    .createdBy("system")
-                    .createTime(LocalDateTime.now())
-                    .updateTime(LocalDateTime.now())
-                    .build();
+            String taskId = taskService.createTask(taskCreateDTO);
+            Task task = taskService.getById(taskId);
 
-            taskService.save(task);
-            logger.info("任务创建成功，任务ID：{}", task.getId());
-
-            TaskVO taskVO = new TaskVO();
-            BeanUtils.copyProperties(task, taskVO);
+            TaskVO taskVO = buildTaskVO(task);
+            logger.info("任务创建成功，任务ID：{}", taskId);
             return Result.success(taskVO);
         } catch (Exception e) {
             logger.error("创建任务失败，任务名称：{}", taskCreateDTO.getName(), e);
@@ -98,9 +89,9 @@ public class TaskController {
     @GetMapping
     @Operation(summary = "获取任务列表", description = "获取所有任务的列表")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "获取任务列表成功", 
+        @ApiResponse(responseCode = "200", description = "获取任务列表成功",
                      content = @Content(schema = @Schema(implementation = TaskVO.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
     public Result<List<TaskVO>> listTasks() {
@@ -109,11 +100,7 @@ public class TaskController {
             List<Task> tasks = taskService.list();
             logger.info("获取任务列表成功，共{}个任务", tasks.size());
             List<TaskVO> taskVOs = tasks.stream()
-                    .map(task -> {
-                        TaskVO taskVO = new TaskVO();
-                        BeanUtils.copyProperties(task, taskVO);
-                        return taskVO;
-                    })
+                    .map(this::buildTaskVO)
                     .collect(Collectors.toList());
             return Result.success(taskVOs);
         } catch (Exception e) {
@@ -128,14 +115,14 @@ public class TaskController {
     @GetMapping("/{id}")
     @Operation(summary = "获取任务详情", description = "根据任务ID获取任务的详细信息")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "获取任务详情成功", 
+        @ApiResponse(responseCode = "200", description = "获取任务详情成功",
                      content = @Content(schema = @Schema(implementation = TaskVO.class))),
-        @ApiResponse(responseCode = "400", description = "任务不存在", 
+        @ApiResponse(responseCode = "400", description = "任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
-    public Result<TaskVO> getTaskById(@Parameter(description = "任务ID", required = true, example = "123456") 
+    public Result<TaskVO> getTaskById(@Parameter(description = "任务ID", required = true, example = "123456")
                                      @PathVariable String id) {
         logger.info("开始获取任务详情，任务ID：{}", id);
         try {
@@ -145,8 +132,7 @@ public class TaskController {
                 return Result.error(ErrorCodeEnum.TASK_NOT_FOUND);
             }
             logger.info("获取任务详情成功，任务ID：{}", id);
-            TaskVO taskVO = new TaskVO();
-            BeanUtils.copyProperties(task, taskVO);
+            TaskVO taskVO = buildTaskVO(task);
             return Result.success(taskVO);
         } catch (Exception e) {
             logger.error("获取任务详情失败，任务ID：{}", id, e);
@@ -155,16 +141,65 @@ public class TaskController {
     }
 
     /**
+     * 构建TaskVO，包含回调配置信息
+     */
+    private TaskVO buildTaskVO(Task task) {
+        TaskVO taskVO = new TaskVO();
+        taskVO.setId(task.getId());
+        taskVO.setName(task.getName());
+        taskVO.setDescription(task.getDescription());
+        taskVO.setExecuteType(task.getExecuteType());
+        taskVO.setScriptType(task.getScriptType());
+        taskVO.setScriptId(task.getScriptId());
+        taskVO.setTaskType(task.getTaskType());
+        taskVO.setCronExpr(task.getCronExpr());
+        taskVO.setEnabled(task.getEnabled());
+        taskVO.setTimeoutSeconds(task.getTimeoutSeconds());
+        taskVO.setTargetWorker(task.getTargetWorker());
+        taskVO.setStatus(task.getStatus());
+        taskVO.setCreatedBy(task.getCreatedBy());
+        taskVO.setCreateTime(task.getCreateTime());
+        taskVO.setUpdateTime(task.getUpdateTime());
+
+        if (task.getExecuteType() == ExecuteType.callback) {
+            CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
+            if (config != null) {
+                CallbackJobConfigVO configVO = new CallbackJobConfigVO();
+                configVO.setId(config.getId());
+                configVO.setCallbackUrl(config.getCallbackUrl());
+                configVO.setCallbackMethod(config.getCallbackMethod());
+                configVO.setTimeoutSeconds(config.getTimeoutSeconds());
+                configVO.setRetryCount(config.getRetryCount());
+                configVO.setRetryIntervalSeconds(config.getRetryIntervalSeconds());
+                taskVO.setCallbackConfig(configVO);
+            }
+        }
+
+        return taskVO;
+    }
+
+    /**
+     * 根据任务ID获取回调配置
+     */
+    private CallbackJobConfig getCallbackConfigByTaskId(String taskId) {
+        List<CallbackJobConfig> configs = callbackJobConfigMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallbackJobConfig>()
+                .eq(CallbackJobConfig::getTaskId, taskId)
+        );
+        return configs.isEmpty() ? null : configs.get(0);
+    }
+
+    /**
      * 更新任务
      */
     @PutMapping
     @Operation(summary = "更新任务", description = "更新现有任务的信息")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "任务更新成功", 
+        @ApiResponse(responseCode = "200", description = "任务更新成功",
                      content = @Content(schema = @Schema(implementation = TaskVO.class))),
-        @ApiResponse(responseCode = "400", description = "参数校验失败或任务不存在", 
+        @ApiResponse(responseCode = "400", description = "参数校验失败或任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
     public Result<TaskVO> updateTask(@Valid @RequestBody TaskUpdateDTO taskUpdateDTO) {
@@ -181,8 +216,7 @@ public class TaskController {
             taskService.updateById(existingTask);
             logger.info("任务更新成功，任务ID：{}", taskUpdateDTO.getId());
 
-            TaskVO taskVO = new TaskVO();
-            BeanUtils.copyProperties(existingTask, taskVO);
+            TaskVO taskVO = buildTaskVO(existingTask);
             return Result.success(taskVO);
         } catch (Exception e) {
             logger.error("更新任务失败，任务ID：{}", taskUpdateDTO.getId(), e);
@@ -196,14 +230,14 @@ public class TaskController {
     @DeleteMapping("/{id}")
     @Operation(summary = "删除任务", description = "软删除任务，将任务状态更新为deleted")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "任务删除成功", 
+        @ApiResponse(responseCode = "200", description = "任务删除成功",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "400", description = "任务不存在", 
+        @ApiResponse(responseCode = "400", description = "任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
-    public Result<Void> deleteTask(@Parameter(description = "任务ID", required = true, example = "123456") 
+    public Result<Void> deleteTask(@Parameter(description = "任务ID", required = true, example = "123456")
                                    @PathVariable String id) {
         logger.info("开始删除任务，任务ID：{}", id);
         try {
@@ -232,14 +266,14 @@ public class TaskController {
     @PutMapping("/{id}/enable")
     @Operation(summary = "启用任务", description = "启用定时任务，使其可以按照设定的Cron表达式执行")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "任务启用成功", 
+        @ApiResponse(responseCode = "200", description = "任务启用成功",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "400", description = "任务不存在", 
+        @ApiResponse(responseCode = "400", description = "任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
-    public Result<Void> enableTask(@Parameter(description = "任务ID", required = true, example = "123456") 
+    public Result<Void> enableTask(@Parameter(description = "任务ID", required = true, example = "123456")
                                   @PathVariable String id) {
         logger.info("开始启用任务，任务ID：{}", id);
         try {
@@ -266,14 +300,14 @@ public class TaskController {
     @PutMapping("/{id}/disable")
     @Operation(summary = "禁用任务", description = "禁用定时任务，使其停止按照设定的Cron表达式执行")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "任务禁用成功", 
+        @ApiResponse(responseCode = "200", description = "任务禁用成功",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "400", description = "任务不存在", 
+        @ApiResponse(responseCode = "400", description = "任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
-    public Result<Void> disableTask(@Parameter(description = "任务ID", required = true, example = "123456") 
+    public Result<Void> disableTask(@Parameter(description = "任务ID", required = true, example = "123456")
                                    @PathVariable String id) {
         logger.info("开始禁用任务，任务ID：{}", id);
         try {
@@ -298,16 +332,16 @@ public class TaskController {
      * 发布任务
      */
     @PostMapping("/{id}/publish")
-    @Operation(summary = "发布任务", description = "立即执行一次任务，无论任务类型是一次性还是定时")
+    @Operation(summary = "发布任务", description = "立即执行一次任务，根据执行类型发送到Worker或直接执行HTTP回调")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "任务发布成功", 
+        @ApiResponse(responseCode = "200", description = "任务发布成功",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "400", description = "任务不存在", 
+        @ApiResponse(responseCode = "400", description = "任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
-    public Result<Void> publishTask(@Parameter(description = "任务ID", required = true, example = "123456") 
+    public Result<Void> publishTask(@Parameter(description = "任务ID", required = true, example = "123456")
                                    @PathVariable String id) {
         logger.info("开始发布任务，任务ID：{}", id);
         try {
@@ -325,7 +359,7 @@ public class TaskController {
             return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
         }
     }
-    
+
     /**
      * 获取任务执行历史
      * 查看任务的所有执行记录
@@ -333,14 +367,14 @@ public class TaskController {
     @GetMapping("/{id}/runs")
     @Operation(summary = "获取任务执行历史", description = "查看指定任务的所有执行记录")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "获取任务执行历史成功", 
+        @ApiResponse(responseCode = "200", description = "获取任务执行历史成功",
                      content = @Content(schema = @Schema(implementation = TaskRun.class))),
-        @ApiResponse(responseCode = "400", description = "任务不存在", 
+        @ApiResponse(responseCode = "400", description = "任务不存在",
                      content = @Content(schema = @Schema(implementation = Result.class))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误", 
+        @ApiResponse(responseCode = "500", description = "系统内部错误",
                      content = @Content(schema = @Schema(implementation = Result.class)))
     })
-    public Result<List<TaskRun>> getTaskRuns(@Parameter(description = "任务ID", required = true, example = "123456") 
+    public Result<List<TaskRun>> getTaskRuns(@Parameter(description = "任务ID", required = true, example = "123456")
                                              @PathVariable String id) {
         logger.info("开始获取任务执行历史，任务ID：{}", id);
         try {
@@ -349,7 +383,7 @@ public class TaskController {
                 logger.warn("任务不存在，任务ID：{}", id);
                 return Result.error(ErrorCodeEnum.TASK_NOT_FOUND);
             }
-            
+
             List<TaskRun> taskRuns = taskRunMapper.selectList(
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskRun>()
                             .eq(TaskRun::getTaskId, id)

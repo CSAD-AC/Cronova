@@ -11,7 +11,6 @@ import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.domain.po.Worker;
 import com.sjdt.scheduler.domain.po.WorkerTag;
 import com.sjdt.scheduler.domain.vo.WorkerRegisterVO;
-import com.sjdt.scheduler.exception.InvalidEnumValueException;
 import com.sjdt.scheduler.mapper.AKSKMapper;
 import com.sjdt.scheduler.mapper.TagMapper;
 import com.sjdt.scheduler.mapper.TaskLogMapper;

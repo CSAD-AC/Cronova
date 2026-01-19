@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.domain.dto;
 
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
@@ -30,24 +31,27 @@ public class TaskUpdateDTO {
     @Schema(description = "任务描述", example = "这是一个定时数据同步任务")
     private String description;
 
-    /** 脚本类型 */
-    @Schema(description = "脚本类型", example = "JAVA")
-    @NotNull(message = "脚本类型不能为空")
-    private ScriptType type;
+    /** 执行类型：script(脚本执行) / callback(HTTP回调) */
+    @Schema(description = "执行类型：script(脚本执行) / callback(HTTP回调)", example = "callback")
+    @NotNull(message = "执行类型不能为空")
+    private ExecuteType executeType;
 
-    /** 脚本ID */
-    @Schema(description = "脚本ID", example = "12345")
-    @NotBlank(message = "脚本ID不能为空")
+    /** 脚本类型（script类型必填） */
+    @Schema(description = "脚本类型：java/python/go（script类型必填）", example = "python")
+    private ScriptType scriptType;
+
+    /** 脚本ID（script类型必填） */
+    @Schema(description = "脚本ID（script类型必填）", example = "b73f2e86fad8dfaf74d23c005ee2328e")
     private String scriptId;
 
     /** 任务类型 */
-    @Schema(description = "任务类型", example = "once")
+    @Schema(description = "任务类型：once(一次性) / cron(定时)", example = "cron")
     @NotNull(message = "任务类型不能为空")
     private TaskType taskType;
 
     /** Cron表达式（仅cron任务使用） */
     @Schema(description = "Cron表达式，仅在定时任务时使用", example = "0 0 12 * * ?")
-    @Pattern(regexp = "^$|^(([0-9]+|\\*|\\?|L|W|C|#)(-[0-9]+)?(,[0-9]+|\\*|\\?|L|W|C|#(-[0-9]+)?)+\\s+){5}([0-9]+|\\*|\\?|L|W|C|#)(-[0-9]+)?(,[0-9]+|\\*|\\?|L|W|C|#(-[0-9]+)?)+$", 
+    @Pattern(regexp = "^$|^(([0-9]+|\\*|\\?|L|W|C|#)(-[0-9]+)?(,[0-9]+|\\*|\\?|L|W|C|#(-[0-9]+)?)+\\s+){5}([0-9]+|\\*|\\?|L|W|C|#)(-[0-9]+)?(,[0-9]+|\\*|\\?|L|W|C|#(-[0-9]+)?)+$",
              message = "Cron表达式格式不正确")
     private String cronExpr;
 
@@ -59,11 +63,15 @@ public class TaskUpdateDTO {
     @Schema(description = "超时时间（秒），0表示不限制", example = "60")
     private Integer timeoutSeconds;
 
-    /** 指定Worker ID（为空表示自动调度） */
-    @Schema(description = "指定Worker ID（为空表示自动调度）", example = "worker-001")
+    /** 指定Worker ID（为空表示自动调度，仅script类型有效） */
+    @Schema(description = "指定Worker ID（为空表示自动调度，仅script类型有效）", example = "worker-001")
     private String targetWorker;
 
     /** 任务状态 */
     @Schema(description = "任务状态", example = "active")
     private TaskStatus status;
+
+    /** 回调配置（callback类型可更新） */
+    @Schema(description = "回调配置（callback类型可更新）")
+    private CallbackJobConfigUpdateDTO callbackConfig;
 }

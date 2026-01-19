@@ -129,29 +129,6 @@ public class CallbackJobRunController {
     }
 
     /**
-     * 根据任务运行实例ID查询执行记录列表
-     */
-    @GetMapping("/task-run/{taskRunId}")
-    @Operation(summary = "根据任务运行实例ID查询执行记录", description = "根据任务运行实例ID获取该次运行关联的所有回调执行记录")
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "查询成功",
-                     content = @Content(array = @ArraySchema(schema = @Schema(implementation = CallbackJobRunVO.class)))),
-        @ApiResponse(responseCode = "500", description = "系统内部错误",
-                     content = @Content(schema = @Schema(implementation = Result.class)))
-    })
-    public Result<List<CallbackJobRunVO>> getByTaskRunId(
-            @Parameter(description = "任务运行实例ID", required = true, example = "run-001")
-            @PathVariable String taskRunId) {
-        String userId = StpUtil.getLoginIdAsString();
-        log.info("[{}] 根据任务运行实例ID查询执行记录，taskRunId: {}", userId, taskRunId);
-
-        List<CallbackJobRunVO> list = callbackJobRunService.getByTaskRunId(taskRunId);
-        log.info("[{}] 查询完成，taskRunId: {}，共{}条记录", userId, taskRunId, list.size());
-
-        return Result.success(list);
-    }
-
-    /**
      * 根据request_id查询执行记录
      */
     @GetMapping("/request/{requestId}")

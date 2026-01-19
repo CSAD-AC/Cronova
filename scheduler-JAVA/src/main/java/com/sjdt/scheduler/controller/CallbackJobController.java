@@ -47,9 +47,11 @@ public class CallbackJobController {
 
     /**
      * 创建回调任务配置
+     * 注意：这个接口现在主要保留用于独立创建回调配置
+     * 通常建议通过TaskCreateDTO一次性创建任务和回调配置
      */
     @PostMapping
-    @Operation(summary = "创建回调任务配置", description = "创建一个新的回调任务配置，用于指定任务执行后的回调信息")
+    @Operation(summary = "创建回调任务配置", description = "创建一个新的回调任务配置，通常建议通过任务创建接口一并创建")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "创建成功", 
                      content = @Content(schema = @Schema(implementation = CallbackJobConfigVO.class))),
@@ -206,7 +208,7 @@ public class CallbackJobController {
             CallbackJobConfig existingConfig = callbackJobConfigService.getById(dto.getId());
             if (existingConfig == null) {
                 logger.warn("[{}] 回调任务配置不存在，配置ID：{}", userId, dto.getId());
-                return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
+                return Result.error(ErrorCodeEnum.CALLBACK_JOB_NOT_FOUND);
             }
 
             if (dto.getTaskId() != null) {

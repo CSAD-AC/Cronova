@@ -20,6 +20,7 @@ public enum ErrorCodeEnum {
     TASK_NOT_FOUND(1005, "任务不存在"),
     TASK_LOG_NOT_FOUND(1006, "任务日志不存在"),
     TASK_RUN_NOT_FOUND(1007, "任务示例不存在"),
+    CALLBACK_JOB_NOT_FOUND(1008,"回调任务配置不存在"),
 
     // 文件相关错误 2001-2099
     FILE_UPLOAD_ERROR(2001, "文件上传失败"),

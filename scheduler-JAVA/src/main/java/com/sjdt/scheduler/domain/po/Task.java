@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
@@ -19,8 +20,8 @@ import java.time.LocalDateTime;
 /**
  * 任务定义实体
  * 支持脚本执行和HTTP回调任务
- * 脚本执行：type 表示脚本语言，callbackConfigId 为 NULL
- * HTTP回调：callbackConfigId 非 NULL，type 可为 NULL
+ * 脚本执行：executeType = script，需要 scriptType 和 scriptId
+ * HTTP回调：executeType = callback，通过 callback_job_configs 表关联
  */
 @Data
 @Builder
@@ -42,16 +43,16 @@ public class Task implements Serializable {
     /** 任务描述 */
     private String description;
 
-    /** 脚本类型：java/python/go（脚本执行任务必填，HTTP回调任务可为NULL） */
-    private ScriptType type;
+    /** 执行类型：script(脚本执行) / callback(HTTP回调) */
+    @TableField(value = "execute_type")
+    private ExecuteType executeType;
+
+    /** 脚本类型：java/python/go（script类型必填） */
+    private ScriptType scriptType;
 
     /** 脚本id（脚本执行类型必填） */
     @TableField(value = "script_id")
     private String scriptId;
-
-    /** 回调配置id（非NULL表示HTTP回调任务） */
-    @TableField(value = "callback_config_id")
-    private String callbackConfigId;
 
     /** 任务调度类型：once / cron */
     @TableField(value = "task_type")
@@ -72,7 +73,7 @@ public class Task implements Serializable {
     @TableField(value = "timeout_seconds")
     private Integer timeoutSeconds;
 
-    /** 指定 Worker ID（为空表示自动调度） */
+    /** 指定 Worker ID（为空表示自动调度，仅script类型有效） */
     @TableField(value = "target_worker")
     private String targetWorker;
 
@@ -89,4 +90,3 @@ public class Task implements Serializable {
     /** 更新时间 */
     private LocalDateTime updateTime;
 }
-

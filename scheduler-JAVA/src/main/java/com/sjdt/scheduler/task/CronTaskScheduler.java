@@ -6,6 +6,7 @@ import com.cronutils.model.definition.CronDefinition;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
 import com.sjdt.scheduler.domain.message.CallbackJobExecuteMessage;
@@ -23,16 +24,15 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.HashMap;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 定时任务调度器
  * 负责扫描数据库中启用的Cron任务，根据Cron表达式判断是否需要执行
- * 支持两种任务类型：
- * 1. 脚本执行任务：通过RocketMQ发送到Worker执行
- * 2. HTTP回调任务：直接执行HTTP回调请求
+ * 支持两种执行类型：
+ * 1. script：发送任务消息到RocketMQ，由Worker执行
+ * 2. callback：直接执行HTTP回调请求
  */
 @Slf4j
 @Component
@@ -59,8 +59,6 @@ public class CronTaskScheduler {
     private final CronParser cronParser;
 
     private final Map<String, ExecutionTime> executionTimeCache = new ConcurrentHashMap<>();
-
-    private static final long CACHE_EXPIRE_MINUTES = 30;
 
     private static final ZoneId ZONE_ID = ZoneId.of("Asia/Shanghai");
 
@@ -125,7 +123,6 @@ public class CronTaskScheduler {
             ZonedDateTime zonedNow = now.atZone(ZONE_ID);
 
             Optional<ZonedDateTime> lastExecutionOpt = executionTime.lastExecution(zonedNow);
-            Optional<ZonedDateTime> nextExecutionOpt = executionTime.nextExecution(zonedNow);
 
             if (lastExecutionOpt.isEmpty()) {
                 return true;
@@ -138,8 +135,7 @@ public class CronTaskScheduler {
             boolean shouldExecute = (nowMillis - lastMillis < 60000) && (nowMillis >= lastMillis);
 
             if (shouldExecute) {
-                log.debug("任务{}应该执行，LastExecution: {}, NextExecution: {}",
-                    task.getId(), lastExecution, nextExecutionOpt.orElse(null));
+                log.debug("任务{}应该执行，LastExecution: {}", task.getId(), lastExecution);
             }
 
             return shouldExecute;
@@ -170,17 +166,17 @@ public class CronTaskScheduler {
 
     /**
      * 执行定时任务
-     * 根据任务类型分发到不同的执行器
+     * 根据executeType分发到不同的执行器
      *
      * @param task 任务对象
      */
     private void executeTask(Task task) {
-        log.info("开始执行定时任务，任务ID: {}, 任务名称: {}, 类型: {}",
-            task.getId(), task.getName(), task.getTaskType());
+        log.info("开始执行定时任务，任务ID: {}, 任务名称: {}, 执行类型: {}",
+            task.getId(), task.getName(), task.getExecuteType());
 
         String taskRunId = createTaskRun(task);
 
-        if (task.getCallbackConfigId() != null && !task.getCallbackConfigId().isEmpty()) {
+        if (task.getExecuteType() == ExecuteType.callback) {
             executeCallbackTask(task, taskRunId);
         } else {
             executeScriptTask(task, taskRunId);
@@ -229,7 +225,7 @@ public class CronTaskScheduler {
                 .taskName(task.getName())
                 .taskRunId(taskRunId)
                 .description(task.getDescription())
-                .scriptType(task.getType() != null ? task.getType().name() : null)
+                .scriptType(task.getScriptType() != null ? task.getScriptType().name() : null)
                 .script(scriptInfo)
                 .taskType(TaskType.cron.name())
                 .cronExpr(task.getCronExpr())
@@ -255,9 +251,9 @@ public class CronTaskScheduler {
      */
     private void executeCallbackTask(Task task, String taskRunId) {
         try {
-            CallbackJobConfig config = callbackJobConfigMapper.selectById(task.getCallbackConfigId());
+            CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
             if (config == null) {
-                log.warn("回调配置不存在，任务ID: {}, 配置ID: {}", task.getId(), task.getCallbackConfigId());
+                log.warn("回调配置不存在，任务ID: {}", task.getId());
                 updateTaskRunStatus(taskRunId, TaskRunStatus.failed, "回调配置不存在");
                 return;
             }
@@ -289,6 +285,20 @@ public class CronTaskScheduler {
             log.error("执行HTTP回调任务失败，任务ID: {}", task.getId(), e);
             updateTaskRunStatus(taskRunId, TaskRunStatus.failed, e.getMessage());
         }
+    }
+
+    /**
+     * 根据任务ID获取回调配置
+     *
+     * @param taskId 任务ID
+     * @return 回调配置
+     */
+    private CallbackJobConfig getCallbackConfigByTaskId(String taskId) {
+        List<CallbackJobConfig> configs = callbackJobConfigMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallbackJobConfig>()
+                .eq(CallbackJobConfig::getTaskId, taskId)
+        );
+        return configs.isEmpty() ? null : configs.get(0);
     }
 
     /**

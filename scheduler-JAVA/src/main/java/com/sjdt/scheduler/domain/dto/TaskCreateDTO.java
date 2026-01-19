@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.domain.dto;
 
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,26 +18,29 @@ import lombok.Data;
 public class TaskCreateDTO {
 
     /** 任务名称 */
-    @Schema(description = "任务名称", example = "python测试脚本")
+    @Schema(description = "任务名称", example = "定时回调任务")
     @NotBlank(message = "任务名称不能为空")
     private String name;
 
     /** 任务描述 */
-    @Schema(description = "任务描述", example = "这是一个python测试脚本任务")
+    @Schema(description = "任务描述", example = "这是一个定时HTTP回调任务")
     private String description;
 
-    /** 脚本类型 */
-    @Schema(description = "脚本类型", example = "python")
-    @NotNull(message = "脚本类型不能为空")
-    private ScriptType type;
+    /** 执行类型：script(脚本执行) / callback(HTTP回调) */
+    @Schema(description = "执行类型：script(脚本执行) / callback(HTTP回调)", example = "callback")
+    @NotNull(message = "执行类型不能为空")
+    private ExecuteType executeType;
 
-    /** 脚本ID */
-    @Schema(description = "脚本ID", example = "b73f2e86fad8dfaf74d23c005ee2328e")
-    @NotBlank(message = "脚本ID不能为空")
+    /** 脚本类型（script类型必填） */
+    @Schema(description = "脚本类型：java/python/go（script类型必填）", example = "python")
+    private ScriptType scriptType;
+
+    /** 脚本ID（script类型必填） */
+    @Schema(description = "脚本ID（script类型必填）", example = "b73f2e86fad8dfaf74d23c005ee2328e")
     private String scriptId;
 
     /** 任务类型 */
-    @Schema(description = "任务类型", example = "once")
+    @Schema(description = "任务类型：once(一次性) / cron(定时)", example = "cron")
     @NotNull(message = "任务类型不能为空")
     private TaskType taskType;
 
@@ -52,7 +56,11 @@ public class TaskCreateDTO {
     @Schema(description = "超时时间（秒），0表示不限制", example = "0")
     private Integer timeoutSeconds;
 
-    /** 指定Worker ID（为空表示自动调度） */
-    @Schema(description = "指定Worker ID（为空表示自动调度）")
+    /** 指定Worker ID（为空表示自动调度，仅script类型有效） */
+    @Schema(description = "指定Worker ID（为空表示自动调度，仅script类型有效）")
     private String targetWorker;
+
+    /** 回调配置（callback类型必填） */
+    @Schema(description = "回调配置（callback类型必填）")
+    private CallbackJobConfigCreateDTO callbackConfig;
 }

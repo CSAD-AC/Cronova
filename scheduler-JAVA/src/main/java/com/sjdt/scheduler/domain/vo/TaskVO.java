@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.domain.vo;
 
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
@@ -22,8 +23,11 @@ public class TaskVO {
     /** 任务描述 */
     private String description;
 
+    /** 执行类型：script(脚本执行) / callback(HTTP回调) */
+    private ExecuteType executeType;
+
     /** 脚本类型 */
-    private ScriptType type;
+    private ScriptType scriptType;
 
     /** 脚本ID */
     private String scriptId;
@@ -54,4 +58,7 @@ public class TaskVO {
 
     /** 更新时间 */
     private LocalDateTime updateTime;
+
+    /** 回调配置信息（callback类型有值） */
+    private CallbackJobConfigVO callbackConfig;
 }

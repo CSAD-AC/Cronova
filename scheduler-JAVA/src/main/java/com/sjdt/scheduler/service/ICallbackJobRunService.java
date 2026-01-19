@@ -38,13 +38,6 @@ public interface ICallbackJobRunService extends IService<CallbackJobRun> {
      */
     List<CallbackJobRunVO> getByConfigId(String configId);
 
-    /**
-     * 根据任务运行实例ID查询执行记录列表
-     *
-     * @param taskRunId 任务运行实例ID
-     * @return 执行记录列表
-     */
-    List<CallbackJobRunVO> getByTaskRunId(String taskRunId);
 
     /**
      * 根据request_id查询执行记录
