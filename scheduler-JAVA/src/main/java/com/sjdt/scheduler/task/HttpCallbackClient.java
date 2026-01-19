@@ -7,49 +7,54 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 
-import java.time.LocalDateTime;
-import java.time.Duration;
 import java.util.Map;
-import java.util.UUID;
 
-/**
- * 通用HTTP请求工具类
- * 用于发送回调请求，支持重试机制和超时控制
- */
+
 @Slf4j
 public class HttpCallbackClient {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public HttpCallbackClient() {
-        this.restTemplate = new RestTemplate();
-        this.objectMapper = new ObjectMapper();
+    public HttpCallbackClient(RestTemplate restTemplate, ObjectMapper objectMapper) {
+        this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
     }
 
     /**
-     * 发送回调请求
+     * 执行带重试的 HTTP 回调请求
      *
-     * @param url 请求URL
-     * @param method HTTP方法
-     * @param headers 请求头
-     * @param requestBody 请求体
-     * @param secretKey 密钥（用于X-Secret请求头）
-     * @param timeoutSeconds 超时时间（秒）
-     * @param retryCount 重试次数
-     * @param retryIntervalSeconds 重试间隔（秒）
+     * @param url 请求 URL（必须非空）
+     * @param method HTTP 方法（必须非空）
+     * @param headers 自定义请求头（可为 null）
+     * @param requestBody 请求体对象（可为 null）
+     * @param secretKey 用于设置 X-Secret 请求头（可为 null）
+     * @param requestId 请求 ID，用于日志追踪和设置 X-Request-Id（必须非空且非 blank）
+     * @param retryCount 重试次数（>=0）
+     * @param retryIntervalSeconds 重试间隔（秒，>0 时生效）
      * @return 回调执行结果
+     * @throws IllegalArgumentException 当必要参数无效时
      */
-    public CallbackResult executeCallback(String url, 
-                                        HttpMethod method,
-                                        Map<String, String> headers,
-                                        Object requestBody,
-                                        String secretKey,
-                                        int timeoutSeconds,
-                                        int retryCount,
-                                        int retryIntervalSeconds) {
-        
-        String requestId = UUID.randomUUID().toString().replace("-", "");
+    public CallbackResult executeCallback(String url,
+                                          HttpMethod method,
+                                          Map<String, String> headers,
+                                          Object requestBody,
+                                          String secretKey,
+                                          String requestId,
+                                          int retryCount,
+                                          int retryIntervalSeconds) {
+
+        // 严格校验必要参数
+        if (url == null || url.trim().isEmpty()) {
+            throw new IllegalArgumentException("URL must not be null or empty");
+        }
+        if (method == null) {
+            throw new IllegalArgumentException("HTTP method must not be null");
+        }
+        if (requestId == null || requestId.trim().isEmpty()) {
+            throw new IllegalArgumentException("requestId must not be null or blank");
+        }
+
         log.info("[{}] 开始发送回调请求，URL: {}, 方法: {}, 重试次数: {}", requestId, url, method, retryCount);
 
         int totalAttempts = retryCount + 1;
@@ -57,28 +62,27 @@ public class HttpCallbackClient {
 
         for (int attempt = 0; attempt < totalAttempts; attempt++) {
             try {
-                CallbackResult result = executeSingleAttempt(url, method, headers, requestBody, secretKey, timeoutSeconds, requestId);
-                
+                CallbackResult result = executeSingleAttempt(url, method, headers, requestBody, secretKey, requestId);
+
                 if (result.isSuccess()) {
-                    log.info("[{}] 回调请求成功（第{}次尝试），URL: {}, 状态码: {}, 耗时: {}ms", 
+                    log.info("[{}] 回调请求成功（第{}次尝试），URL: {}, 状态码: {}, 耗时: {}ms",
                             requestId, attempt + 1, url, result.getStatusCode(), result.getDurationMs());
                     return result;
                 } else {
                     lastError = result.getErrorMessage();
-                    log.warn("[{}] 回调请求失败（第{}次尝试），URL: {}, 错误: {}", 
+                    log.warn("[{}] 回调请求失败（第{}次尝试），URL: {}, 错误: {}",
                             requestId, attempt + 1, url, lastError);
                 }
             } catch (Exception e) {
                 lastError = e.getMessage();
-                log.error("[{}] 回调请求异常（第{}次尝试），URL: {}, 错误: {}", 
-                         requestId, attempt + 1, url, e.getMessage(), e);
+                log.error("[{}] 回调请求异常（第{}次尝试），URL: {}, 错误: {}",
+                        requestId, attempt + 1, url, e.getMessage(), e);
             }
 
-            // 如果不是最后一次尝试，等待重试间隔
             if (attempt < totalAttempts - 1 && retryIntervalSeconds > 0) {
                 try {
                     Thread.sleep(retryIntervalSeconds * 1000L);
-                    log.info("[{}] 等待重试间隔{}秒", requestId, retryIntervalSeconds);
+                    log.debug("[{}] 等待重试间隔 {} 秒", requestId, retryIntervalSeconds);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     lastError = "重试等待被中断";
@@ -87,85 +91,66 @@ public class HttpCallbackClient {
             }
         }
 
-        log.error("[{}] 回调请求最终失败，URL: {}, 最终错误: {}, 总尝试次数: {}", 
-                 requestId, url, lastError, totalAttempts);
+        log.error("[{}] 回调请求最终失败，URL: {}, 最终错误: {}, 总尝试次数: {}",
+                requestId, url, lastError, totalAttempts);
         return CallbackResult.fail(requestId, "最终失败: " + lastError, totalAttempts);
     }
 
-    /**
-     * 执行单次请求
-     */
     private CallbackResult executeSingleAttempt(String url,
-                                              HttpMethod method,
-                                              Map<String, String> headers,
-                                              Object requestBody,
-                                              String secretKey,
-                                              int timeoutSeconds,
-                                              String requestId) {
-        
+                                                HttpMethod method,
+                                                Map<String, String> headers,
+                                                Object requestBody,
+                                                String secretKey,
+                                                String requestId) {
         long startTime = System.currentTimeMillis();
 
         try {
-            // 构建HTTP请求头
             HttpHeaders httpHeaders = new HttpHeaders();
             httpHeaders.setContentType(MediaType.APPLICATION_JSON);
-            
-            // 设置自定义请求头
+
             if (headers != null) {
                 headers.forEach(httpHeaders::set);
             }
-            
-            // 设置标准回调请求头
+
             httpHeaders.set("X-Request-Id", requestId);
             if (secretKey != null && !secretKey.isEmpty()) {
                 httpHeaders.set("X-Secret", secretKey);
             }
 
-            // 构建请求实体
-            HttpEntity<?> requestEntity = new HttpEntity<>(requestBody, httpHeaders);
+            // 使用注入的 ObjectMapper 序列化
+            String jsonBody = requestBody == null ? "" : objectMapper.writeValueAsString(requestBody);
+            HttpEntity<String> requestEntity = new HttpEntity<>(jsonBody, httpHeaders);
 
-            // 发送请求
-            ResponseEntity<String> response = restTemplate.exchange(
-                url, 
-                method, 
-                requestEntity, 
-                String.class
-            );
+            ResponseEntity<String> response = restTemplate.exchange(url, method, requestEntity, String.class);
 
             long duration = System.currentTimeMillis() - startTime;
-            int statusCode = response.getStatusCode().value();
-
+            int statusCode = response.getStatusCodeValue();
             boolean success = statusCode >= 200 && statusCode < 300;
-            
+
             String responseBody = response.getBody();
             if (responseBody != null && responseBody.length() > 500) {
                 responseBody = responseBody.substring(0, 500) + "...(truncated)";
             }
 
-            log.info("[{}] 请求完成，状态码: {}, 耗时: {}ms, 响应体: {}", 
-                    requestId, statusCode, duration, responseBody);
+            log.debug("[{}] 请求完成，状态码: {}, 耗时: {}ms", requestId, statusCode, duration);
 
             return CallbackResult.success(requestId, statusCode, duration, responseBody);
 
         } catch (ResourceAccessException e) {
             long duration = System.currentTimeMillis() - startTime;
-            log.error("[{}] 网络访问异常，耗时: {}ms, 错误: {}", requestId, duration, e.getMessage());
             return CallbackResult.fail(requestId, "网络访问异常: " + e.getMessage(), duration);
-
         } catch (RestClientException e) {
             long duration = System.currentTimeMillis() - startTime;
-            log.error("[{}] HTTP客户端异常，耗时: {}ms, 错误: {}", requestId, duration, e.getMessage());
             return CallbackResult.fail(requestId, "HTTP客户端异常: " + e.getMessage(), duration);
-
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
-            log.error("[{}] 未知异常，耗时: {}ms, 错误: {}", requestId, duration, e.getMessage(), e);
+            log.error("[{}] 序列化或未知异常", requestId, e);
             return CallbackResult.fail(requestId, "未知异常: " + e.getMessage(), duration);
         }
     }
 
     /**
-     * 回调执行结果
+     * 回调执行结果（不可变）
      */
     public static class CallbackResult {
         private final String requestId;
@@ -176,8 +161,8 @@ public class HttpCallbackClient {
         private final String errorMessage;
         private final int attemptCount;
 
-        private CallbackResult(String requestId, boolean success, int statusCode, long durationMs, 
-                            String responseBody, String errorMessage, int attemptCount) {
+        private CallbackResult(String requestId, boolean success, int statusCode, long durationMs,
+                               String responseBody, String errorMessage, int attemptCount) {
             this.requestId = requestId;
             this.success = success;
             this.statusCode = statusCode;

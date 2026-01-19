@@ -26,7 +26,7 @@ import java.util.UUID;
 @Service
 public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> implements IScriptService {
 
-    @Value("${minio.bucket-name}")
+    @Value("${minio.bucket-name-scripts}")
     private String BUCKET_NAME;
     private static final String SCRIPT_FOLDER = "scripts/";
 

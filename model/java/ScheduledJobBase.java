@@ -5,8 +5,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 定时任务回调基类
@@ -20,12 +20,23 @@ import java.util.UUID;
  *
  * 二、子类必须实现的方法
  *   1. secretKey()     - 返回密钥，用于 X-Secret 校验
- *   2. runJob(param)   - 执行业务逻辑，返回 Result
+ *   2. endpoint()      - 返回模块名称，用于健康检查响应
+ *   3. runJob(param)   - 执行业务逻辑，返回 Result
  *
  * 三、子类需开放的接口
  *   - 提供 POST 接口接收回调请求，内部调用 super.handle()
+ *   - 提供 GET 接口用于健康检查，路径为回调接口 + "/health"
  *
- * 四、日志规范
+ * 四、接口约定
+ *   【重要】健康检查接口
+ *   - 路径格式：<回调接口路径>/health（强制约定）
+ *   - 示例：
+ *     · 回调接口：/api/callback/data-sync
+ *     · 健康接口：/api/callback/data-sync/health
+ *   - 功能：仅验证 X-Secret 和 X-RequestId 请求头
+ *   - 要求：健康接口和回调接口必须使用相同的 BaseUrl
+ *
+ * 五、日志规范
  *   - 务必在日志中输出 requestId，便于快速定位日志
  *   - 示例：log.info("[{}] 开始执行任务", requestId)
  *
@@ -40,6 +51,7 @@ public abstract class ScheduledJobBase {
     private static final ThreadLocal<ObjectMapper> MAPPER_LOCAL = ThreadLocal.withInitial(ObjectMapper::new);
 
     private static final String DEFAULT_SECRET_KEY = "default-secret-key-placeholder";
+    private static final String DEFAULT_ENDPOINT = "回调服务";
     private static final String PLACEHOLDER_CLASS_NAME = "ScheduledJobBase";
 
     /**
@@ -47,6 +59,16 @@ public abstract class ScheduledJobBase {
      * 子类必须重写此方法
      */
     protected abstract String secretKey();
+
+    /**
+     * 返回模块名称，用于健康检查响应的 endpoint 字段
+     * 子类应重写此方法，返回有意义的模块名称
+     *
+     * @return 模块名称，如"数据同步服务"、"报表生成服务"等
+     */
+    protected String endpoint() {
+        return DEFAULT_ENDPOINT;
+    }
 
     /**
      * 执行业务逻辑
@@ -61,7 +83,7 @@ public abstract class ScheduledJobBase {
      * 统一处理入口
      *
      * 子类 Controller 使用示例：
-     * @PostMapping("/job")
+     * @PostMapping
      * public Result<?> handle(@RequestBody(required = false) Map<String, Object> param, HttpServletRequest request) {
      *     return super.handle(request, param);
      * }
@@ -91,6 +113,76 @@ public abstract class ScheduledJobBase {
         } catch (Exception e) {
             log.error("[{}] 任务执行出错", requestId, e);
             return Result.fail(500, "执行失败").setRequestId(requestId);
+        }
+    }
+
+    /**
+     * 健康检查入口
+     *
+     * 【接口约定】
+     * - 路径格式：<回调接口路径>/health（强制约定）
+     * - 功能：仅验证 X-Secret 和 X-RequestId 请求头，不执行业务逻辑
+     * - 要求：健康接口和回调接口必须使用相同的 BaseUrl
+     *
+     * 【响应格式】
+     * {
+     *   "code": 200,
+     *   "msg": "success",
+     *   "data": {
+     *     "status": "UP",
+     *     "timestamp": "2024-01-19T10:30:00",
+     *     "endpoint": "数据同步服务",
+     *     "message": "服务正常"
+     *   },
+     *   "costMillis": 5,
+     *   "requestId": "abc123def456"
+     * }
+     *
+     * 子类 Controller 使用示例：
+     * @GetMapping("/health")
+     * public Result<?> healthCheck(HttpServletRequest request) {
+     *     return super.healthCheck(request);
+     * }
+     *
+     * @param request HTTP请求
+     * @return 健康检查结果
+     */
+    public Result<?> healthCheck(HttpServletRequest request) {
+        long start = System.currentTimeMillis();
+        String requestId = request.getHeader("X-Request-Id");
+
+        // 验证请求头
+        if (requestId == null || requestId.isEmpty()) {
+            return Result.fail(400, "缺少请求头 X-Request-Id")
+                    .setCostMillis(System.currentTimeMillis() - start);
+        }
+
+        try {
+            validateSecret(request);
+
+            // 健康检查成功，构造响应数据
+            Map<String, Object> healthData = new java.util.HashMap<>();
+            healthData.put("status", "UP");
+            healthData.put("timestamp", LocalDateTime.now().toString());
+            healthData.put("endpoint", this.endpoint());
+            healthData.put("message", "服务正常");
+
+            log.debug("[{}] 健康检查通过，endpoint: {}", requestId, this.endpoint());
+
+            return Result.ok(healthData)
+                    .setCostMillis(System.currentTimeMillis() - start)
+                    .setRequestId(requestId);
+
+        } catch (SecurityException e) {
+            log.warn("[{}] 健康检查失败: 密钥验证失败", requestId);
+            return Result.fail(401, "密钥验证失败")
+                    .setRequestId(requestId)
+                    .setCostMillis(System.currentTimeMillis() - start);
+        } catch (Exception e) {
+            log.error("[{}] 健康检查异常: {}", requestId, e.getMessage());
+            return Result.fail(500, "健康检查异常: " + e.getMessage())
+                    .setRequestId(requestId)
+                    .setCostMillis(System.currentTimeMillis() - start);
         }
     }
 

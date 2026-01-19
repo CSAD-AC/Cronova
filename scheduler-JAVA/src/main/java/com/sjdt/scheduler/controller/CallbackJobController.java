@@ -34,14 +34,14 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/callback-job-configs")
 @SaCheckLogin
 @io.swagger.v3.oas.annotations.tags.Tag(name = "回调任务配置管理", description = "回调任务配置的创建、查询、更新和删除")
-public class CallbackJobConfigController {
+public class CallbackJobController {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskController.class);
 
     private final ICallbackJobConfigService callbackJobConfigService;
 
     @Autowired
-    public CallbackJobConfigController(ICallbackJobConfigService callbackJobConfigService) {
+    public CallbackJobController(ICallbackJobConfigService callbackJobConfigService) {
         this.callbackJobConfigService = callbackJobConfigService;
     }
 
