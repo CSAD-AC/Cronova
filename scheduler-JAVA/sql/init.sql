@@ -213,7 +213,7 @@ CREATE TABLE callback_job_runs (
     task_id                 VARCHAR(36) NOT NULL COMMENT '关联tasks.id',
     config_id               VARCHAR(36) NOT NULL COMMENT '关联callback_job_configs.id',
     task_run_id             VARCHAR(36) COMMENT '关联task_run.id',
-    request_id              VARCHAR(64) COMMENT '请求ID（X-Request-Id），用于请求追踪',
+    request_id              VARCHAR(64) DEFAULT (UUID()) COMMENT '请求ID（X-Request-Id），用于请求追踪，数据库自动生成',
 
     -- 执行状态
     status                  VARCHAR(16) NOT NULL COMMENT '执行状态：pending/running/success/failed/timeout',

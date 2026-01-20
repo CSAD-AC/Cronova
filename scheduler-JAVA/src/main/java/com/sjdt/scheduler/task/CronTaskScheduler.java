@@ -316,9 +316,10 @@ public class CronTaskScheduler {
                 taskRun.setEndTime(LocalDateTime.now());
                 taskRun.setErrorMessage(errorMessage);
                 taskRunMapper.updateById(taskRun);
+                log.info("任务运行状态已更新，RunID: {}, Status: {}", taskRunId, status);
             }
         } catch (Exception e) {
-            log.error("更新任务运行状态失败，运行ID: {}", taskRunId, e);
+            log.error("更新任务运行状态失败，RunID: {}", taskRunId, e);
         }
     }
 
