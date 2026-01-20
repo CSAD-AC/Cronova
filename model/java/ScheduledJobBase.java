@@ -1,11 +1,13 @@
-package com.sjdt.scheduler.controller;
+package com.api.auth.controller.callback;
 
+import com.api.auth.common.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -31,8 +33,8 @@ import java.util.Map;
  *   【重要】健康检查接口
  *   - 路径格式：<回调接口路径>/health（强制约定）
  *   - 示例：
- *     · 回调接口：/api/callback/data-sync
- *     · 健康接口：/api/callback/data-sync/health
+ *     · 回调接口：/api/callback/delete-junk-file
+ *     · 健康接口：/api/callback/delete-junk-file/health
  *   - 功能：仅验证 X-Secret 和 X-RequestId 请求头
  *   - 要求：健康接口和回调接口必须使用相同的 BaseUrl
  *
@@ -93,26 +95,27 @@ public abstract class ScheduledJobBase {
         String requestId = request.getHeader("X-Request-Id");
 
         if (requestId == null || requestId.isEmpty()) {
-            return Result.fail(400, "缺少请求头 X-Request-Id").setCostMillis(System.currentTimeMillis() - start);
+            return Result.error(400, "缺少请求头 X-Request-Id");
         }
 
         try {
             validateMethodOverrides(requestId);
             validateSecret(request);
             Result<?> result = runJob(param == null ? Map.of() : param);
-            if (result == null) result = Result.ok(null);
-            result.setCostMillis(System.currentTimeMillis() - start);
-            result.setRequestId(requestId);
+            if (result == null) {
+                result = Result.success(null);
+            }
+            log.info("[{}] 任务执行完成，耗时: {}ms", requestId, System.currentTimeMillis() - start);
             return result;
         } catch (SecurityException e) {
             log.warn("[{}] 密钥验证失败: {}", requestId, e.getMessage());
-            return Result.fail(401, "密钥验证失败").setRequestId(requestId);
+            return Result.error(401, "密钥验证失败");
         } catch (IllegalStateException e) {
             log.error("[{}] 方法重写校验失败: {}", requestId, e.getMessage());
-            return Result.fail(500, "配置错误: " + e.getMessage()).setRequestId(requestId);
+            return Result.error(500, "配置错误: " + e.getMessage());
         } catch (Exception e) {
             log.error("[{}] 任务执行出错", requestId, e);
-            return Result.fail(500, "执行失败").setRequestId(requestId);
+            return Result.error(500, "执行失败: " + e.getMessage());
         }
     }
 
@@ -127,15 +130,13 @@ public abstract class ScheduledJobBase {
      * 【响应格式】
      * {
      *   "code": 200,
-     *   "msg": "success",
+     *   "message": "操作成功",
      *   "data": {
      *     "status": "UP",
      *     "timestamp": "2024-01-19T10:30:00",
      *     "endpoint": "数据同步服务",
      *     "message": "服务正常"
-     *   },
-     *   "costMillis": 5,
-     *   "requestId": "abc123def456"
+     *   }
      * }
      *
      * 子类 Controller 使用示例：
@@ -150,40 +151,64 @@ public abstract class ScheduledJobBase {
     public Result<?> healthCheck(HttpServletRequest request) {
         long start = System.currentTimeMillis();
         String requestId = request.getHeader("X-Request-Id");
+        String requestPath = request.getRequestURI();
+        String remoteAddr = getRemoteAddr(request);
 
-        // 验证请求头
+        log.info("[{}] 收到健康检查请求，路径: {}，来源: {}", requestId, requestPath, remoteAddr);
+
         if (requestId == null || requestId.isEmpty()) {
-            return Result.fail(400, "缺少请求头 X-Request-Id")
-                    .setCostMillis(System.currentTimeMillis() - start);
+            log.warn("[{}] 健康检查失败: 缺少请求头 X-Request-Id，路径: {}", requestId, requestPath);
+            return Result.error(400, "缺少请求头 X-Request-Id");
         }
 
         try {
+            String secret = request.getHeader("X-Secret");
             validateSecret(request);
 
-            // 健康检查成功，构造响应数据
-            Map<String, Object> healthData = new java.util.HashMap<>();
+            Map<String, Object> healthData = new HashMap<>();
             healthData.put("status", "UP");
             healthData.put("timestamp", LocalDateTime.now().toString());
             healthData.put("endpoint", this.endpoint());
             healthData.put("message", "服务正常");
 
-            log.debug("[{}] 健康检查通过，endpoint: {}", requestId, this.endpoint());
+            long cost = System.currentTimeMillis() - start;
+            log.info("[{}] 健康检查通过，endpoint: {}，耗时: {}ms", requestId, this.endpoint(), cost);
 
-            return Result.ok(healthData)
-                    .setCostMillis(System.currentTimeMillis() - start)
-                    .setRequestId(requestId);
+            return Result.success(healthData);
 
         } catch (SecurityException e) {
-            log.warn("[{}] 健康检查失败: 密钥验证失败", requestId);
-            return Result.fail(401, "密钥验证失败")
-                    .setRequestId(requestId)
-                    .setCostMillis(System.currentTimeMillis() - start);
+            log.warn("[{}] 健康检查失败: 密钥验证失败，路径: {}，来源: {}", requestId, requestPath, remoteAddr);
+            return Result.error(401, "密钥验证失败");
         } catch (Exception e) {
-            log.error("[{}] 健康检查异常: {}", requestId, e.getMessage());
-            return Result.fail(500, "健康检查异常: " + e.getMessage())
-                    .setRequestId(requestId)
-                    .setCostMillis(System.currentTimeMillis() - start);
+            log.error("[{}] 健康检查异常: {}，路径: {}", requestId, e.getMessage(), requestPath, e);
+            return Result.error(500, "健康检查异常: " + e.getMessage());
         }
+    }
+
+    /**
+     * 获取请求来源IP地址
+     *
+     * @param request HTTP请求
+     * @return IP地址
+     */
+    private String getRemoteAddr(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("HTTP_CLIENT_IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("HTTP_X_FORWARDED_FOR");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
     }
 
     /**
@@ -217,40 +242,5 @@ public abstract class ScheduledJobBase {
 
     protected ObjectMapper mapper() {
         return MAPPER_LOCAL.get();
-    }
-
-    /**
-     * 统一返回对象
-     */
-    public static class Result<T> {
-        private int code;
-        private String msg;
-        private T data;
-        private long costMillis;
-        private String requestId;
-
-        public static <T> Result<T> ok(T data) {
-            return new Result<T>().code(200).msg("success").data(data);
-        }
-
-        public static <T> Result<T> fail(int code, String msg) {
-            return new Result<T>().code(code).msg(msg);
-        }
-
-        public Result<T> code(int code) { this.code = code; return this; }
-        public Result<T> msg(String msg) { this.msg = msg; return this; }
-        public Result<T> data(T data) { this.data = data; return this; }
-        public Result<T> setCostMillis(long costMillis) { this.costMillis = costMillis; return this; }
-        public Result<T> setRequestId(String requestId) { this.requestId = requestId; return this; }
-
-        public int getCode() { return code; }
-        public String getMsg() { return msg; }
-        public T getData() { return data; }
-        public long getCostMillis() { return costMillis; }
-        public String getRequestId() { return requestId; }
-    }
-
-    private static class SecurityException extends RuntimeException {
-        public SecurityException(String msg) { super(msg); }
     }
 }

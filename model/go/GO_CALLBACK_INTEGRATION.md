@@ -12,7 +12,9 @@
 
 ### 2.1 请求方法
 
-回调接口统一使用 **POST** 方法。
+回调接口使用不同的 HTTP 方法：
+- **任务回调接口**：POST 方法
+- **健康检查接口**：GET 方法
 
 ### 2.2 请求头说明
 
@@ -23,43 +25,59 @@
 
 **请求头示例**：
 ```http
-POST /api/callback/job HTTP/1.1
+POST /api/callback/data-sync HTTP/1.1
 Host: your-service.com
 X-Request-Id: abc123def456
 X-Secret: your-secret-key
 ```
 
-### 2.3 请求体说明
+### 2.3 响应规范
 
-回调接口**不需要请求体**，请求体为空。
+所有回调接口必须返回统一的 JSON 格式，包含 `code`、`msg`、`data` 字段。详细响应示例请参见各接口说明：
+- 任务回调接口响应：见 [3.4 响应示例](#34-响应示例)
+- 健康检查接口响应：见 [4.3 响应示例](#43-响应示例)
 
-## 三、健康检查接口
+## 三、任务回调接口
 
 ### 3.1 接口说明
 
-健康检查接口用于验证回调服务是否正常运行，验证请求头（X-Secret 和 X-Request-Id）。
+任务回调接口是调度器触发任务执行时调用的主接口，用于接收调度器的执行请求并执行业务逻辑。
 
 **接口约定**：
-- **路径格式**：`<回调接口路径>/health`（强制约定）
-- **示例**：
-  - 回调接口：`/api/callback/data-sync/job`
-  - 健康接口：`/api/callback/data-sync/job/health`
-- **请求方法**：GET
-- **功能**：仅验证 X-Secret 和 X-Request-Id 请求头，不执行业务逻辑
-- **要求**：健康接口和回调接口必须使用相同的 BaseUrl
-
-**自动注册**：`RegisterRoute()` 函数会自动注册健康检查接口，无需额外代码。
+- **路径格式**：`<回调接口路径>`（无 `/job` 后缀）
+- **示例**：`/api/callback/data-sync`
+- **请求方法**：POST
+- **功能**：接收调度器任务执行请求，执行业务逻辑，返回执行结果
 
 ### 3.2 请求示例
 
 ```http
-GET /api/callback/data-sync/job/health HTTP/1.1
+POST /api/callback/data-sync HTTP/1.1
 Host: your-service.com
-X-Request-Id: abc123def456
+X-Request-Id: task-exec-123456
 X-Secret: your-secret-key
+Content-Type: application/json
+
+{
+    "taskId": "task-001",
+    "taskRunId": "run-001",
+    "taskName": "数据同步任务",
+    "taskDescription": "同步H4A员工信息到ES",
+    "executeTime": "2026-01-20T10:00:00"
+}
 ```
 
-### 3.3 响应示例
+### 3.3 请求体字段说明
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `taskId` | string | 任务定义ID |
+| `taskRunId` | string | 任务运行实例ID |
+| `taskName` | string | 任务名称 |
+| `taskDescription` | string | 任务描述（可选） |
+| `executeTime` | string | 任务执行时间（可选） |
+
+### 3.4 响应示例
 
 **成功**：
 ```json
@@ -67,13 +85,61 @@ X-Secret: your-secret-key
     "code": 200,
     "msg": "success",
     "data": {
-        "status": "UP",
-        "timestamp": "2024-01-19T10:30:00",
+        "success": true,
+        "records_processed": 100,
+        "duration_ms": 1500
+    }
+}
+```
+
+**失败**：
+```json
+{
+    "code": 500,
+    "msg": "执行失败: 数据库连接超时",
+    "data": null
+}
+```
+
+## 四、健康检查接口
+
+### 4.1 接口说明
+
+健康检查接口用于验证回调服务是否正常运行，验证请求头（X-Secret 和 X-Request-Id）。
+
+**接口约定**：
+- **路径格式**：`<回调接口路径>/health`（强制约定）
+- **示例**：
+  - 回调接口：`/api/callback/data-sync`
+  - 健康接口：`/api/callback/data-sync/health`
+- **请求方法**：GET
+- **功能**：仅验证 X-Secret 和 X-Request-Id 请求头，不执行业务逻辑
+- **要求**：健康接口和回调接口必须使用相同的 BaseUrl
+
+**自动注册**：`RegisterRoute()` 函数会自动注册健康检查接口，无需额外代码。
+
+### 4.2 请求示例
+
+```http
+GET /api/callback/data-sync/health HTTP/1.1
+Host: your-service.com
+X-Request-Id: abc123def456
+X-Secret: your-secret-key
+```
+
+### 4.3 响应示例
+
+**成功**：
+```json
+{
+    "code": 200,
+    "msg": "success",
+    "data": {
         "endpoint": "数据同步服务",
-        "message": "服务正常"
-    },
-    "cost_millis": 5,
-    "request_id": "abc123def456"
+        "message": "服务正常",
+        "status": "UP",
+        "timestamp": "2026-01-20T10:03:24.462013500"
+    }
 }
 ```
 
@@ -82,8 +148,7 @@ X-Secret: your-secret-key
 {
     "code": 401,
     "msg": "密钥验证失败",
-    "data": null,
-    "request_id": "abc123def456"
+    "data": null
 }
 ```
 
@@ -96,7 +161,7 @@ X-Secret: your-secret-key
 }
 ```
 
-### 3.4 data 字段说明
+### 4.4 data 字段说明
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -105,63 +170,9 @@ X-Secret: your-secret-key
 | `endpoint` | string | 模块名称，如"数据同步服务"、"报表生成服务" |
 | `message` | string | 状态描述，固定为 "服务正常" |
 
-### 3.5 Endpoint() 方法
+## 五、快速集成
 
-结构体需要实现 `Endpoint()` 方法，返回模块名称：
-
-```go
-func (c *DataSyncCallback) Endpoint() string {
-    /**
-     * 返回模块名称
-     * 用于健康检查响应的 endpoint 字段
-     */
-    return "数据同步服务"
-}
-```
-
-## 四、响应规范
-
-### 3.1 响应格式
-
-所有回调接口必须返回统一的 JSON 格式，包含以下字段：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `code` | int | 状态码，200 表示成功，其他值表示失败 |
-| `msg` | string | 状态消息 |
-| `data` | interface{} | 详细的执行结果，可包含任意结构 |
-| `cost_millis` | int64 | 执行耗时（毫秒），可选 |
-| `request_id` | string | 请求 ID，用于日志追踪，可选 |
-
-**成功响应示例**：
-```json
-{
-    "code": 200,
-    "msg": "success",
-    "data": {
-        "records_processed": 100,
-        "duration_ms": 1500,
-        "status": "completed"
-    },
-    "cost_millis": 1523,
-    "request_id": "abc123def456"
-}
-```
-
-**失败响应示例**：
-```json
-{
-    "code": 500,
-    "msg": "执行失败: 数据库连接超时",
-    "data": null,
-    "cost_millis": 5000,
-    "request_id": "abc123def456"
-}
-```
-
-## 四、快速集成
-
-### 4.1 引入基类
+### 5.1 引入基类
 
 将 `scheduled_job_base.go` 复制到你的项目中，该文件提供了：
 
@@ -170,7 +181,7 @@ func (c *DataSyncCallback) Endpoint() string {
 - `Handle` 函数：统一处理入口
 - `RegisterRoute` 函数：路由注册辅助函数
 
-### 4.2 创建回调处理器
+### 5.2 创建回调处理器
 
 创建结构体实现 `ScheduledJobBase` 接口，并实现三个方法：
 
@@ -191,6 +202,10 @@ func (c *MyJobCallback) RoutePath() string {
 func (c *MyJobCallback) SecretKey() string {
     // 【注意】此密钥需要与调度器回调配置中的密钥一致
     return "your-secret-key-here"
+}
+
+func (c *MyJobCallback) Endpoint() string {
+    return "我的任务服务"
 }
 
 func (c *MyJobCallback) RunJob(param map[string]interface{}) *Result {
@@ -226,9 +241,9 @@ func main() {
 
 **注意**：`RegisterRoute()` 函数会自动注册健康检查接口（路径：回调接口 + "/health"），无需额外代码。
 
-## 五、完整示例
+## 六、完整示例
 
-### 5.1 完整的回调服务示例
+### 6.1 完整的回调服务示例
 
 ```go
 package main
@@ -259,12 +274,12 @@ type DataSyncResult struct {
 }
 
 type DataSyncCallback struct {
-    service *DataSyncService
+    rand *rand.Rand
 }
 
 func NewDataSyncCallback() *DataSyncCallback {
     return &DataSyncCallback{
-        service: NewDataSyncService(),
+        rand: rand.New(rand.NewSource(time.Now().UnixNano())),
     }
 }
 
@@ -280,19 +295,20 @@ func (c *DataSyncCallback) SecretKey() string {
     return "data-sync-secret-key-2026"
 }
 
+func (c *DataSyncCallback) Endpoint() string {
+    return "数据同步服务"
+}
+
 func (c *DataSyncCallback) RunJob(param map[string]interface{}) *Result {
     requestID := GetString(param, "request_id", "")
-    syncType := GetString(param, "syncType", "delta")
-    date := GetString(param, "date", "2024-01-01")
 
     // 【规范】日志中必须带上 [request_id]
     fmt.Printf("[%s] 开始执行数据同步任务\n", requestID)
-    fmt.Printf("[%s] 参数: syncType=%s, date=%s\n", requestID, syncType, date)
 
     startTime := time.Now()
 
     // 执行同步逻辑
-    result := c.service.Sync()
+    result := c.executeSync()
 
     durationMs := time.Since(startTime).Milliseconds()
     fmt.Printf("[%s] 同步完成: %d 条记录，耗时: %dms\n", 
@@ -301,22 +317,12 @@ func (c *DataSyncCallback) RunJob(param map[string]interface{}) *Result {
     return Ok(result)
 }
 
-type DataSyncService struct {
-    rand *rand.Rand
-}
-
-func NewDataSyncService() *DataSyncService {
-    return &DataSyncService{
-        rand: rand.New(rand.NewSource(time.Now().UnixNano())),
-    }
-}
-
-func (s *DataSyncService) Sync() *DataSyncResult {
+func (c *DataSyncCallback) executeSync() *DataSyncResult {
     startTime := time.Now()
 
-    time.Sleep(time.Duration(1000+s.rand.Intn(2000)) * time.Millisecond)
+    time.Sleep(time.Duration(1000+c.rand.Intn(2000)) * time.Millisecond)
 
-    records := 100 + s.rand.Intn(900)
+    records := 100 + c.rand.Intn(900)
 
     return &DataSyncResult{
         RecordsProcessed: records,
@@ -338,16 +344,13 @@ func main() {
     fmt.Println("📌 回调接口: POST /api/callback/data-sync")
     fmt.Println("📌 健康接口: GET  /api/callback/data-sync/health（自动注册）")
     fmt.Println("🔑 密钥: data-sync-secret-key-2026")
-    fmt.Println("📝 请求头示例:")
-    fmt.Println("   X-Request-Id: req-12345")
-    fmt.Println("   X-Secret: data-sync-secret-key-2026")
     fmt.Println("========================================")
 
     http.ListenAndServe(":8080", mux)
 }
 ```
 
-### 5.2 Result 结构体说明
+### 6.2 Result 结构体说明
 
 ```go
 type Result struct {
@@ -374,7 +377,7 @@ func (r *Result) ToJSON() ([]byte, error) {
 }
 ```
 
-### 5.3 辅助函数
+### 6.3 辅助函数
 
 基类提供了常用的辅助函数：
 
@@ -407,13 +410,13 @@ func GetString(param map[string]interface{}, key string, defaultVal string) stri
 }
 ```
 
-## 六、日志规范
+## 七、日志规范
 
-### 6.1 为什么要记录 RequestId
+### 7.1 为什么要记录 RequestId
 
 当出现问题需要排查时，通过 `X-Request-Id` 可以快速定位一次请求的所有日志。
 
-### 6.2 日志示例
+### 7.2 日志示例
 
 ```go
 package main
@@ -431,6 +434,10 @@ func (c *ExampleCallback) RoutePath() string {
 
 func (c *ExampleCallback) SecretKey() string {
     return "example-secret-key"
+}
+
+func (c *ExampleCallback) Endpoint() string {
+    return "示例服务"
 }
 
 func (c *ExampleCallback) RunJob(param map[string]interface{}) *Result {
@@ -465,7 +472,7 @@ func main() {
 }
 ```
 
-### 6.3 日志格式建议
+### 7.3 日志格式建议
 
 ```
 2024/01/19 10:30:00 [abc123def456] 任务开始执行
@@ -473,9 +480,9 @@ func main() {
 2024/01/19 10:30:02 [abc123def456] 任务执行失败: 数据格式错误
 ```
 
-## 七、使用其他 Web 框架
+## 八、使用其他 Web 框架
 
-### 7.1 Gin 框架示例
+### 8.1 Gin 框架示例
 
 ```go
 package main
@@ -544,7 +551,7 @@ func doWork() interface{} {
 }
 ```
 
-### 7.2 Echo 框架示例
+### 8.2 Echo 框架示例
 
 ```go
 package main
@@ -611,7 +618,7 @@ func doWork() interface{} {
 }
 ```
 
-## 八、常见问题
+## 九、常见问题
 
 ### Q1: 密钥验证失败怎么办？
 
@@ -671,7 +678,7 @@ result := map[string]interface{}{
 return Ok(result)
 ```
 
-## 九、最佳实践
+## 十、最佳实践
 
 1. **日志规范**：所有日志必须带上 `[request_id]` 前缀
 2. **异常处理**：使用 `defer recover()` 捕获 panic，记录错误日志，返回友好的错误信息

@@ -93,12 +93,22 @@ class TaskStatusService:
             url = f"{Config.SCHEDULER_BASE_URL}/api/worker/task-status/{task_run_id}"
             response = self._http_client.post(url, json_data=result.model_dump())
             if response:
-                logger.info("状态报告发送成功，taskRunId: %s，状态: %s，耗时: %dms", 
-                          task_run_id, result.status, result.durationMs)
-                # 更新上次报告时间
-                self._set_last_report_time(task_run_id, current_time)
+                # 检查业务响应码
+                response_code = response.get("code")
+                if response_code == 200:
+                    logger.info("状态报告发送成功，taskRunId: %s，状态: %s，耗时: %dms", 
+                              task_run_id, result.status, result.durationMs)
+                    # 更新上次报告时间
+                    self._set_last_report_time(task_run_id, current_time)
+                else:
+                    # 业务响应码非200，视为失败
+                    error_msg = response.get("message", "未知错误")
+                    logger.error("状态报告业务处理失败，taskRunId: %s，状态: %s，业务码: %d，错误信息: %s", 
+                               task_run_id, result.status, response_code, error_msg)
+                    raise Exception(f"业务处理失败: code={response_code}, message={error_msg}")
             else:
                 logger.error("状态报告发送失败，taskRunId: %s，状态: %s", task_run_id, result.status)
+                raise Exception("状态报告HTTP响应为空")
         except Exception as e:
             logger.error("状态报告发送异常，taskRunId: %s，状态: %s，错误: %s", 
                        task_run_id, result.status, str(e), exc_info=True)

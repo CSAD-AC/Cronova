@@ -51,7 +51,7 @@ class ScheduledJobBase(ABC):
     【使用说明】
 
     一、核心信息
-        - 请求方法：POST
+        - 请求方法：POST（任务回调）、GET（健康检查）
         - 请求头：X-Secret（密钥）、X-Request-Id（请求ID）
         - 请求体：可选 JSON
 
@@ -80,15 +80,13 @@ class ScheduledJobBase(ABC):
     【健康检查响应格式】
     {
         "code": 200,
-        "msg": "success",
+        "message": "操作成功",
         "data": {
             "status": "UP",
             "timestamp": "2024-01-19T10:30:00",
             "endpoint": "数据同步服务",
             "message": "服务正常"
-        },
-        "cost_millis": 5,
-        "request_id": "abc123def456"
+        }
     }
 
     【示例用法】
@@ -195,15 +193,13 @@ class ScheduledJobBase(ABC):
         【响应格式】
         {
             "code": 200,
-            "msg": "success",
+            "message": "操作成功",
             "data": {
                 "status": "UP",
                 "timestamp": "2024-01-19T10:30:00",
                 "endpoint": "数据同步服务",
                 "message": "服务正常"
-            },
-            "cost_millis": 5,
-            "request_id": "abc123def456"
+            }
         }
         """
         start_time = time.time()

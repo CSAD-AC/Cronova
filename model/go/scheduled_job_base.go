@@ -124,15 +124,13 @@ func Handle(base ScheduledJobBase, w http.ResponseWriter, r *http.Request) {
  * 【响应格式】
  * {
  *   "code": 200,
- *   "msg": "success",
+ *   "message": "操作成功",
  *   "data": {
  *     "status": "UP",
  *     "timestamp": "2024-01-19T10:30:00",
  *     "endpoint": "数据同步服务",
  *     "message": "服务正常"
- *   },
- *   "cost_millis": 5,
- *   "request_id": "abc123def456"
+ *   }
  * }
  *
  * 子类注册示例：

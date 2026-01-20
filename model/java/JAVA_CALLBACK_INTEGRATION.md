@@ -12,7 +12,9 @@
 
 ### 2.1 请求方法
 
-回调接口统一使用 **POST** 方法。
+回调接口使用不同的 HTTP 方法：
+- **任务回调接口**：POST 方法
+- **健康检查接口**：GET 方法
 
 ### 2.2 请求头说明
 
@@ -23,32 +25,97 @@
 
 **请求头示例**：
 ```http
-POST /api/callback/job HTTP/1.1
+POST /api/callback/data-sync HTTP/1.1
 Host: your-service.com
 X-Request-Id: abc123def456
 X-Secret: your-secret-key
 ```
 
-### 2.3 请求体说明
+### 2.3 响应规范
 
-回调接口**不需要请求体**，请求体为空。
+所有回调接口必须返回统一的 JSON 格式，包含 `code`、`message`、`data` 字段。详细响应示例请参见各接口说明：
+- 任务回调接口响应：见 [3.4 响应示例](#34-响应示例)
+- 健康检查接口响应：见 [4.3 响应示例](#43-响应示例)
 
-## 三、健康检查接口
+## 三、任务回调接口
 
 ### 3.1 接口说明
+
+任务回调接口是调度器触发任务执行时调用的主接口，用于接收调度器的执行请求并执行业务逻辑。
+
+**接口约定**：
+- **路径格式**：`<回调接口路径>`（无 `/job` 后缀）
+- **示例**：`/api/callback/data-sync`
+- **请求方法**：POST
+- **功能**：接收调度器任务执行请求，执行业务逻辑，返回执行结果
+
+### 3.2 请求示例
+
+```http
+POST /api/callback/data-sync HTTP/1.1
+Host: your-service.com
+X-Request-Id: task-exec-123456
+X-Secret: your-secret-key
+Content-Type: application/json
+
+{
+    "taskId": "task-001",
+    "taskRunId": "run-001",
+    "taskName": "数据同步任务",
+    "taskDescription": "同步H4A员工信息到ES",
+    "executeTime": "2026-01-20T10:00:00"
+}
+```
+
+### 3.3 请求体字段说明
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `taskId` | string | 任务定义ID |
+| `taskRunId` | string | 任务运行实例ID |
+| `taskName` | string | 任务名称 |
+| `taskDescription` | string | 任务描述（可选） |
+| `executeTime` | string | 任务执行时间（可选） |
+
+### 3.4 响应示例
+
+**成功**：
+```json
+{
+    "code": 200,
+    "message": "操作成功",
+    "data": {
+        "success": true,
+        "recordsProcessed": 100,
+        "durationMs": 1500
+    }
+}
+```
+
+**失败**：
+```json
+{
+    "code": 500,
+    "message": "执行失败: 数据库连接超时"
+}
+```
+
+## 四、健康检查接口
+
+### 4.1 接口说明
 
 健康检查接口用于验证回调服务是否正常运行，验证请求头（X-Secret 和 X-Request-Id）。
 
 **接口约定**：
 - **路径格式**：`<回调接口路径>/health`（强制约定）
 - **示例**：
-  - 回调接口：`/api/callback/data-sync/job`
+  - 回调接口：`/api/callback/data-sync`
   - 健康接口：`/api/callback/data-sync/health`
 - **请求方法**：GET
 - **功能**：仅验证 X-Secret 和 X-Request-Id 请求头，不执行业务逻辑
 - **要求**：健康接口和回调接口必须使用相同的 BaseUrl
 
-### 3.2 请求示例
+### 4.2 请求示例
 
 ```http
 GET /api/callback/data-sync/health HTTP/1.1
@@ -57,21 +124,19 @@ X-Request-Id: abc123def456
 X-Secret: your-secret-key
 ```
 
-### 3.3 响应示例
+### 4.3 响应示例
 
 **成功**：
 ```json
 {
     "code": 200,
-    "msg": "success",
+    "message": "操作成功",
     "data": {
+        "endpoint": "同步H4A员工信息服务",
+        "message": "服务正常",
         "status": "UP",
-        "timestamp": "2024-01-19T10:30:00",
-        "endpoint": "数据同步服务",
-        "message": "服务正常"
-    },
-    "costMillis": 5,
-    "requestId": "abc123def456"
+        "timestamp": "2026-01-20T10:03:24.462013500"
+    }
 }
 ```
 
@@ -79,9 +144,7 @@ X-Secret: your-secret-key
 ```json
 {
     "code": 401,
-    "msg": "密钥验证失败",
-    "data": null,
-    "requestId": "abc123def456"
+    "message": "密钥验证失败"
 }
 ```
 
@@ -89,12 +152,11 @@ X-Secret: your-secret-key
 ```json
 {
     "code": 400,
-    "msg": "缺少请求头 X-Request-Id",
-    "data": null
+    "message": "缺少请求头 X-Request-Id"
 }
 ```
 
-### 3.4 data 字段说明
+### 4.4 data 字段说明
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -103,53 +165,13 @@ X-Secret: your-secret-key
 | `endpoint` | string | 模块名称，如"数据同步服务"、"报表生成服务" |
 | `message` | string | 状态描述，固定为 "服务正常" |
 
-## 四、响应规范
+## 五、快速集成
 
-### 4.1 响应格式
-
-所有回调接口必须返回统一的 JSON 格式，包含以下字段：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `code` | int | 状态码，200 表示成功，其他值表示失败 |
-| `msg` | String | 状态消息 |
-| `data` | Object | 详细的执行结果，可包含任意结构 |
-| `costMillis` | long | 执行耗时（毫秒），可选 |
-| `requestId` | String | 请求 ID，用于日志追踪，可选 |
-
-**成功响应示例**：
-```json
-{
-    "code": 200,
-    "msg": "success",
-    "data": {
-        "recordsProcessed": 100,
-        "durationMs": 1500,
-        "status": "completed"
-    },
-    "costMillis": 1523,
-    "requestId": "abc123def456"
-}
-```
-
-**失败响应示例**：
-```json
-{
-    "code": 500,
-    "msg": "执行失败: 数据库连接超时",
-    "data": null,
-    "costMillis": 5000,
-    "requestId": "abc123def456"
-}
-```
-
-## 四、快速集成
-
-### 4.1 引入基类
+### 5.1 引入基类
 
 将 `ScheduledJobBase.java` 复制到你的项目中，该类提供了完整的回调处理框架。
 
-### 4.2 创建回调控制器
+### 5.2 创建回调控制器
 
 创建控制器类继承 `ScheduledJobBase`，并实现两个抽象方法：
 
@@ -221,15 +243,15 @@ public class DataSyncCallback extends ScheduledJobBase {
 }
 ```
 
-### 4.3 Result 类实现
+### 5.3 Result 类实现
 
-## 七、日志规范
+## 六、日志规范
 
-### 5.1 为什么要记录 RequestId
+### 6.1 为什么要记录 RequestId
 
 当出现问题需要排查时，通过 `X-Request-Id` 可以快速定位一次请求的所有日志。建议在所有日志中都带上 `requestId`。
 
-### 5.2 日志示例
+### 6.2 日志示例
 
 ```java
 @Slf4j
@@ -282,7 +304,7 @@ public class ExampleCallback extends ScheduledJobBase {
 }
 ```
 
-### 5.3 日志格式建议
+### 6.3 日志格式建议
 
 ```
 [2024-01-19 10:30:00.123] [INFO ] [abc123def456] - 任务开始执行
@@ -290,9 +312,9 @@ public class ExampleCallback extends ScheduledJobBase {
 [2024-01-19 10:30:02.000] [ERROR] [abc123def456] - 任务执行失败: 数据格式错误
 ```
 
-## 六、完整示例
+## 七、完整示例
 
-### 6.1 完整的回调控制器示例
+### 7.1 完整的回调控制器示例
 
 ```java
 package com.example.controller;
@@ -415,20 +437,20 @@ class DataSyncService {
 }
 ```
 
-### 6.2 配置说明
+### 7.2 配置说明
 
 在调度器管理界面配置回调时，需要填写以下信息：
 
 | 配置项 | 说明 | 示例值 |
 |--------|------|--------|
-| 回调URL | 回调接口地址 | `https://your-service.com/api/callback/data-sync/job` |
+| 回调URL | 回调接口地址 | `https://your-service.com/api/callback/data-sync` |
 | 回调方法 | HTTP 方法 | `POST` |
 | 密钥 | X-Secret 请求头的值 | `data-sync-secret-key-2026` |
 | 超时时间 | 请求超时时间（秒） | `30` |
 | 重试次数 | 失败后重试次数 | `3` |
 | 重试间隔 | 重试间隔时间（秒） | `60` |
 
-## 七、常见问题
+## 八、常见问题
 
 ### Q1: 密钥验证失败怎么办？
 
@@ -474,7 +496,7 @@ String requestId = request.getHeader("X-Request-Id");
 }
 ```
 
-## 八、最佳实践
+## 九、最佳实践
 
 1. **日志规范**：所有日志必须带上 `[requestId]` 前缀
 2. **异常处理**：捕获所有异常，记录错误日志，返回友好的错误信息

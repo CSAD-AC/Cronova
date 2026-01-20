@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * 定期调用CronTaskScheduler扫描和执行到期的定时任务
  */
 @Slf4j
-//@Component
+@Component
 public class ScheduledTaskRunnerTask {
 
     @Autowired

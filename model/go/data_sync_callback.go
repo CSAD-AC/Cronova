@@ -73,7 +73,7 @@ func (c *DataSyncCallback) RunJob(param map[string]interface{}) *Result {
 	startTime := time.Now()
 
 	// 执行同步逻辑
-	result := c.service.Sync()
+	result := c.executeSync()
 
 	durationMs := time.Since(startTime).Milliseconds()
 	fmt.Printf("[%s] 同步完成: %d 条记录，耗时: %dms\n",
@@ -82,23 +82,13 @@ func (c *DataSyncCallback) RunJob(param map[string]interface{}) *Result {
 	return Ok(result)
 }
 
-type DataSyncService struct {
-	rand *rand.Rand
-}
-
-func NewDataSyncService() *DataSyncService {
-	return &DataSyncService{
-		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
-}
-
-func (s *DataSyncService) Sync() *DataSyncResult {
+func (c *DataSyncCallback) executeSync() *DataSyncResult {
 	startTime := time.Now()
 
 	// 模拟耗时操作
-	time.Sleep(time.Duration(1000+s.rand.Intn(2000)) * time.Millisecond)
+	time.Sleep(time.Duration(1000+c.rand.Intn(2000)) * time.Millisecond)
 
-	records := 100 + s.rand.Intn(900)
+	records := 100 + c.rand.Intn(900)
 
 	return &DataSyncResult{
 		RecordsProcessed: records,

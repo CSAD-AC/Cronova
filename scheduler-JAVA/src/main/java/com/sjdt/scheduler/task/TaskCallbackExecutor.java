@@ -624,9 +624,6 @@ public class TaskCallbackExecutor {
             Map<String, Object> callbackData = buildCallbackJobData(message);
 
             requestPath = minioStorageUtil.storeRequestData(requestId, requestHeaders, callbackData);
-            if (requestPath != null) {
-                log.info("请求数据已存储到MinIO，路径: {}", requestPath);
-            }
 
             executeCallbackHttpRequest(message, requestId, requestHeaders, callbackData, runRecord, requestPath, startTime);
 

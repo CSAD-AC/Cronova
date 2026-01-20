@@ -63,7 +63,7 @@ public class CronTaskScheduler {
     private static final ZoneId ZONE_ID = ZoneId.of("Asia/Shanghai");
 
     public CronTaskScheduler() {
-        CronDefinition cronDefinition = CronDefinitionBuilder.instanceDefinitionFor(CronType.UNIX);
+        CronDefinition cronDefinition = CronDefinitionBuilder.instanceDefinitionFor(CronType.QUARTZ);
         this.cronParser = new CronParser(cronDefinition);
     }
 
