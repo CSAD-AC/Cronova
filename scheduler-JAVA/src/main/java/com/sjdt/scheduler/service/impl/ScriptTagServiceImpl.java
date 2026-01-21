@@ -4,8 +4,11 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.po.ScriptTag;
 import com.sjdt.scheduler.mapper.ScriptTagMapper;
+import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.IScriptTagService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,6 +19,10 @@ import java.util.List;
 @Service
 @Slf4j
 public class ScriptTagServiceImpl extends ServiceImpl<ScriptTagMapper, ScriptTag> implements IScriptTagService {
+    
+    @Autowired
+    @Lazy
+    private IScriptService scriptService;
     
     @Override
     public Result<List<Integer>> getTagIdsByScriptId(String scriptId) {
@@ -32,24 +39,28 @@ public class ScriptTagServiceImpl extends ServiceImpl<ScriptTagMapper, ScriptTag
     @Override
     public Result<Void> addTagToScript(String scriptId, Integer tagId) {
         this.baseMapper.addTagToScript(scriptId, tagId);
+        scriptService.clearCache(scriptId);
         return Result.success();
     }
     
     @Override
     public Result<Void> batchAddTagsToScript(String scriptId, List<Integer> tagIds) {
         this.baseMapper.batchAddTagsToScript(scriptId, tagIds);
+        scriptService.clearCache(scriptId);
         return Result.success();
     }
     
     @Override
     public Result<Void> removeTagFromScript(String scriptId, Integer tagId) {
         this.baseMapper.removeTagFromScript(scriptId, tagId);
+        scriptService.clearCache(scriptId);
         return Result.success();
     }
     
     @Override
     public Result<Void> clearTagsFromScript(String scriptId) {
         this.baseMapper.clearTagsFromScript(scriptId);
+        scriptService.clearCache(scriptId);
         return Result.success();
     }
 }

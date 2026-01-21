@@ -1,6 +1,7 @@
 package com.sjdt.scheduler.mapper;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
@@ -38,6 +39,7 @@ class CallbackJobRunMapperTest {
         Task task = Task.builder()
                 .name("测试任务-" + UUID.randomUUID().toString().substring(0, 8))
                 .scriptType(ScriptType.python)
+                .executeType(ExecuteType.script)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())

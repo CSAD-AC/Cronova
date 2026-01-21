@@ -13,6 +13,8 @@ import java.io.IOException;
  */
 public interface IScriptService extends IService<Script> {
 
+    void clearCache(String scriptId);
+
     /**
      * 上传脚本文件到MinIO
      * @param file 脚本文件

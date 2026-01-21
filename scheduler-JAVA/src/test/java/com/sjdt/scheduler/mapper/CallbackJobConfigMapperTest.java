@@ -1,6 +1,7 @@
 package com.sjdt.scheduler.mapper;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
@@ -36,6 +37,7 @@ class CallbackJobConfigMapperTest {
         Task task = Task.builder()
                 .name("测试任务-" + UUID.randomUUID().toString().substring(0, 8))
                 .scriptType(ScriptType.python)
+                .executeType(ExecuteType.script)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -77,6 +79,7 @@ class CallbackJobConfigMapperTest {
         Task task = Task.builder()
                 .name("测试任务-task-" + UUID.randomUUID().toString().substring(0, 8))
                 .scriptType(ScriptType.python)
+                .executeType(ExecuteType.script)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -113,6 +116,7 @@ class CallbackJobConfigMapperTest {
         Task task = Task.builder()
                 .name("测试任务-update-" + UUID.randomUUID().toString().substring(0, 8))
                 .scriptType(ScriptType.python)
+                .executeType(ExecuteType.script)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -155,6 +159,7 @@ class CallbackJobConfigMapperTest {
         Task task = Task.builder()
                 .name("测试任务-delete-" + UUID.randomUUID().toString().substring(0, 8))
                 .scriptType(ScriptType.python)
+                .executeType(ExecuteType.script)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -192,6 +197,7 @@ class CallbackJobConfigMapperTest {
         Task task = Task.builder()
                 .name("测试任务-stats-" + UUID.randomUUID().toString().substring(0, 8))
                 .scriptType(ScriptType.python)
+                .executeType(ExecuteType.script)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())

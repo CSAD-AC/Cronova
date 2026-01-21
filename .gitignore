@@ -1,6 +1,11 @@
 ### 本地测试使用文件 ###
 minio.exe
 frpc/
+Vue/
+*.rar
+test-flask.py
+test.py
+**/__pycache__/
 
 HELP.md
 target/

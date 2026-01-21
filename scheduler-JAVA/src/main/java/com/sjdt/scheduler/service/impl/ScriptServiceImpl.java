@@ -4,8 +4,11 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.po.Script;
+import com.sjdt.scheduler.domain.po.Tag;
 import com.sjdt.scheduler.domain.vo.ScriptVO;
 import com.sjdt.scheduler.mapper.ScriptMapper;
+import com.sjdt.scheduler.mapper.ScriptTagMapper;
+import com.sjdt.scheduler.mapper.TagMapper;
 import com.sjdt.scheduler.service.IScriptService;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
@@ -22,7 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -46,6 +49,12 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private TagMapper tagMapper;
+
+    @Autowired
+    private ScriptTagMapper scriptTagMapper;
+
     @Override
     public Script getById(Serializable id) {
         String cacheKey = RedisKey.SCRIPT_CACHE + ":" + id;
@@ -62,9 +71,22 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
         log.info("脚本信息缓存未命中，从数据库加载并同步至缓存 | ScriptID: {}", id);
         Script script = super.getById(id);
         if (script != null) {
+            // 填充标签信息
+            List<Integer> tagIds = scriptTagMapper.selectTagIdsByScriptId(script.getId());
+            if (tagIds != null && !tagIds.isEmpty()) {
+                List<Tag> tags = tagMapper.selectBatchIds(tagIds);
+                script.setTags(new java.util.HashSet<>(tags));
+            }
+            
             redisTemplate.opsForValue().set(cacheKey, script, 30, TimeUnit.MINUTES);
         }
         return script;
+    }
+
+    @Override
+    public void clearCache(String scriptId) {
+        log.info("手动清理脚本缓存 | ScriptID: {}", scriptId);
+        redisTemplate.delete(RedisKey.SCRIPT_CACHE + ":" + scriptId);
     }
 
     @Override

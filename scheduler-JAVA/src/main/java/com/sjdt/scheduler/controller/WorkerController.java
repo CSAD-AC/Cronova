@@ -175,10 +175,26 @@ public class WorkerController {
     public Result<Void> heartbeat(@PathVariable String workerId) {
         log.debug("收到Worker心跳请求 | WorkerID: {}", workerId);
         
-        // 写入 Redis 存活键，设置 30 秒过期时间
-        redisTemplate.opsForValue().set(RedisKey.getWorkerHeartbeatKey(workerId), "online", 30, TimeUnit.SECONDS);
+        String heartbeatKey = RedisKey.getWorkerHeartbeatKey(workerId);
         
-        // 同时更新 Redis Hash 中的最后心跳时间，用于下线时同步回数据库
+        // 1. 检查 Redis 中是否存在心跳键
+        // 如果不存在，说明 Worker 可能是新启动或从离线状态恢复
+        if (Boolean.FALSE.equals(redisTemplate.hasKey(heartbeatKey))) {
+            log.info("检测到心跳键缺失，尝试激活 Worker 状态为在线 | WorkerID: {}", workerId);
+            Worker worker = workerMapper.selectById(workerId);
+            if (worker != null && worker.getStatus() != WorkerStatus.online) {
+                worker.setStatus(WorkerStatus.online);
+                worker.setLastHeartbeat(LocalDateTime.now());
+                worker.setUpdateTime(LocalDateTime.now());
+                workerMapper.updateById(worker);
+                log.info("Worker 状态已通过心跳实时激活为在线 | WorkerID: {}", workerId);
+            }
+        }
+
+        // 2. 写入/刷新 Redis 存活键
+        redisTemplate.opsForValue().set(heartbeatKey, "online", 30, TimeUnit.SECONDS);
+        
+        // 3. 同时更新 Redis Hash 中的最后心跳时间
         String infoKey = RedisKey.getWorkerInfoKey(workerId);
         redisTemplate.opsForHash().put(infoKey, "lastHeartbeat", LocalDateTime.now().toString());
         
