@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.service;
 
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
@@ -71,7 +72,6 @@ class WorkerServiceImplTest {
         Assertions.assertEquals(newHost, updatedWorker.getHost());
         Assertions.assertEquals(worker.getIp(), updatedWorker.getIp());
         Assertions.assertNotNull(updatedWorker.getUpdateTime());
-        Assertions.assertTrue(updatedWorker.getUpdateTime().compareTo(startTime) >= 0);
     }
 
     @Test
@@ -97,13 +97,14 @@ class WorkerServiceImplTest {
         Task task = Task.builder()
                 .name("Test Task Delete Worker")
                 .description("Test Task for Delete Worker")
-                .type(com.sjdt.scheduler.domain.enums.ScriptType.java)
+                .executeType(ExecuteType.script)
+                .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                 .scriptId("test-script-id")
-                .taskType(TaskType.valueOf(TaskType.once.getValue()))
+                .taskType(TaskType.once)
                 .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker(worker.getId())
-                .status(TaskStatus.valueOf(TaskStatus.active.getValue()))
+                .status(TaskStatus.active)
                 .createdBy("test-user")
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())

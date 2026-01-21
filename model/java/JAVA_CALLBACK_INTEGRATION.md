@@ -2,7 +2,7 @@
 
 ## 一、概述
 
-本文档指导 Java 项目如何对接任务调度器的回调功能。当任务执行完成后，调度器会向配置的回调 URL 发送 HTTP 请求，接收方需要：
+本文档指导 Java 项目如何对接任务调度器的回调功能。当调度器定时检测到所设置的定时任务后，调度器会向配置的回调 URL 发送 HTTP 请求，接收方需要：
 
 1. **校验请求头**：验证 `X-Secret` 密钥和 `X-Request-Id` 请求 ID
 2. **执行业务逻辑**：执行定时任务的实际逻辑
@@ -44,7 +44,7 @@ X-Secret: your-secret-key
 任务回调接口是调度器触发任务执行时调用的主接口，用于接收调度器的执行请求并执行业务逻辑。
 
 **接口约定**：
-- **路径格式**：`<回调接口路径>`（无 `/job` 后缀）
+- **路径格式**：`<回调接口路径>`
 - **示例**：`/api/callback/data-sync`
 - **请求方法**：POST
 - **功能**：接收调度器任务执行请求，执行业务逻辑，返回执行结果
@@ -58,26 +58,10 @@ X-Request-Id: task-exec-123456
 X-Secret: your-secret-key
 Content-Type: application/json
 
-{
-    "taskId": "task-001",
-    "taskRunId": "run-001",
-    "taskName": "数据同步任务",
-    "taskDescription": "同步H4A员工信息到ES",
-    "executeTime": "2026-01-20T10:00:00"
-}
 ```
 
-### 3.3 请求体字段说明
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `taskId` | string | 任务定义ID |
-| `taskRunId` | string | 任务运行实例ID |
-| `taskName` | string | 任务名称 |
-| `taskDescription` | string | 任务描述（可选） |
-| `executeTime` | string | 任务执行时间（可选） |
-
-### 3.4 响应示例
+### 3.3 响应示例
 
 **成功**：
 ```json
@@ -85,6 +69,7 @@ Content-Type: application/json
     "code": 200,
     "message": "操作成功",
     "data": {
+        [data内容可自行设计]
         "success": true,
         "recordsProcessed": 100,
         "durationMs": 1500
@@ -134,7 +119,7 @@ X-Secret: your-secret-key
     "data": {
         "endpoint": "同步H4A员工信息服务",
         "message": "服务正常",
-        "status": "UP",
+        "status": "UP",    * 核心, 固定为 "UP" *
         "timestamp": "2026-01-20T10:03:24.462013500"
     }
 }
@@ -444,7 +429,6 @@ class DataSyncService {
 | 配置项 | 说明 | 示例值 |
 |--------|------|--------|
 | 回调URL | 回调接口地址 | `https://your-service.com/api/callback/data-sync` |
-| 回调方法 | HTTP 方法 | `POST` |
 | 密钥 | X-Secret 请求头的值 | `data-sync-secret-key-2026` |
 | 超时时间 | 请求超时时间（秒） | `30` |
 | 重试次数 | 失败后重试次数 | `3` |

@@ -93,16 +93,4 @@ public interface ICallbackJobRunService extends IService<CallbackJobRun> {
      * @return 删除的记录数
      */
     int deleteByTaskId(String taskId);
-
-    /**
-     * 查询测试回调记录
-     *
-     * @param taskId 任务ID（可选）
-     * @param configId 配置ID（可选）
-     * @param pageNum 页码
-     * @param pageSize 每页大小
-     * @return 测试回调分页记录
-     */
-    com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.sjdt.scheduler.domain.vo.CallbackJobRunVO> getTestRuns(
-        String taskId, String configId, int pageNum, int pageSize);
 }

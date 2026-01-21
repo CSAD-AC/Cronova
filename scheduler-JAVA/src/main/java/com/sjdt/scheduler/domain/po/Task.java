@@ -49,6 +49,7 @@ public class Task implements Serializable {
     private ExecuteType executeType;
 
     /** 脚本类型：java/python/go（script类型必填） */
+    @TableField(value = "script_type")
     private ScriptType scriptType;
 
     /** 脚本id（脚本执行类型必填） */
@@ -90,6 +91,6 @@ public class Task implements Serializable {
     private LocalDateTime createTime;
 
     /** 更新时间 */
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    @JsonFormat(pattern = "yyyy-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime updateTime;
 }

@@ -35,7 +35,7 @@ class CallbackJobConfigMapperTest {
         // 1. 先创建真实的Task记录
         Task task = Task.builder()
                 .name("测试任务-" + UUID.randomUUID().toString().substring(0, 8))
-                .type(ScriptType.python)
+                .scriptType(ScriptType.python)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -76,7 +76,7 @@ class CallbackJobConfigMapperTest {
         // 1. 先创建真实的Task记录
         Task task = Task.builder()
                 .name("测试任务-task-" + UUID.randomUUID().toString().substring(0, 8))
-                .type(ScriptType.python)
+                .scriptType(ScriptType.python)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -112,7 +112,7 @@ class CallbackJobConfigMapperTest {
         // 1. 先创建真实的Task记录
         Task task = Task.builder()
                 .name("测试任务-update-" + UUID.randomUUID().toString().substring(0, 8))
-                .type(ScriptType.python)
+                .scriptType(ScriptType.python)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -154,7 +154,7 @@ class CallbackJobConfigMapperTest {
         // 1. 先创建真实的Task记录
         Task task = Task.builder()
                 .name("测试任务-delete-" + UUID.randomUUID().toString().substring(0, 8))
-                .type(ScriptType.python)
+                .scriptType(ScriptType.python)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())
@@ -191,7 +191,7 @@ class CallbackJobConfigMapperTest {
         // 1. 先创建真实的Task记录
         Task task = Task.builder()
                 .name("测试任务-stats-" + UUID.randomUUID().toString().substring(0, 8))
-                .type(ScriptType.python)
+                .scriptType(ScriptType.python)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())

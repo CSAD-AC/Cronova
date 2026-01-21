@@ -37,7 +37,7 @@ class CallbackJobRunMapperTest {
     private Task createTestTask() {
         Task task = Task.builder()
                 .name("测试任务-" + UUID.randomUUID().toString().substring(0, 8))
-                .type(ScriptType.python)
+                .scriptType(ScriptType.python)
                 .taskType(TaskType.once)
                 .status(TaskStatus.active)
                 .createTime(LocalDateTime.now())

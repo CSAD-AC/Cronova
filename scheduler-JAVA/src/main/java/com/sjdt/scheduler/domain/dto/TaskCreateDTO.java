@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import lombok.Builder;
 import lombok.Data;
 
 
@@ -14,6 +15,7 @@ import lombok.Data;
  * 任务创建请求DTO
  */
 @Data
+@Builder
 @Schema(description = "任务创建请求DTO")
 public class TaskCreateDTO {
 

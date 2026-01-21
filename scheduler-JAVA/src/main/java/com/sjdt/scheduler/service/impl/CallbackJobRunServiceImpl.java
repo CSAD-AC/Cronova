@@ -240,34 +240,6 @@ public class CallbackJobRunServiceImpl extends ServiceImpl<CallbackJobRunMapper,
         );
     }
 
-    @Override
-    public Page<CallbackJobRunVO> getTestRuns(String taskId, String configId, int pageNum, int pageSize) {
-        Page<CallbackJobRun> page = new Page<>(pageNum, pageSize);
-
-        LambdaQueryWrapper<CallbackJobRun> wrapper = new LambdaQueryWrapper<>();
-
-        // 筛选测试回调（retryIndex = -1）
-        wrapper.eq(CallbackJobRun::getRetryIndex, -1);
-
-        if (taskId != null && !taskId.isEmpty()) {
-            wrapper.eq(CallbackJobRun::getTaskId, taskId);
-        }
-        if (configId != null && !configId.isEmpty()) {
-            wrapper.eq(CallbackJobRun::getConfigId, configId);
-        }
-
-        wrapper.orderByDesc(CallbackJobRun::getCreateTime);
-
-        Page<CallbackJobRun> resultPage = callbackJobRunMapper.selectPage(page, wrapper);
-
-        Page<CallbackJobRunVO> voPage = new Page<>(pageNum, pageSize, resultPage.getTotal());
-        voPage.setRecords(resultPage.getRecords().stream()
-                .map(this::convertToVO)
-                .collect(Collectors.toList()));
-
-        return voPage;
-    }
-
     /**
      * 构建查询条件
      */

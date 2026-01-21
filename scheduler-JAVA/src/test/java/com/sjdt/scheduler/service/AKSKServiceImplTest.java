@@ -54,7 +54,7 @@ class AKSKServiceImplTest {
         cn.hutool.crypto.digest.HMac hMac = new cn.hutool.crypto.digest.HMac(
                 cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, 
                 aksk.getSecretKey().getBytes());
-        String signature = hMac.digestHex(timestamp + "\n" + requestBody);
+        String signature = hMac.digestHex(timestamp);
 
         // 验证有效的AKSK
         boolean isValid = akskService.validateAKSK(

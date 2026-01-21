@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.service;
 
+import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
 import com.sjdt.scheduler.domain.po.Script;
@@ -43,7 +44,8 @@ class TaskServiceImplTest {
             Task task = Task.builder()
                     .name("Test Task " + i)
                     .description("Test Task Description " + i)
-                    .type(com.sjdt.scheduler.domain.enums.ScriptType.java)
+                    .executeType(ExecuteType.script)
+                    .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                     .scriptId("test-script-id")
                     .taskType(TaskType.valueOf(TaskType.once.getValue()))
                     .enabled(true)
@@ -61,7 +63,8 @@ class TaskServiceImplTest {
         Task nonAssociatedTask = Task.builder()
                 .name("Test Non-Associated Task")
                 .description("Test Non-Associated Task Description")
-                .type(com.sjdt.scheduler.domain.enums.ScriptType.python)
+                .executeType(ExecuteType.script)
+                .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.python)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.cron.getValue()))
                 .cronExpr("0 0 * * *")
@@ -99,7 +102,8 @@ class TaskServiceImplTest {
         Task task = Task.builder()
                 .name("Test Save Task")
                 .description("Test Save Task Description")
-                .type(com.sjdt.scheduler.domain.enums.ScriptType.go)
+                .executeType(ExecuteType.script)
+                .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.go)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.once.getValue()))
                 .enabled(true)
@@ -120,7 +124,7 @@ class TaskServiceImplTest {
         Task foundTask = taskService.getById(task.getId());
         Assertions.assertNotNull(foundTask, "根据ID查询任务失败");
         Assertions.assertEquals(task.getName(), foundTask.getName());
-        Assertions.assertEquals(task.getType(), foundTask.getType());
+        Assertions.assertEquals(task.getScriptType(), foundTask.getScriptType());
         Assertions.assertEquals(task.getTargetWorker(), foundTask.getTargetWorker());
     }
 
@@ -141,7 +145,8 @@ class TaskServiceImplTest {
                 .id("test-task-id")
                 .name("Test Public Task")
                 .description("Test Public Task Description")
-                .type(com.sjdt.scheduler.domain.enums.ScriptType.java)
+                .executeType(ExecuteType.script)
+                .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.once.getValue()))
                 .enabled(true)
@@ -181,8 +186,9 @@ class TaskServiceImplTest {
         Task task = Task.builder()
                 .id("test-task-id")
                 .name("Test Target Task")
+                .executeType(ExecuteType.script)
                 .description("Test Target Task Description")
-                .type(com.sjdt.scheduler.domain.enums.ScriptType.python)
+                .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.python)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.once.getValue()))
                 .enabled(true)
@@ -224,7 +230,8 @@ class TaskServiceImplTest {
                 .id("test-task-id")
                 .name("Test Cron Task")
                 .description("Test Cron Task Description")
-                .type(com.sjdt.scheduler.domain.enums.ScriptType.java)
+                .executeType(ExecuteType.script)
+                .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.cron.getValue()))
                 .cronExpr("0 0 * * *") // Cron表达式
