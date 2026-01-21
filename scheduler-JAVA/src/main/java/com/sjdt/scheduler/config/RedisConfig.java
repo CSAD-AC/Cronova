@@ -27,16 +27,16 @@ public class RedisConfig {
 
     @Bean
     public ObjectMapper redisObjectMapper() {
-
         PolymorphicTypeValidator ptv =
                 BasicPolymorphicTypeValidator.builder()
                         .allowIfBaseType(Object.class)
+                        .allowIfSubType("com.sjdt.scheduler.")
                         .build();
 
         return JsonMapper.builder()
                 .activateDefaultTyping(
                         ptv,
-                        ObjectMapper.DefaultTyping.NON_FINAL
+                        ObjectMapper.DefaultTyping.EVERYTHING
                 )
                 .addModule(new JavaTimeModule())
                 .build();

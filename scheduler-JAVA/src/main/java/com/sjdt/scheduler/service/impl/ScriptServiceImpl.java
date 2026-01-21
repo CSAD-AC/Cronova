@@ -1,6 +1,8 @@
 package com.sjdt.scheduler.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.po.Script;
 import com.sjdt.scheduler.domain.vo.ScriptVO;
 import com.sjdt.scheduler.mapper.ScriptMapper;
@@ -11,18 +13,23 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 脚本服务实现类
  */
+@Slf4j
 @Service
 public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> implements IScriptService {
 
@@ -32,6 +39,47 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
 
     @Autowired
     private MinioClient minioClient;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Override
+    public Script getById(Serializable id) {
+        String cacheKey = RedisKey.SCRIPT_CACHE + ":" + id;
+        try {
+            Object cachedData = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedData != null) {
+                log.debug("从Redis获取脚本信息（缓存命中）| ScriptID: {}", id);
+                return objectMapper.convertValue(cachedData, Script.class);
+            }
+        } catch (Exception e) {
+            log.warn("从Redis加载脚本缓存失败 | ScriptID: {}", id, e);
+        }
+
+        log.info("脚本信息缓存未命中，从数据库加载并同步至缓存 | ScriptID: {}", id);
+        Script script = super.getById(id);
+        if (script != null) {
+            redisTemplate.opsForValue().set(cacheKey, script, 30, TimeUnit.MINUTES);
+        }
+        return script;
+    }
+
+    @Override
+    public boolean updateById(Script entity) {
+        log.info("脚本信息更新，清理缓存 | ScriptID: {}", entity.getId());
+        redisTemplate.delete(RedisKey.SCRIPT_CACHE + ":" + entity.getId());
+        return super.updateById(entity);
+    }
+
+    @Override
+    public boolean removeById(Serializable id) {
+        log.info("脚本删除，清理缓存 | ScriptID: {}", id);
+        redisTemplate.delete(RedisKey.SCRIPT_CACHE + ":" + id);
+        return super.removeById(id);
+    }
 
     @Override
     public ScriptVO uploadScript(MultipartFile file) {

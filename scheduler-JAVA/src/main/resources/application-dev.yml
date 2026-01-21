@@ -47,8 +47,8 @@ minio:
   endpoint: http://127.0.0.1:9000
   accessKey: changeme
   secretKey: changeme
-  bucket-name-scripts: task-scripts
-  bucket-name: callback-log
+  bucket-name-scripts: task-engine
+  bucket-name: task-engine
 
 
 # 定时任务配置（开发环境覆盖）

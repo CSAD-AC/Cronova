@@ -1,10 +1,12 @@
 package com.sjdt.scheduler.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.dto.CallbackJobConfigCreateDTO;
 import com.sjdt.scheduler.domain.dto.TaskCreateDTO;
 import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
+import com.sjdt.scheduler.domain.enums.TaskType;
 import com.sjdt.scheduler.domain.message.TaskExecuteMessage;
 import com.sjdt.scheduler.domain.po.CallbackJobConfig;
 import com.sjdt.scheduler.domain.po.Script;
@@ -22,10 +24,13 @@ import com.sjdt.scheduler.task.TaskCallbackExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Task Service 实现类
@@ -56,6 +61,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     /** 回调任务执行器 */
     private final TaskCallbackExecutor taskCallbackExecutor;
 
+    private final RedisTemplate<String, Object> redisTemplate;
+
     @Autowired
     public TaskServiceImpl(TaskProducerService taskProducerService,
                           IScriptService scriptService,
@@ -63,7 +70,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                           TaskRunMapper taskRunMapper,
                           CallbackJobConfigMapper callbackJobConfigMapper,
                           ICallbackJobConfigService callbackJobConfigService,
-                          TaskCallbackExecutor taskCallbackExecutor) {
+                          TaskCallbackExecutor taskCallbackExecutor,
+                          RedisTemplate<String, Object> redisTemplate) {
         this.taskProducerService = taskProducerService;
         this.scriptService = scriptService;
         this.scriptMapper = scriptMapper;
@@ -71,6 +79,29 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         this.callbackJobConfigMapper = callbackJobConfigMapper;
         this.callbackJobConfigService = callbackJobConfigService;
         this.taskCallbackExecutor = taskCallbackExecutor;
+        this.redisTemplate = redisTemplate;
+    }
+
+    /**
+     * 启动时清理任务缓存，防止由于序列化格式变更导致的 ClassCastException
+     */
+    @PostConstruct
+    public void init() {
+        log.info("系统启动，清理任务活跃状态缓存以防止序列化异常");
+        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
+    }
+
+    /**
+     * 获取所有活跃的定时任务
+     */
+    @Override
+    public List<Task> listActiveCronTasks() {
+        return this.list(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
+                .eq(Task::getTaskType, TaskType.cron)
+                .eq(Task::getEnabled, true)
+                .eq(Task::getStatus, com.sjdt.scheduler.domain.enums.TaskStatus.active)
+        );
     }
 
     /**
@@ -80,6 +111,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      */
     @Override
     public void updateTargetWorkerToNullByWorkerId(String workerId) {
+        log.info("Worker离线，批量清理关联任务的TargetWorker并失效任务缓存 | WorkerID: {}", workerId);
+        // 清理 Redis 缓存（手动清理）
+        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
+        
         this.lambdaUpdate()
                 .eq(Task::getTargetWorker, workerId)
                 .set(Task::getTargetWorker, null)
@@ -93,9 +128,13 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @param taskCreateDTO 任务创建DTO
      * @return 创建的任务ID
      */
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public String createTask(TaskCreateDTO taskCreateDTO) {
         log.info("开始创建任务，任务名称：{}", taskCreateDTO.getName());
+        
+        // 清理缓存
+        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
 
         Task task = buildTaskFromDTO(taskCreateDTO);
         this.save(task);
@@ -106,6 +145,18 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         }
 
         return task.getId();
+    }
+
+    @Override
+    public boolean updateById(Task entity) {
+        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
+        return super.updateById(entity);
+    }
+
+    @Override
+    public boolean removeById(java.io.Serializable id) {
+        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
+        return super.removeById(id);
     }
 
     /**
@@ -188,7 +239,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @param task 任务对象
      */
     private void publishScriptTask(Task task) {
-        Script script = scriptMapper.selectById(task.getScriptId());
+        Script script = scriptService.getById(task.getScriptId());
         if (script == null) {
             throw new IllegalArgumentException("Script not found with id: " + task.getScriptId());
         }

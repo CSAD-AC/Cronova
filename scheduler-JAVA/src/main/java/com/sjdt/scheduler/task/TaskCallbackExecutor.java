@@ -49,6 +49,62 @@ public class TaskCallbackExecutor {
     }
 
     /**
+     * 执行测试回调（由测试控制器调用）
+     * 直接执行真实的回调流程，但标记为测试
+     *
+     * @param configId 回调配置ID
+     * @param taskResult 模拟的任务执行结果
+     * @return 执行记录ID
+     */
+    public String executeTestCallback(String configId, String taskResult) {
+        CallbackJobConfig config = callbackJobConfigMapper.selectById(configId);
+        if (config == null) {
+            throw new IllegalArgumentException("回调配置不存在，配置ID: " + configId);
+        }
+
+        String testTaskRunId = "TEST-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        
+        CallbackJobExecuteMessage message = CallbackJobExecuteMessage.builder()
+            .taskId(config.getTaskId())
+            .taskRunId(testTaskRunId)
+            .configId(config.getId())
+            .callbackUrl(config.getCallbackUrl())
+            .callbackMethod(config.getCallbackMethod())
+            .secretKey(config.getSecretKey())
+            .timeoutSeconds(config.getTimeoutSeconds())
+            .retryCount(0) // 测试不进行自动重试
+            .retryIntervalSeconds(0)
+            .taskResult(taskResult)
+            .triggerTime(LocalDateTime.now())
+            .build();
+
+        // 这里我们不能直接调用 executeCallbackJob，因为我们需要返回 runRecord 的 ID
+        // 而且 executeCallbackJob 内部会创建记录
+        
+        // 为了复用逻辑，我们手动执行部分流程
+        log.info("开始执行测试回调，配置ID: {}, URL: {}", configId, config.getCallbackUrl());
+        
+        CallbackJobRun runRecord = createCallbackRunRecord(message);
+        // 标记为测试
+        runRecord.setRetryIndex(-1); 
+        callbackJobRunMapper.insert(runRecord);
+        
+        String requestId = runRecord.getRequestId();
+        Map<String, String> requestHeaders = buildRequestHeaders(requestId, message.getSecretKey());
+        Map<String, Object> callbackData = buildCallbackJobData(message);
+        
+        try {
+            String requestPath = minioStorageUtil.storeRequestData(requestId, requestHeaders, callbackData);
+            executeCallbackHttpRequest(message, requestId, requestHeaders, callbackData, runRecord, requestPath, System.currentTimeMillis());
+            return runRecord.getId();
+        } catch (Exception e) {
+            log.error("测试回调执行异常", e);
+            updateCallbackRunRecordOnError(runRecord, requestId, e.getMessage(), System.currentTimeMillis());
+            return runRecord.getId();
+        }
+    }
+
+    /**
      * 执行HTTP回调任务
      * 由调度器调用，执行配置的HTTP回调请求
      *

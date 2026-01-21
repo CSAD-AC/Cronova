@@ -6,6 +6,9 @@ import com.cronutils.model.definition.CronDefinition;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
@@ -19,6 +22,7 @@ import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.TaskProducerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -26,6 +30,9 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+import com.sjdt.scheduler.service.ITaskService;
 
 /**
  * 定时任务调度器
@@ -39,7 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CronTaskScheduler {
 
     @Autowired
-    private TaskMapper taskMapper;
+    private ITaskService taskService;
 
     @Autowired
     private TaskRunMapper taskRunMapper;
@@ -55,6 +62,12 @@ public class CronTaskScheduler {
 
     @Autowired
     private ScriptMapper scriptMapper;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private final CronParser cronParser;
 
@@ -76,14 +89,27 @@ public class CronTaskScheduler {
         LocalDateTime now = LocalDateTime.now();
 
         try {
-            List<Task> cronTasks = taskMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
-                    .eq(Task::getTaskType, TaskType.cron)
-                    .eq(Task::getEnabled, true)
-                    .eq(Task::getStatus, com.sjdt.scheduler.domain.enums.TaskStatus.active)
-            );
+            // 实现手动缓存逻辑
+            List<Task> cronTasks = null;
+            String cacheKey = RedisKey.TASK_ACTIVE_CACHE;
+            
+            try {
+                Object cachedData = redisTemplate.opsForValue().get(cacheKey);
+                if (cachedData != null) {
+                    // 手动反序列化，确保 List 中的对象类型正确
+                    cronTasks = objectMapper.convertValue(cachedData, new TypeReference<List<Task>>() {});
+                    log.info("从 Redis 缓存获取到 {} 个活跃任务", cronTasks.size());
+                }
+            } catch (Exception e) {
+                log.warn("从Redis加载任务缓存失败，将穿透至数据库", e);
+            }
 
-            log.info("找到{}个启用的Cron任务", cronTasks.size());
+            if (cronTasks == null) {
+                cronTasks = taskService.listActiveCronTasks();
+                log.info("从数据库加载了 {} 个活跃任务 (缓存未命中)", cronTasks.size());
+                // 存入 Redis，设置 30 分钟过期
+                redisTemplate.opsForValue().set(cacheKey, cronTasks, 30, TimeUnit.MINUTES);
+            }
 
             int executeCount = 0;
             for (Task task : cronTasks) {

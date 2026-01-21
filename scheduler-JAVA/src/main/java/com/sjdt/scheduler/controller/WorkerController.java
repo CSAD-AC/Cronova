@@ -20,6 +20,9 @@ import com.sjdt.scheduler.mapper.WorkerTagMapper;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskResultMessage;
 import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.common.RedisKey;
+import org.springframework.data.redis.core.RedisTemplate;
+import java.util.concurrent.TimeUnit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -29,6 +32,10 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+
+import com.sjdt.scheduler.common.RedisKey;
+import org.springframework.data.redis.core.RedisTemplate;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Worker控制器
@@ -48,10 +55,11 @@ public class WorkerController {
     private final TaskRunMapper taskRunMapper;
     private final TaskLogMapper taskLogMapper;
     private final ITaskService taskService;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper, 
                            TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, 
-                           ITaskService taskService) {
+                           ITaskService taskService, RedisTemplate<String, Object> redisTemplate) {
         this.workerMapper = workerMapper;
         this.akskMapper = akskMapper;
         this.workerTagMapper = workerTagMapper;
@@ -59,6 +67,7 @@ public class WorkerController {
         this.taskRunMapper = taskRunMapper;
         this.taskLogMapper = taskLogMapper;
         this.taskService = taskService;
+        this.redisTemplate = redisTemplate;
     }
 
     /**
@@ -164,19 +173,15 @@ public class WorkerController {
     @PostMapping("/heartbeat/{workerId}")
     @Operation(summary = "Worker心跳", description = "Worker执行器定期发送心跳，保持在线状态")
     public Result<Void> heartbeat(@PathVariable String workerId) {
-        log.info("收到Worker心跳请求，WorkerID: {}", workerId);
+        log.debug("收到Worker心跳请求 | WorkerID: {}", workerId);
         
-        Worker worker = workerMapper.selectById(workerId);
-        if (worker == null) {
-            log.warn("Worker不存在，WorkerID: {}", workerId);
-            return Result.error(404, "Worker not found");
-        }
-
-        worker.setStatus(WorkerStatus.online);
-        worker.setLastHeartbeat(LocalDateTime.now());
-        workerMapper.updateById(worker);
-        log.info("Worker心跳更新成功，WorkerID: {}", workerId);
-
+        // 写入 Redis 存活键，设置 30 秒过期时间
+        redisTemplate.opsForValue().set(RedisKey.getWorkerHeartbeatKey(workerId), "online", 30, TimeUnit.SECONDS);
+        
+        // 同时更新 Redis Hash 中的最后心跳时间，用于下线时同步回数据库
+        String infoKey = RedisKey.getWorkerInfoKey(workerId);
+        redisTemplate.opsForHash().put(infoKey, "lastHeartbeat", LocalDateTime.now().toString());
+        
         return Result.success();
     }
 
@@ -189,23 +194,21 @@ public class WorkerController {
                                      @RequestParam Double cpuUsage, 
                                      @RequestParam Double memUsage, 
                                      @RequestParam Integer runningTasks) {
-        log.info("收到Worker状态报告，WorkerID: {}", workerId);
+        log.debug("收到Worker状态报告 | WorkerID: {}, CPU: {}%, Mem: {}%, Tasks: {}", 
+                workerId, cpuUsage, memUsage, runningTasks);
         
-        Worker worker = workerMapper.selectById(workerId);
-        if (worker == null) {
-            log.warn("Worker不存在，WorkerID: {}", workerId);
-            return Result.error(404, "Worker not found");
-        }
-
-        worker.setCpuUsage(cpuUsage);
-        worker.setMemUsage(memUsage);
-        worker.setRunningTasks(runningTasks);
-        worker.setStatus(WorkerStatus.online);
-        worker.setLastHeartbeat(LocalDateTime.now());
-        worker.setUpdateTime(LocalDateTime.now());
-        workerMapper.updateById(worker);
-        log.info("Worker状态更新成功，WorkerID: {}", workerId);
-
+        String infoKey = RedisKey.getWorkerInfoKey(workerId);
+        Map<String, Object> statusMap = new HashMap<>();
+        statusMap.put("cpuUsage", cpuUsage);
+        statusMap.put("memUsage", memUsage);
+        statusMap.put("runningTasks", runningTasks);
+        statusMap.put("lastHeartbeat", LocalDateTime.now().toString());
+        
+        // 写入 Redis Hash
+        redisTemplate.opsForHash().putAll(infoKey, statusMap);
+        // 同时刷新心跳存活时间
+        redisTemplate.opsForValue().set(RedisKey.getWorkerHeartbeatKey(workerId), "online", 30, TimeUnit.SECONDS);
+        
         return Result.success();
     }
 

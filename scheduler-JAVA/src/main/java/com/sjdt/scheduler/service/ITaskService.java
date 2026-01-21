@@ -1,13 +1,30 @@
 package com.sjdt.scheduler.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.sjdt.scheduler.domain.dto.TaskCreateDTO;
 import com.sjdt.scheduler.domain.po.Task;
+
+import java.util.List;
 
 /**
  * Task Service 接口
  * 提供 Task 任务的管理和操作
  */
 public interface ITaskService extends IService<Task> {
+
+    /**
+     * 创建任务
+     *
+     * @param taskCreateDTO 任务创建DTO
+     * @return 创建的任务ID
+     */
+    String createTask(TaskCreateDTO taskCreateDTO);
+
+    /**
+     * 获取所有活跃的定时任务
+     * @return 活跃定时任务列表
+     */
+    List<Task> listActiveCronTasks();
 
     /**
      * 根据 Worker ID 更新任务的 target_worker 为 null

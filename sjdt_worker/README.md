@@ -76,7 +76,7 @@ tags：动态生成，包含执行器环境依赖（如 Python 版本、关键�
     临时文件存储与权限处理\
     执行脚本（带超时控制），捕获标准输出 / 错误\
 4、结果处理：\
-    日志上传至 MinIO（路径：task-logs/{taskId}.log）\
+    日志上传至 MinIO（路径：task-logs/{taskId}/{runId}.log）\
     构建结果消息（状态、耗时、日志路径等）\
     发送结果至TASK_RESULT主题\
 #### 3.2.3 通信协议
@@ -119,7 +119,7 @@ class TaskResultMessage(BaseModel):
     endTime: str             # 结束时间
     durationMs: int          # 耗时（毫秒）
     errorMessage: Optional[str] # 错误信息
-    logPath: Optional[str]   # MinIO日志路径（如task-logs/task_123.log）
+    logPath: Optional[str]   # MinIO日志路径（如task-logs/task_123/run_456.log）
 ```
 ## 5. 安全认证
 AK/SK 机制：执行器与调度器通信采用 AK（Access Key）和 SK（Secret Key）认证\

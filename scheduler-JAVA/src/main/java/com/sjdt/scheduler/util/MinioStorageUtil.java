@@ -27,7 +27,7 @@ import java.util.Map;
 @Component
 public class MinioStorageUtil {
 
-    private static final String CALLBACK_DATA_FOLDER = "callback-data/";
+    private static final String CALLBACK_DATA_FOLDER = "callback/";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     @Autowired

@@ -66,10 +66,15 @@ class JavaHandler(BaseHandler):
             logger.info("开始执行Java脚本，任务ID：%s", task.taskId)
             
             # 1. 解析脚本路径
-            script_path = task.script.path
-            if script_path.startswith("minio://"):
-                script_path = script_path[8:]
-            script_bucket, script_object = self._parse_minio_path(script_path)
+            script_bucket = Config.MINIO_BUCKET_NAME
+            script_object = task.script.path
+            if script_object.startswith("minio://"):
+                # 如果是完整的 minio://bucket/path 格式，则解析
+                path_parts = script_object[8:].split('/', 1)
+                if len(path_parts) == 2:
+                    script_bucket, script_object = path_parts
+                else:
+                    script_object = path_parts[0]
 
             # 2. 下载Java文件到临时目录
             temp_dir = tempfile.mkdtemp()
@@ -83,8 +88,8 @@ class JavaHandler(BaseHandler):
                 f.write(get_minio_file_object(script_bucket, script_object).read())
 
             # 3. 准备日志存储
-            log_bucket = "task-logs"
-            log_object = f"{task.taskId}.log"
+            log_bucket = Config.MINIO_BUCKET_NAME
+            log_object = f"task-logs/{task.taskId}/{task_run_id}.log"
             
             # 更新任务实例的日志路径
             task_instance_manager.update_status(task_run_id, "running",
@@ -330,14 +335,6 @@ class JavaHandler(BaseHandler):
             
         except Exception as e:
             logger.error("处理任务错误时发生异常，taskRunId: %s，错误: %s", task_run_id, str(e))
-
-    def _parse_minio_path(self, path: str) -> tuple:
-        """解析MinIO路径"""
-        try:
-            bucket, obj = path.split('/', 1)
-            return bucket, obj
-        except ValueError:
-            raise ValueError(f"MinIO路径格式错误：{path}")
 
     def _send_task_result(self, result: TaskResultMessage):
         """发送任务结果到MQ"""

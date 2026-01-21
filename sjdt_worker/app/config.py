@@ -30,7 +30,7 @@ class Config:
     MINIO_ACCESS_KEY = "changeme"
     MINIO_SECRET_KEY = "changeme"
     MINIO_SECURE = False
-    MINIO_BUCKET_NAME = "task-scripts"  # 与Java调度器配置一致
+    MINIO_BUCKET_NAME = "task-engine"  # 统一使用 task-engine bucket
 
     # Worker动态信息
     WORKER_ID = None  # 注册后由调度器返回

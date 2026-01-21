@@ -77,8 +77,8 @@ class PythonHandler(BaseHandler):
             logger.info("脚本下载成功，保存到临时文件：%s，文件大小：%d字节", temp_script_path, len(script_content))
 
             # 2. 准备日志存储
-            log_bucket = "task-logs"
-            log_object = f"{task.taskId}/{task_run_id}.log"
+            log_bucket = Config.MINIO_BUCKET_NAME
+            log_object = f"task-logs/{task.taskId}/{task_run_id}.log"
             
             logger.info("日志存储准备完成，bucket：%s，object：%s", log_bucket, log_object)
             
