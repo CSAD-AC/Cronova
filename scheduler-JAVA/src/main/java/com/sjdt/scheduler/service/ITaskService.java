@@ -2,7 +2,9 @@ package com.sjdt.scheduler.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.sjdt.scheduler.domain.dto.TaskCreateDTO;
+import com.sjdt.scheduler.domain.dto.TaskUpdateDTO;
 import com.sjdt.scheduler.domain.po.Task;
+import com.sjdt.scheduler.domain.vo.TaskVO;
 
 import java.util.List;
 
@@ -19,6 +21,28 @@ public interface ITaskService extends IService<Task> {
      * @return 创建的任务ID
      */
     String createTask(TaskCreateDTO taskCreateDTO);
+
+    /**
+     * 更新任务及其配置
+     *
+     * @param taskUpdateDTO 任务更新DTO
+     */
+    void updateTask(TaskUpdateDTO taskUpdateDTO);
+
+    /**
+     * 获取任务详情VO（包含回调配置）
+     *
+     * @param id 任务ID
+     * @return 任务VO
+     */
+    TaskVO getTaskVO(String id);
+
+    /**
+     * 获取任务列表VO
+     *
+     * @return 任务VO列表
+     */
+    List<TaskVO> listTaskVOs();
 
     /**
      * 获取所有活跃的定时任务

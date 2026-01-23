@@ -6,10 +6,12 @@ import com.sjdt.scheduler.domain.message.TaskResumeMessage;
 import com.sjdt.scheduler.domain.message.TaskStopMessage;
 import com.sjdt.scheduler.domain.po.TaskLog;
 import com.sjdt.scheduler.domain.po.TaskRun;
+import com.sjdt.scheduler.domain.vo.LogFileInfo;
 import com.sjdt.scheduler.mapper.TaskLogMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.TaskControlProducerService;
 import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -25,6 +27,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * 任务运行实例控制器
@@ -49,6 +52,35 @@ public class TaskRunController {
         this.taskLogMapper = taskLogMapper;
         this.taskControlProducerService = taskControlProducerService;
         this.minioClient = minioClient;
+    }
+
+    /**
+     * 获取所有任务运行实例列表
+     */
+    @GetMapping("/list")
+    @Operation(summary = "获取任务运行实例列表", description = "获取所有任务运行实例的列表，按创建时间倒序排列")
+    public Result<List<TaskRun>> listTaskRuns() {
+        log.info("收到获取所有任务运行实例列表请求");
+        List<TaskRun> taskRuns = taskRunMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskRun>()
+                        .orderByDesc(TaskRun::getCreateTime)
+        );
+        return Result.success(taskRuns);
+    }
+
+    /**
+     * 根据任务ID查询任务运行实例列表
+     */
+    @GetMapping("/task/{taskId}")
+    @Operation(summary = "根据任务ID查询实例列表", description = "获取指定任务的所有运行实例列表")
+    public Result<List<TaskRun>> getTaskRunsByTaskId(@PathVariable String taskId) {
+        log.info("收到根据任务ID查询实例列表请求，TaskID: {}", taskId);
+        List<TaskRun> taskRuns = taskRunMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskRun>()
+                        .eq(TaskRun::getTaskId, taskId)
+                        .orderByDesc(TaskRun::getCreateTime)
+        );
+        return Result.success(taskRuns);
     }
 
     /**
@@ -106,26 +138,24 @@ public class TaskRunController {
     }
 
     /**
-     * 下载任务运行实例日志文件
+     * 获取任务运行实例日志文件信息
      */
-    @GetMapping("/{taskRunId}/log/download")
-    @Operation(summary = "下载任务运行实例日志文件", description = "下载任务运行实例的日志文件")
+    @GetMapping("/{taskRunId}/log/info")
+    @Operation(summary = "获取任务运行实例日志文件信息", description = "获取任务运行实例日志文件的MinIO访问信息")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "下载成功"),
+        @ApiResponse(responseCode = "200", description = "获取成功"),
         @ApiResponse(responseCode = "400", description = "日志路径格式错误"),
         @ApiResponse(responseCode = "404", description = "任务运行实例或日志不存在")
     })
-    public void downloadTaskRunLog(
-            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
-            HttpServletResponse response) {
-        log.info("收到下载任务运行实例日志请求，TaskRunID: {}", taskRunId);
+    public Result<LogFileInfo> getLogFileInfo(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId) {
+        log.info("收到获取日志文件信息请求，TaskRunID: {}", taskRunId);
         
         try {
             TaskRun taskRun = taskRunMapper.selectById(taskRunId);
             if (taskRun == null) {
                 log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                return;
+                return Result.error(404, "TaskRun not found");
             }
 
             TaskLog taskLog = taskLogMapper.selectOne(
@@ -134,8 +164,7 @@ public class TaskRunController {
             );
             if (taskLog == null) {
                 log.warn("日志记录不存在，TaskRunID: {}", taskRunId);
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                return;
+                return Result.error(404, "TaskLog not found");
             }
             
             String logPath = taskLog.getStdoutPath();
@@ -144,20 +173,70 @@ public class TaskRunController {
             int firstSlashIndex = logPath.indexOf('/');
             if (firstSlashIndex == -1) {
                 log.error("日志路径格式错误，TaskRunID: {}，路径：{}", taskRunId, logPath);
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                return;
+                return Result.error(400, "Invalid log path format");
             }
             String bucketName = logPath.substring(0, firstSlashIndex);
             String objectName = logPath.substring(firstSlashIndex + 1);
+            String fileName = "task_log_" + taskRunId + ".log";
+            
             log.info("解析日志路径成功，桶名：{}，文件名：{}", bucketName, objectName);
             
+            LogFileInfo logFileInfo = new LogFileInfo();
+            logFileInfo.setBucket(bucketName);
+            logFileInfo.setObjectName(objectName);
+            logFileInfo.setFileName(fileName);
+            
+            // 生成预签名URL，让前端可以直接访问
+            try {
+                String signedUrl = minioClient.getPresignedObjectUrl(
+                    io.minio.GetPresignedObjectUrlArgs.builder()
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .method(io.minio.http.Method.GET)
+                        .expiry(60 * 60) // 1小时过期
+                        .build()
+                );
+                logFileInfo.setSignedUrl(signedUrl);
+                log.info("生成预签名URL成功: {}", signedUrl);
+            } catch (Exception e) {
+                log.error("生成预签名URL失败: {}", taskRunId, e);
+                // 不影响主要业务流程，预签名URL失败时只记录日志
+            }
+            
+            return Result.success(logFileInfo);
+        } catch (Exception e) {
+            log.error("获取日志文件信息失败，TaskRunID: {}", taskRunId, e);
+            return Result.error(500, "Failed to get log file info");
+        }
+    }
+
+    /**
+     * 保留原有的下载接口，但标记为已废弃
+     */
+    @Deprecated
+    @GetMapping("/{taskRunId}/log/download")
+    @Operation(summary = "下载任务运行实例日志文件(已废弃)", description = "下载任务运行实例的日志文件，建议使用/log/info接口获取MinIO信息")
+    public void downloadTaskRunLog(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            HttpServletResponse response) {
+        log.warn("调用了已废弃的下载接口，建议使用/log/info接口，TaskRunID: {}", taskRunId);
+        
+        try {
+            Result<LogFileInfo> result = getLogFileInfo(taskRunId);
+            if (result.getCode() != 200) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                return;
+            }
+            
+            LogFileInfo logFileInfo = result.getData();
+            
             response.setContentType("application/octet-stream");
-            response.setHeader("Content-Disposition", "attachment; filename=task_log_" + taskRunId + ".log");
+            response.setHeader("Content-Disposition", "attachment; filename=" + logFileInfo.getFileName());
             
             try (InputStream inputStream = minioClient.getObject(
                     GetObjectArgs.builder()
-                            .bucket(bucketName)
-                            .object(objectName)
+                            .bucket(logFileInfo.getBucket())
+                            .object(logFileInfo.getObjectName())
                             .build()
             ); ServletOutputStream outputStream = response.getOutputStream()) {
                 byte[] buffer = new byte[1024 * 1024];

@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * 脚本服务接口
@@ -14,6 +15,12 @@ import java.io.IOException;
 public interface IScriptService extends IService<Script> {
 
     void clearCache(String scriptId);
+
+    /**
+     * 获取脚本列表
+     * @return 脚本列表
+     */
+    List<Script> list();
 
     /**
      * 上传脚本文件到MinIO

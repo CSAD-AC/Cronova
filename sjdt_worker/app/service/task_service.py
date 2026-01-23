@@ -2,6 +2,7 @@ from app.model.task import TaskExecuteMessage, TaskStopMessage, TaskPauseMessage
 from app.utils.system_utils import SystemUtils
 from app.service.task_handler.python_handler import PythonHandler
 from app.service.task_handler.java_handler import JavaHandler
+from app.service.task_handler.go_handler import GoHandler
 from app.service.process_manager import process_manager
 from app.service.task_instance_manager import task_instance_manager
 from app.service.task_status_service import task_status_service
@@ -47,7 +48,8 @@ class TaskService:
     def __init__(self):
         self.handlers = [
             PythonHandler(),
-            JavaHandler()
+            JavaHandler(),
+            GoHandler()
         ]
         self.handler_map = {h.support_type(): h for h in self.handlers}
 

@@ -1,0 +1,19 @@
+services:
+  sjdt-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: sjdt-worker:1.0
+    container_name: sjdt-worker
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ../app/local_config.json:/app/app/local_config.json
+      - ../logs:/app/logs
+      - ../task_instances:/app/task_instances
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

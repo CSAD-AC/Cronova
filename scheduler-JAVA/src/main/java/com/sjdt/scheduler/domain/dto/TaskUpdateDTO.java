@@ -51,8 +51,10 @@ public class TaskUpdateDTO {
 
     /** Cron表达式（仅cron任务使用） */
     @Schema(description = "Cron表达式，仅在定时任务时使用", example = "0 0 12 * * ?")
-    @Pattern(regexp = "^$|^(([0-9]+|\\*|\\?|L|W|C|#)(-[0-9]+)?(,[0-9]+|\\*|\\?|L|W|C|#(-[0-9]+)?)+\\s+){5}([0-9]+|\\*|\\?|L|W|C|#)(-[0-9]+)?(,[0-9]+|\\*|\\?|L|W|C|#(-[0-9]+)?)+$",
-             message = "Cron表达式格式不正确")
+    @Pattern(
+            regexp = "^$|^([0-9*?\\-,/]+(\\s+[0-9*?\\-,/]+){5})$",
+            message = "Cron表达式格式不正确"
+    )
     private String cronExpr;
 
     /** 是否启用 */

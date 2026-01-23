@@ -4,33 +4,33 @@ from app.utils.env_utils import EnvUtils
 
 class Config:
     # 认证配置
-    LOCAL_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_config.json")
+    LOCAL_CONFIG_PATH = os.getenv("LOCAL_CONFIG_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_config.json"))
 
     # 调度器接口地址
-    SCHEDULER_BASE_URL = "http://127.0.0.1:28085"  # 调度器基础地址
+    SCHEDULER_BASE_URL = os.getenv("SCHEDULER_BASE_URL", "http://127.0.0.1:28085")
     AKSK_VALIDATE_URL = f"{SCHEDULER_BASE_URL}/api/worker/validate-aksk"  # AKSK验证接口
     WORKER_REGISTER_URL = f"{SCHEDULER_BASE_URL}/api/worker/register"  # Worker注册接口
     WORKER_HEARTBEAT_URL_TEMPLATE = f"{SCHEDULER_BASE_URL}/api/worker/heartbeat/{{worker_id}}"  # 心跳接口
     WORKER_STATUS_REPORT_URL_TEMPLATE = f"{SCHEDULER_BASE_URL}/api/worker/status/{{worker_id}}"  # 状态上报接口
 
     # 定时配置
-    HEARTBEAT_INTERVAL = 2  # 心跳间隔（秒）
-    STATUS_REPORT_INTERVAL = 10  # 状态上报间隔（秒）
+    HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "2"))  # 心跳间隔（秒）
+    STATUS_REPORT_INTERVAL = int(os.getenv("STATUS_REPORT_INTERVAL", "10"))  # 状态上报间隔（秒）
 
     # RocketMQ配置
-    MQ_NAMESRV_ADDR = "127.0.0.1:9876"
-    MQ_CONSUMER_GROUP = "WORKER_EXECUTOR_GROUP"
-    MQ_TASK_TOPIC = "TASK_EXECUTE"
-    MQ_PRODUCER_GROUP = "WORKER_EXECUTOR_GROUP"
-    MQ_TASK_RESULT_TOPIC = "TASK_RESULT"
-    MQ_TASK_CONTROL_TOPIC = "TASK_CONTROL"
+    MQ_NAMESRV_ADDR = os.getenv("MQ_NAMESRV_ADDR", "127.0.0.1:9876")
+    MQ_CONSUMER_GROUP = os.getenv("MQ_CONSUMER_GROUP", "WORKER_EXECUTOR_GROUP")
+    MQ_TASK_TOPIC = os.getenv("MQ_TASK_TOPIC", "TASK_EXECUTE")
+    MQ_PRODUCER_GROUP = os.getenv("MQ_PRODUCER_GROUP", "WORKER_EXECUTOR_GROUP")
+    MQ_TASK_RESULT_TOPIC = os.getenv("MQ_TASK_RESULT_TOPIC", "TASK_RESULT")
+    MQ_TASK_CONTROL_TOPIC = os.getenv("MQ_TASK_CONTROL_TOPIC", "TASK_CONTROL")
 
     # MinIO配置
-    MINIO_ENDPOINT = "127.0.0.1:9000"
-    MINIO_ACCESS_KEY = "changeme"
-    MINIO_SECRET_KEY = "changeme"
-    MINIO_SECURE = False
-    MINIO_BUCKET_NAME = "task-engine"  # 统一使用 task-engine bucket
+    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+    MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "changeme")
+    MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "changeme")
+    MINIO_SECURE = os.getenv("MINIO_SECURE", "False").lower() == "true"
+    MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "task-engine")  # 统一使用 task-engine bucket
 
     # Worker动态信息
     WORKER_ID = None  # 注册后由调度器返回

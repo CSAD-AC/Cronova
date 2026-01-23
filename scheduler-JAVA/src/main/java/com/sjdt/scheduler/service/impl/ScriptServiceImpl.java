@@ -90,6 +90,23 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
     }
 
     @Override
+    public List<Script> list() {
+        // 获取基础脚本列表
+        List<Script> scripts = super.list();
+        
+        // 为每个脚本填充标签信息
+        for (Script script : scripts) {
+            List<Integer> tagIds = scriptTagMapper.selectTagIdsByScriptId(script.getId());
+            if (tagIds != null && !tagIds.isEmpty()) {
+                List<Tag> tags = tagMapper.selectBatchIds(tagIds);
+                script.setTags(new java.util.HashSet<>(tags));
+            }
+        }
+        
+        return scripts;
+    }
+
+    @Override
     public boolean updateById(Script entity) {
         log.info("脚本信息更新，清理缓存 | ScriptID: {}", entity.getId());
         redisTemplate.delete(RedisKey.SCRIPT_CACHE + ":" + entity.getId());
@@ -145,10 +162,13 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
                     .build();
 
             save(script);
+            
+            // 为新上传的脚本构建ScriptVO，包含空标签集合
             return ScriptVO.builder()
                     .id(script.getId())
                     .path(script.getPath())
                     .name(script.getName())
+                    .tags(java.util.Set.of()) // 空标签集合
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("上传脚本文件失败: " + e.getMessage(), e);

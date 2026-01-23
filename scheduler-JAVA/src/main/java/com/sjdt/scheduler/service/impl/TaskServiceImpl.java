@@ -3,15 +3,20 @@ package com.sjdt.scheduler.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.dto.CallbackJobConfigCreateDTO;
+import com.sjdt.scheduler.domain.dto.CallbackJobConfigUpdateDTO;
 import com.sjdt.scheduler.domain.dto.TaskCreateDTO;
+import com.sjdt.scheduler.domain.dto.TaskUpdateDTO;
 import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
+import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.enums.TaskType;
 import com.sjdt.scheduler.domain.message.TaskExecuteMessage;
 import com.sjdt.scheduler.domain.po.CallbackJobConfig;
 import com.sjdt.scheduler.domain.po.Script;
 import com.sjdt.scheduler.domain.po.Task;
 import com.sjdt.scheduler.domain.po.TaskRun;
+import com.sjdt.scheduler.domain.vo.CallbackJobConfigVO;
+import com.sjdt.scheduler.domain.vo.TaskVO;
 import com.sjdt.scheduler.mapper.CallbackJobConfigMapper;
 import com.sjdt.scheduler.mapper.ScriptMapper;
 import com.sjdt.scheduler.mapper.TaskMapper;
@@ -31,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Task Service 实现类
@@ -121,13 +127,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .update();
     }
 
-    /**
-     * 创建任务
-     * 支持一次性创建任务和回调配置（如果是callback类型）
-     *
-     * @param taskCreateDTO 任务创建DTO
-     * @return 创建的任务ID
-     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public String createTask(TaskCreateDTO taskCreateDTO) {
@@ -145,6 +144,100 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         }
 
         return task.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateTask(TaskUpdateDTO taskUpdateDTO) {
+        log.info("开始更新任务，任务ID：{}", taskUpdateDTO.getId());
+        
+        // 清理缓存
+        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
+
+        Task task = this.getById(taskUpdateDTO.getId());
+        if (task == null) {
+            throw new IllegalArgumentException("任务不存在，ID: " + taskUpdateDTO.getId());
+        }
+
+        // 更新基本信息
+        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "enabled", "status", "createdBy", "createTime");
+        task.setUpdateTime(LocalDateTime.now());
+        this.updateById(task);
+
+        // 处理回调配置
+        if (task.getExecuteType() == ExecuteType.callback && taskUpdateDTO.getCallbackConfig() != null) {
+            updateOrCreateCallbackConfig(task, taskUpdateDTO.getCallbackConfig());
+        }
+        
+        log.info("任务及其配置更新完成，任务ID：{}", task.getId());
+    }
+
+    private void updateOrCreateCallbackConfig(Task task, CallbackJobConfigUpdateDTO configDTO) {
+        CallbackJobConfig config = callbackJobConfigMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallbackJobConfig>()
+                        .eq(CallbackJobConfig::getTaskId, task.getId())
+        );
+
+        if (config != null) {
+            // 更新现有配置
+            BeanUtils.copyProperties(configDTO, config, "id", "taskId", "createdBy", "createTime");
+            config.setUpdateTime(LocalDateTime.now());
+            callbackJobConfigMapper.updateById(config);
+            log.info("回调配置更新成功，配置ID：{}", config.getId());
+        } else {
+            // 创建新配置（如果之前没有）
+            CallbackJobConfig newConfig = CallbackJobConfig.builder()
+                    .taskId(task.getId())
+                    .callbackUrl(configDTO.getCallbackUrl())
+                    .callbackMethod(configDTO.getCallbackMethod() != null ? configDTO.getCallbackMethod() : "POST")
+                    .secretKey(configDTO.getSecretKey())
+                    .timeoutSeconds(configDTO.getTimeoutSeconds() != null ? configDTO.getTimeoutSeconds() : 30)
+                    .retryCount(configDTO.getRetryCount() != null ? configDTO.getRetryCount() : 0)
+                    .retryIntervalSeconds(configDTO.getRetryIntervalSeconds() != null ? configDTO.getRetryIntervalSeconds() : 60)
+                    .createdBy("system")
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
+                    .build();
+            callbackJobConfigMapper.insert(newConfig);
+            log.info("回调配置补全创建成功，配置ID：{}", newConfig.getId());
+        }
+    }
+
+    @Override
+    public TaskVO getTaskVO(String id) {
+        Task task = this.getById(id);
+        if (task == null) {
+            return null;
+        }
+        return buildTaskVO(task);
+    }
+
+    @Override
+    public List<TaskVO> listTaskVOs() {
+        List<Task> tasks = this.list();
+        return tasks.stream().map(this::buildTaskVO).collect(Collectors.toList());
+    }
+
+    /**
+     * 构建TaskVO，包含回调配置信息
+     */
+    private TaskVO buildTaskVO(Task task) {
+        TaskVO taskVO = new TaskVO();
+        BeanUtils.copyProperties(task, taskVO);
+
+        if (task.getExecuteType() == ExecuteType.callback) {
+            CallbackJobConfig config = callbackJobConfigMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallbackJobConfig>()
+                            .eq(CallbackJobConfig::getTaskId, task.getId())
+            );
+            if (config != null) {
+                CallbackJobConfigVO configVO = new CallbackJobConfigVO();
+                BeanUtils.copyProperties(config, configVO);
+                taskVO.setCallbackConfig(configVO);
+            }
+        }
+
+        return taskVO;
     }
 
     @Override

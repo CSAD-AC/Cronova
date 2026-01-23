@@ -78,8 +78,9 @@ class JavaHandler(BaseHandler):
 
             # 2. 下载Java文件到临时目录
             temp_dir = tempfile.mkdtemp()
-            file_ext = os.path.splitext(script_object)[1].lower()
-            temp_file_path = os.path.join(temp_dir, f"task_{task.taskId}{file_ext}")
+            original_filename = os.path.basename(script_object)
+            file_ext = os.path.splitext(original_filename)[1].lower()
+            temp_file_path = os.path.join(temp_dir, original_filename)
 
             logger.info("从MinIO下载Java文件，bucket：%s，object：%s", script_bucket, script_object)
             from app.utils.minio_utils import get_minio_file_object
@@ -100,7 +101,8 @@ class JavaHandler(BaseHandler):
             if file_ext == '.jar':
                 cmd = ['java', '-jar', temp_file_path]
             elif file_ext == '.class':
-                class_name = os.path.splitext(os.path.basename(temp_file_path))[0]
+                # 对于.class文件，类名必须与文件名一致（不含扩展名）
+                class_name = os.path.splitext(original_filename)[0]
                 cmd = ['java', '-cp', temp_dir, class_name]
             else:
                 raise ValueError(f"不支持的Java文件格式：{file_ext}")

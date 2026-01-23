@@ -72,9 +72,7 @@ public class TaskController {
         logger.info("开始创建任务，任务名称：{}，执行类型：{}", taskCreateDTO.getName(), taskCreateDTO.getExecuteType());
         try {
             String taskId = taskService.createTask(taskCreateDTO);
-            Task task = taskService.getById(taskId);
-
-            TaskVO taskVO = buildTaskVO(task);
+            TaskVO taskVO = taskService.getTaskVO(taskId);
             logger.info("任务创建成功，任务ID：{}", taskId);
             return Result.success(taskVO);
         } catch (Exception e) {
@@ -97,11 +95,8 @@ public class TaskController {
     public Result<List<TaskVO>> listTasks() {
         logger.info("开始获取任务列表");
         try {
-            List<Task> tasks = taskService.list();
-            logger.info("获取任务列表成功，共{}个任务", tasks.size());
-            List<TaskVO> taskVOs = tasks.stream()
-                    .map(this::buildTaskVO)
-                    .collect(Collectors.toList());
+            List<TaskVO> taskVOs = taskService.listTaskVOs();
+            logger.info("获取任务列表成功，共{}个任务", taskVOs.size());
             return Result.success(taskVOs);
         } catch (Exception e) {
             logger.error("获取任务列表失败", e);
@@ -126,67 +121,17 @@ public class TaskController {
                                      @PathVariable String id) {
         logger.info("开始获取任务详情，任务ID：{}", id);
         try {
-            Task task = taskService.getById(id);
-            if (task == null) {
+            TaskVO taskVO = taskService.getTaskVO(id);
+            if (taskVO == null) {
                 logger.warn("任务不存在，任务ID：{}", id);
                 return Result.error(ErrorCodeEnum.TASK_NOT_FOUND);
             }
             logger.info("获取任务详情成功，任务ID：{}", id);
-            TaskVO taskVO = buildTaskVO(task);
             return Result.success(taskVO);
         } catch (Exception e) {
             logger.error("获取任务详情失败，任务ID：{}", id, e);
             return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
         }
-    }
-
-    /**
-     * 构建TaskVO，包含回调配置信息
-     */
-    private TaskVO buildTaskVO(Task task) {
-        TaskVO taskVO = new TaskVO();
-        taskVO.setId(task.getId());
-        taskVO.setName(task.getName());
-        taskVO.setDescription(task.getDescription());
-        taskVO.setExecuteType(task.getExecuteType());
-        taskVO.setScriptType(task.getScriptType());
-        taskVO.setScriptId(task.getScriptId());
-        taskVO.setTaskType(task.getTaskType());
-        taskVO.setCronExpr(task.getCronExpr());
-        taskVO.setEnabled(task.getEnabled());
-        taskVO.setTimeoutSeconds(task.getTimeoutSeconds());
-        taskVO.setTargetWorker(task.getTargetWorker());
-        taskVO.setStatus(task.getStatus());
-        taskVO.setCreatedBy(task.getCreatedBy());
-        taskVO.setCreateTime(task.getCreateTime());
-        taskVO.setUpdateTime(task.getUpdateTime());
-
-        if (task.getExecuteType() == ExecuteType.callback) {
-            CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
-            if (config != null) {
-                CallbackJobConfigVO configVO = new CallbackJobConfigVO();
-                configVO.setId(config.getId());
-                configVO.setCallbackUrl(config.getCallbackUrl());
-                configVO.setCallbackMethod(config.getCallbackMethod());
-                configVO.setTimeoutSeconds(config.getTimeoutSeconds());
-                configVO.setRetryCount(config.getRetryCount());
-                configVO.setRetryIntervalSeconds(config.getRetryIntervalSeconds());
-                taskVO.setCallbackConfig(configVO);
-            }
-        }
-
-        return taskVO;
-    }
-
-    /**
-     * 根据任务ID获取回调配置
-     */
-    private CallbackJobConfig getCallbackConfigByTaskId(String taskId) {
-        List<CallbackJobConfig> configs = callbackJobConfigMapper.selectList(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallbackJobConfig>()
-                .eq(CallbackJobConfig::getTaskId, taskId)
-        );
-        return configs.isEmpty() ? null : configs.get(0);
     }
 
     /**
@@ -205,18 +150,9 @@ public class TaskController {
     public Result<TaskVO> updateTask(@Valid @RequestBody TaskUpdateDTO taskUpdateDTO) {
         logger.info("开始更新任务，任务ID：{}", taskUpdateDTO.getId());
         try {
-            Task existingTask = taskService.getById(taskUpdateDTO.getId());
-            if (existingTask == null) {
-                logger.warn("任务不存在，任务ID：{}", taskUpdateDTO.getId());
-                return Result.error(ErrorCodeEnum.TASK_NOT_FOUND);
-            }
-
-            BeanUtils.copyProperties(taskUpdateDTO, existingTask, "id", "enabled", "status", "createdBy", "createTime");
-            existingTask.setUpdateTime(LocalDateTime.now());
-            taskService.updateById(existingTask);
+            taskService.updateTask(taskUpdateDTO);
+            TaskVO taskVO = taskService.getTaskVO(taskUpdateDTO.getId());
             logger.info("任务更新成功，任务ID：{}", taskUpdateDTO.getId());
-
-            TaskVO taskVO = buildTaskVO(existingTask);
             return Result.success(taskVO);
         } catch (Exception e) {
             logger.error("更新任务失败，任务ID：{}", taskUpdateDTO.getId(), e);

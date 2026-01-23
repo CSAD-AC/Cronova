@@ -30,6 +30,41 @@ public class ScriptController {
     private final IScriptTagService scriptTagService;
 
     /**
+     * 根据脚本ID查询脚本详情
+     * @param id 脚本ID
+     * @return 脚本详情
+     */
+    @GetMapping("/{id}")
+    @Operation(summary = "查询脚本详情", description = "根据脚本ID查询脚本的详细信息")
+    public Result<Script> getScriptById(@PathVariable String id) {
+        Script script = scriptService.getById(id);
+        if (script == null) {
+            return Result.error(404, "Script not found");
+        }
+        return Result.success(script);
+    }
+
+    /**
+     * 获取所有脚本列表
+     * @return 脚本列表
+     */
+    @GetMapping("/list")
+    @Operation(summary = "获取脚本列表", description = "获取所有脚本的列表")
+    public Result<List<ScriptVO>> listScripts() {
+        List<Script> scripts = scriptService.list();
+        // 转换Script为ScriptVO
+        List<ScriptVO> scriptVOs = scripts.stream()
+                .map(script -> ScriptVO.builder()
+                        .id(script.getId())
+                        .name(script.getName())
+                        .path(script.getPath())
+                        .tags(script.getTags())
+                        .build())
+                .toList();
+        return Result.success(scriptVOs);
+    }
+
+    /**
      * 上传脚本文件
      * @param file 脚本文件
      * @return 上传结果
