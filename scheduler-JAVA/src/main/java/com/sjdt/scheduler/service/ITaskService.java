@@ -62,7 +62,23 @@ public interface ITaskService extends IService<Task> {
      *
      * @param taskId 任务ID
      */
+    /**
+     * 获取最近的任务列表
+     * @param limit 限制数量
+     * @return 任务VO列表
+     */
+    List<TaskVO> listRecentTasks(int limit);
+
     void publishTask(String taskId);
+
+    /**
+     * 发布任务（支持指定重试次数和延时）
+     *
+     * @param taskId 任务ID
+     * @param retryNum 当前重试次数
+     * @param delaySeconds 延时秒数
+     */
+    void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds);
 
     /**
      * 发布立即执行的任务

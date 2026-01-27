@@ -191,9 +191,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                     .callbackUrl(configDTO.getCallbackUrl())
                     .callbackMethod(configDTO.getCallbackMethod() != null ? configDTO.getCallbackMethod() : "POST")
                     .secretKey(configDTO.getSecretKey())
-                    .timeoutSeconds(configDTO.getTimeoutSeconds() != null ? configDTO.getTimeoutSeconds() : 30)
-                    .retryCount(configDTO.getRetryCount() != null ? configDTO.getRetryCount() : 0)
-                    .retryIntervalSeconds(configDTO.getRetryIntervalSeconds() != null ? configDTO.getRetryIntervalSeconds() : 60)
                     .createdBy("system")
                     .createTime(LocalDateTime.now())
                     .updateTime(LocalDateTime.now())
@@ -215,6 +212,16 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     @Override
     public List<TaskVO> listTaskVOs() {
         List<Task> tasks = this.list();
+        return tasks.stream().map(this::buildTaskVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<TaskVO> listRecentTasks(int limit) {
+        List<Task> tasks = this.list(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
+                        .orderByDesc(Task::getCreateTime)
+                        .last("LIMIT " + limit)
+        );
         return tasks.stream().map(this::buildTaskVO).collect(Collectors.toList());
     }
 
@@ -268,7 +275,9 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .taskType(dto.getTaskType())
                 .cronExpr(dto.getCronExpr())
                 .enabled(true)
-                .timeoutSeconds(dto.getTimeoutSeconds() != null ? dto.getTimeoutSeconds() : 0)
+                .timeoutSeconds(dto.getTimeoutSeconds() != null ? dto.getTimeoutSeconds() : 180)
+                .retryCount(dto.getRetryCount() != null ? dto.getRetryCount() : 0)
+                .retryIntervalSeconds(dto.getRetryIntervalSeconds() != null ? dto.getRetryIntervalSeconds() : 60)
                 .targetWorker(dto.getTargetWorker())
                 .status(com.sjdt.scheduler.domain.enums.TaskStatus.active)
                 .createdBy("system")
@@ -293,9 +302,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .callbackUrl(configDTO.getCallbackUrl())
                 .callbackMethod(configDTO.getCallbackMethod() != null ? configDTO.getCallbackMethod() : "POST")
                 .secretKey(configDTO.getSecretKey())
-                .timeoutSeconds(configDTO.getTimeoutSeconds() != null ? configDTO.getTimeoutSeconds() : 30)
-                .retryCount(configDTO.getRetryCount() != null ? configDTO.getRetryCount() : 0)
-                .retryIntervalSeconds(configDTO.getRetryIntervalSeconds() != null ? configDTO.getRetryIntervalSeconds() : 60)
                 .createdBy("system")
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
@@ -313,15 +319,23 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      */
     @Override
     public void publishTask(String taskId) {
+        publishTaskWithRetryAndDelay(taskId, 0, 0);
+    }
+    
+    /**
+     * 发布任务（支持指定重试次数和延时）
+     */
+    @Override
+    public void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds) {
         Task task = this.getById(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found with id: " + taskId);
         }
 
         if (task.getExecuteType() == ExecuteType.script) {
-            publishScriptTask(task);
+            publishScriptTask(task, retryNum, delaySeconds);
         } else if (task.getExecuteType() == ExecuteType.callback) {
-            publishCallbackTask(task);
+            publishCallbackTask(task, retryNum, delaySeconds);
         }
     }
 
@@ -332,6 +346,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @param task 任务对象
      */
     private void publishScriptTask(Task task) {
+        publishScriptTask(task, 0, 0);
+    }
+
+    private void publishScriptTask(Task task, int retryNum, int delaySeconds) {
         Script script = scriptService.getById(task.getScriptId());
         if (script == null) {
             throw new IllegalArgumentException("Script not found with id: " + task.getScriptId());
@@ -340,6 +358,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         TaskRun taskRun = TaskRun.builder()
                 .taskId(task.getId())
                 .status(TaskRunStatus.pending)
+                .retryNum(retryNum)
                 .createTime(LocalDateTime.now())
                 .build();
         taskRunMapper.insert(taskRun);
@@ -365,8 +384,15 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .timeoutSeconds(task.getTimeoutSeconds())
                 .build();
 
-        taskProducerService.sendTask(message);
-        log.info("脚本任务已发布，任务ID: {}, 运行ID: {}", task.getId(), taskRunId);
+        if (delaySeconds > 0) {
+            int delayLevel = com.sjdt.scheduler.util.RocketMQDelayUtil.getDelayLevel(delaySeconds);
+            taskProducerService.sendTaskWithDelay(message, delayLevel);
+            log.info("脚本延时任务已发布，任务ID: {}, 运行ID: {}, 重试次数: {}, 延时: {}s (Level: {})", 
+                    task.getId(), taskRunId, retryNum, delaySeconds, delayLevel);
+        } else {
+            taskProducerService.sendTask(message);
+            log.info("脚本任务已发布，任务ID: {}, 运行ID: {}, 重试次数: {}", task.getId(), taskRunId, retryNum);
+        }
     }
 
     /**
@@ -376,11 +402,36 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @param task 任务对象
      */
     private void publishCallbackTask(Task task) {
+        publishCallbackTask(task, 0, 0);
+    }
+
+    private void publishCallbackTask(Task task, int retryNum, int delaySeconds) {
+        // 如果有延时，通过 MQ 延时消息发送给自己（模拟延时）
+        // 但目前系统回调是直接由调度器执行的，所以如果要支持延时重试，
+        // 最好是发送一个延时消息到 MQ，然后由另一个消费者处理
+        // 为了保持简单且符合当前架构，我们检查 delaySeconds
+        if (delaySeconds > 0) {
+            // 这里我们需要一个专门处理延时回调的消息模型和消费者
+            // 或者直接让 publishTaskWithRetryAndDelay 被 MQ 消费者调用
+            // 目前为了快速实现且不引入太多新组件，我们在 TaskResultConsumer 中异步处理
+            // 如果用户要求使用 MQ 延时消息，我们需要确保所有重试都走 MQ
+            // 脚本任务已经走 MQ 了，回调任务目前是同步执行
+            
+            // 如果回调任务也想利用 MQ 的延时能力，我们需要发送消息到 MQ
+            // 暂且认为用户希望脚本任务利用 MQ 延时，回调任务可以保持现状或也改造成 MQ 驱动
+            // 为了统一，我们保持目前的 publishCallbackTask 逻辑，但如果需要重试延时，
+            // 可以在 publishCallbackTask 内部实现异步或者让 TaskResultConsumer 触发。
+            
+            // 这里我们采取折中方案：回调任务的重试如果也需要延时，暂时在 TaskResultConsumer 异步处理
+            // 而脚本任务则利用 MQ 的原生延时级别。
+        }
+
         CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
 
         TaskRun taskRun = TaskRun.builder()
                 .taskId(task.getId())
                 .status(TaskRunStatus.pending)
+                .retryNum(retryNum)
                 .createTime(LocalDateTime.now())
                 .build();
         taskRunMapper.insert(taskRun);
@@ -393,14 +444,14 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .callbackUrl(config.getCallbackUrl())
                 .callbackMethod(config.getCallbackMethod())
                 .secretKey(config.getSecretKey())
-                .timeoutSeconds(config.getTimeoutSeconds())
-                .retryCount(config.getRetryCount())
-                .retryIntervalSeconds(config.getRetryIntervalSeconds())
+                .timeoutSeconds(task.getTimeoutSeconds())
+                .retryCount(task.getRetryCount())
+                .retryIntervalSeconds(task.getRetryIntervalSeconds())
                 .triggerTime(LocalDateTime.now())
                 .build();
 
         taskCallbackExecutor.executeCallbackJob(message);
-        log.info("回调任务已发布，任务ID: {}, 运行ID: {}, URL: {}", task.getId(), taskRunId, config.getCallbackUrl());
+        log.info("回调任务已发布，任务ID: {}, 运行ID: {}, URL: {}, 重试次数: {}", task.getId(), taskRunId, config.getCallbackUrl(), retryNum);
     }
 
     /**

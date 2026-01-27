@@ -161,9 +161,6 @@ class CallbackJobConfigServiceImplTest {
                 .callbackUrl("https://api.example.com/callback/test-" + UUID.randomUUID().toString().substring(0, 8))
                 .callbackMethod("POST")
                 .secretKey("test-secret-key-" + UUID.randomUUID().toString().substring(0, 8))
-                .timeoutSeconds(30)
-                .retryCount(2)
-                .retryIntervalSeconds(60)
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
                 .build();

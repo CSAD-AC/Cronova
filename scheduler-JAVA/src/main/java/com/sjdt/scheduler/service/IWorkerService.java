@@ -43,4 +43,10 @@ public interface IWorkerService extends IService<Worker> {
      */
     void deleteWorker(String id);
 
+    /**
+     * 获取在线 Worker 数量
+     * @return 在线 Worker 数量
+     */
+    long countOnlineWorkers();
+
 }

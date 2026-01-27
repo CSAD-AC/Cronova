@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.task;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjdt.scheduler.domain.message.CallbackJobExecuteMessage;
 import com.sjdt.scheduler.domain.po.CallbackJobConfig;
@@ -74,6 +75,18 @@ public class TaskCallbackExecutor {
 
             requestId = runRecord.getRequestId();
             log.info("从数据库获取自动生成的请求ID: {}", requestId);
+
+            // 如果requestId为null，则生成一个新的ID
+            if (requestId == null || requestId.trim().isEmpty()) {
+                requestId = generateRequestId();
+                // 更新runRecord中的requestId并保存到数据库
+                runRecord.setRequestId(requestId);
+                
+                // 使用updateById更新整个对象，这样会更新所有非空字段
+                callbackJobRunMapper.updateById(runRecord);
+                
+                log.info("已更新数据库中的请求ID: {}", requestId);
+            }
 
             Map<String, String> requestHeaders = buildRequestHeaders(requestId, message.getSecretKey());
             Map<String, Object> callbackData = buildCallbackJobData(message);

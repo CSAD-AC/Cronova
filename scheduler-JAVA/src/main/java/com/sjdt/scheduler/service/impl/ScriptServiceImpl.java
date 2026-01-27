@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -156,9 +157,12 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
             );
 
             // 创建Script对象并保存到数据库
+            String fullPath = BUCKET_NAME + "/" + objectName;
             Script script = Script.builder()
                     .name(originalFilename)
-                    .path(objectName)
+                    .path(fullPath)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
                     .build();
 
             save(script);
@@ -185,7 +189,12 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
             }
 
             // 从MinIO中获取文件
-            String objectName = script.getPath();
+            String path = script.getPath();
+            String objectName = path;
+            if (path.startsWith(BUCKET_NAME + "/")) {
+                objectName = path.substring(BUCKET_NAME.length() + 1);
+            }
+
             try (java.io.InputStream inputStream = minioClient.getObject(
                     io.minio.GetObjectArgs.builder()
                             .bucket(BUCKET_NAME)

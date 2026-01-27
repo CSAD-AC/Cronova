@@ -132,7 +132,7 @@ CREATE TABLE tasks (
                        task_type       VARCHAR(16) NOT NULL COMMENT '任务调度类型: once / cron',
                        cron_expr       VARCHAR(64) COMMENT 'Cron 表达式，如: 0 0 * * *',
                        enabled         BOOLEAN DEFAULT TRUE COMMENT '是否启用',
-                       timeout_seconds INT DEFAULT 0 COMMENT '超时时间（秒）',
+                       timeout_seconds INT DEFAULT 180 COMMENT '超时时间（秒）',
                        target_worker   VARCHAR(64) COMMENT '指定 Worker（为空表示自动调度）',
                        status          VARCHAR(16) NOT NULL COMMENT '任务状态: active/paused/deleted',
                        created_by      VARCHAR(64) COMMENT '创建人',
@@ -154,6 +154,7 @@ CREATE TABLE task_run (
                           end_time        TIMESTAMP COMMENT '结束时间',
                           duration_ms     BIGINT COMMENT '执行耗时（毫秒）',
                           error_message   TEXT COMMENT '失败原因',
+                          retry_num       INT DEFAULT 0 COMMENT '当前重试次数',
                           create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务执行实例表（一次运行一条记录）';
 
@@ -183,11 +184,6 @@ CREATE TABLE callback_job_configs (
 
     -- 认证配置（请求头 X-Secret）
     secret_key              VARCHAR(64) NOT NULL COMMENT '认证秘钥，用于 X-Secret 请求头',
-
-    -- 执行控制
-    timeout_seconds         INT DEFAULT 30 COMMENT '超时时间（秒）',
-    retry_count             INT DEFAULT 0 COMMENT '重试次数',
-    retry_interval_seconds  INT DEFAULT 60 COMMENT '重试间隔（秒）',
 
     -- 状态统计
     last_callback_time     DATETIME COMMENT '上次回调时间',

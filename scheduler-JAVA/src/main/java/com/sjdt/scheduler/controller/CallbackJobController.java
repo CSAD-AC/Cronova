@@ -69,9 +69,6 @@ public class CallbackJobController {
                     .callbackUrl(dto.getCallbackUrl())
                     .callbackMethod(dto.getCallbackMethod())
                     .secretKey(dto.getSecretKey())
-                    .timeoutSeconds(dto.getTimeoutSeconds() != null ? dto.getTimeoutSeconds() : 30)
-                    .retryCount(dto.getRetryCount() != null ? dto.getRetryCount() : 0)
-                    .retryIntervalSeconds(dto.getRetryIntervalSeconds() != null ? dto.getRetryIntervalSeconds() : 60)
                     .totalCallbackCount(0)
                     .successCount(0)
                     .failedCount(0)
@@ -222,15 +219,6 @@ public class CallbackJobController {
             }
             if (dto.getSecretKey() != null) {
                 existingConfig.setSecretKey(dto.getSecretKey());
-            }
-            if (dto.getTimeoutSeconds() != null) {
-                existingConfig.setTimeoutSeconds(dto.getTimeoutSeconds());
-            }
-            if (dto.getRetryCount() != null) {
-                existingConfig.setRetryCount(dto.getRetryCount());
-            }
-            if (dto.getRetryIntervalSeconds() != null) {
-                existingConfig.setRetryIntervalSeconds(dto.getRetryIntervalSeconds());
             }
             existingConfig.setUpdateTime(LocalDateTime.now());
             callbackJobConfigService.updateById(existingConfig);

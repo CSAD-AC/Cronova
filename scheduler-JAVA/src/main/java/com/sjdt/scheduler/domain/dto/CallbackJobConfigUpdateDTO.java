@@ -43,16 +43,4 @@ public class CallbackJobConfigUpdateDTO {
     @Schema(description = "认证密钥，用于X-Secret请求头", example = "secret-key-123")
     @NotBlank(message = "认证密钥不能为空")
     private String secretKey;
-
-    /** 超时时间（秒） */
-    @Schema(description = "超时时间（秒）", example = "30")
-    private Integer timeoutSeconds;
-
-    /** 重试次数 */
-    @Schema(description = "重试次数", example = "0")
-    private Integer retryCount;
-
-    /** 重试间隔（秒） */
-    @Schema(description = "重试间隔（秒）", example = "60")
-    private Integer retryIntervalSeconds;
 }

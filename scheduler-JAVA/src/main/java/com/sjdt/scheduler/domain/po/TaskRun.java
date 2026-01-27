@@ -58,6 +58,9 @@ public class TaskRun implements Serializable {
     /** 失败或异常原因 */
     private String errorMessage;
 
+    /** 当前重试次数 */
+    private Integer retryNum;
+
     /** 创建时间（实例生成时间） */
     private LocalDateTime createTime;
 

@@ -47,18 +47,6 @@ public class CallbackJobConfig implements Serializable {
     @TableField(value = "secret_key")
     private String secretKey;
 
-    /** 超时时间（秒） */
-    @TableField(value = "timeout_seconds")
-    private Integer timeoutSeconds;
-
-    /** 重试次数 */
-    @TableField(value = "retry_count")
-    private Integer retryCount;
-
-    /** 重试间隔（秒） */
-    @TableField(value = "retry_interval_seconds")
-    private Integer retryIntervalSeconds;
-
     /** 上次回调时间 */
     @TableField(value = "last_callback_time")
     private LocalDateTime lastCallbackTime;

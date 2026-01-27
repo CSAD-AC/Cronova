@@ -59,8 +59,9 @@ public class MinioStorageUtil {
 
             uploadToMinio(objectName, jsonContent);
 
-            log.info("请求数据已存储到MinIO，路径: {}", objectName);
-            return objectName;
+            String fullPath = BUCKET_NAME + "/" + objectName;
+            log.info("请求数据已存储到MinIO，完整路径: {}", fullPath);
+            return fullPath;
 
         } catch (Exception e) {
             log.error("存储请求数据到MinIO失败，requestId: {}", requestId, e);
@@ -93,8 +94,9 @@ public class MinioStorageUtil {
 
             uploadToMinio(objectName, jsonContent);
 
-            log.info("响应数据已存储到MinIO，路径: {}", objectName);
-            return objectName;
+            String fullPath = BUCKET_NAME + "/" + objectName;
+            log.info("响应数据已存储到MinIO，完整路径: {}", fullPath);
+            return fullPath;
 
         } catch (Exception e) {
             log.error("存储响应数据到MinIO失败，requestId: {}", requestId, e);

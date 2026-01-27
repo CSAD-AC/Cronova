@@ -149,4 +149,12 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
         log.info("Worker删除成功，WorkerID: {}", id);
     }
 
+    @Override
+    public long countOnlineWorkers() {
+        return this.count(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Worker>()
+                        .eq(Worker::getStatus, WorkerStatus.online)
+        );
+    }
+
 }

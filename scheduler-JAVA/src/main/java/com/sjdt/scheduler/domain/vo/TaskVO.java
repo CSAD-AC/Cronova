@@ -44,6 +44,12 @@ public class TaskVO {
     /** 超时时间（秒） */
     private Integer timeoutSeconds;
 
+    /** 重试次数 */
+    private Integer retryCount;
+
+    /** 重试间隔（秒） */
+    private Integer retryIntervalSeconds;
+
     /** 指定Worker ID */
     private String targetWorker;
 

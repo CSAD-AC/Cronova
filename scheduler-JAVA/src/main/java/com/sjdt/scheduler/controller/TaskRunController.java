@@ -170,16 +170,22 @@ public class TaskRunController {
             String logPath = taskLog.getStdoutPath();
             log.info("日志文件路径：{}", logPath);
             
-            int firstSlashIndex = logPath.indexOf('/');
-            if (firstSlashIndex == -1) {
-                log.error("日志路径格式错误，TaskRunID: {}，路径：{}", taskRunId, logPath);
-                return Result.error(400, "Invalid log path format");
-            }
-            String bucketName = logPath.substring(0, firstSlashIndex);
-            String objectName = logPath.substring(firstSlashIndex + 1);
-            String fileName = "task_log_" + taskRunId + ".log";
+            // 统一解析逻辑：优先使用配置或剥离路径前缀
+            String bucketName = "task-engine"; // 默认桶名
+            String objectName = logPath;
             
-            log.info("解析日志路径成功，桶名：{}，文件名：{}", bucketName, objectName);
+            if (logPath.contains("/")) {
+                int firstSlashIndex = logPath.indexOf('/');
+                String potentialBucket = logPath.substring(0, firstSlashIndex);
+                // 如果路径确实以桶名开头（例如 task-engine/logs/...）
+                if (potentialBucket.length() > 0 && logPath.length() > firstSlashIndex + 1) {
+                    bucketName = potentialBucket;
+                    objectName = logPath.substring(firstSlashIndex + 1);
+                }
+            }
+            
+            String fileName = "task_log_" + taskRunId + ".log";
+            log.info("解析日志路径成功，桶名：{}，对象名：{}", bucketName, objectName);
             
             LogFileInfo logFileInfo = new LogFileInfo();
             logFileInfo.setBucket(bucketName);

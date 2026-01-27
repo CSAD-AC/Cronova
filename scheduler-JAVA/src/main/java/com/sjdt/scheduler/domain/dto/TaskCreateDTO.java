@@ -62,6 +62,14 @@ public class TaskCreateDTO {
     @Schema(description = "超时时间（秒），0表示不限制", example = "0")
     private Integer timeoutSeconds;
 
+    /** 重试次数 */
+    @Schema(description = "重试次数", example = "3")
+    private Integer retryCount;
+
+    /** 重试间隔（秒） */
+    @Schema(description = "重试间隔（秒）", example = "60")
+    private Integer retryIntervalSeconds;
+
     /** 指定Worker ID（为空表示自动调度，仅script类型有效） */
     @Schema(description = "指定Worker ID（为空表示自动调度，仅script类型有效）")
     private String targetWorker;

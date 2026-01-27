@@ -34,20 +34,8 @@ public class CallbackJobConfigCreateDTO {
     @Pattern(regexp = "^(GET|POST|PUT|DELETE)$", message = "回调方法必须是GET/POST/PUT/DELETE之一")
     private String callbackMethod;
 
-    /** 认证密钥（用于X-Secret请求头） */
-    @Schema(description = "认证密钥，用于X-Secret请求头", example = "secret-key-123")
-    @NotBlank(message = "认证密钥不能为空")
+    /** 认证秘钥（用于 X-Secret 请求头） */
+    @Schema(description = "认证秘钥（用于 X-Secret 请求头）", example = "my-secret-key")
     private String secretKey;
 
-    /** 超时时间（秒） */
-    @Schema(description = "超时时间（秒）", example = "30")
-    private Integer timeoutSeconds;
-
-    /** 重试次数 */
-    @Schema(description = "重试次数", example = "0")
-    private Integer retryCount;
-
-    /** 重试间隔（秒） */
-    @Schema(description = "重试间隔（秒）", example = "60")
-    private Integer retryIntervalSeconds;
 }
