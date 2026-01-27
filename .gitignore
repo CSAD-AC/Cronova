@@ -6,6 +6,7 @@ Vue/
 test-flask.py
 test.py
 **/__pycache__/
+*.tar
 
 HELP.md
 target/

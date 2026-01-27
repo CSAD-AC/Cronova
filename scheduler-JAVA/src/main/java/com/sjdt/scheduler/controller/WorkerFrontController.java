@@ -1,21 +1,27 @@
 package com.sjdt.scheduler.controller;
 
+import com.sjdt.scheduler.common.ErrorCodeEnum;
 import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.dto.WorkerUpdateDTO;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
+import com.sjdt.scheduler.domain.po.Worker;
 import com.sjdt.scheduler.domain.vo.WorkerVO;
 import com.sjdt.scheduler.service.IWorkerService;
+import com.sjdt.scheduler.service.IWorkerTagService;
+import com.sjdt.scheduler.service.ITagService;
+import com.sjdt.scheduler.domain.po.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -24,16 +30,21 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/api/frontend/worker")
-@Tag(name = "Worker管理", description = "Worker执行器的前端管理接口")
+@io.swagger.v3.oas.annotations.tags.Tag(name = "Worker管理", description = "Worker执行器的前端管理接口")
 @Slf4j
 public class WorkerFrontController {
 
     private final IWorkerService workerService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final IWorkerTagService workerTagService;
+    private final ITagService tagService;
 
-    public WorkerFrontController(IWorkerService workerService, RedisTemplate<String, Object> redisTemplate) {
+    public WorkerFrontController(IWorkerService workerService, RedisTemplate<String, Object> redisTemplate, 
+                                IWorkerTagService workerTagService, ITagService tagService) {
         this.workerService = workerService;
         this.redisTemplate = redisTemplate;
+        this.workerTagService = workerTagService;
+        this.tagService = tagService;
     }
 
     /**
@@ -114,6 +125,83 @@ public class WorkerFrontController {
         workerService.deleteWorker(id);
         log.info("Worker删除完成，WorkerID: {}", id);
         return Result.success();
+    }
+
+    /**
+     * 获取指定 ID 的 Worker 详情信息
+     * @param id Worker ID
+     * @return Worker 详情
+     */
+    @GetMapping("/{id}")
+    @Operation(summary = "获取Worker详情", description = "根据Worker ID获取指定Worker的详细信息，包括标签，实时从Redis合并最新状态")
+    public Result<WorkerVO> getWorkerDetail(@PathVariable String id) {
+        log.info("开始查询Worker详情，WorkerID: {}", id);
+        
+        // 从数据库获取基本信息
+        Worker worker = workerService.getById(id);
+        if (worker == null) {
+            log.warn("Worker不存在，WorkerID: {}", id);
+            return Result.error(ErrorCodeEnum.WORKER_NOT_FOUND);
+        }
+        
+        WorkerVO workerVO = new WorkerVO();
+        BeanUtils.copyProperties(worker, workerVO);
+        
+        // 从 Redis 合并实时状态
+        String heartbeatKey = RedisKey.getWorkerHeartbeatKey(id);
+        String infoKey = RedisKey.getWorkerInfoKey(id);
+        
+        // 1. 实时在线状态
+        boolean isAlive = Boolean.TRUE.equals(redisTemplate.hasKey(heartbeatKey));
+        workerVO.setStatus(isAlive ? WorkerStatus.online.name() : WorkerStatus.offline.name());
+        
+        // 2. 实时负载信息
+        Map<Object, Object> info = redisTemplate.opsForHash().entries(infoKey);
+        if (!info.isEmpty()) {
+            if (info.containsKey("cpuUsage")) {
+                workerVO.setCpuUsage((Double) info.get("cpuUsage"));
+            }
+            if (info.containsKey("memUsage")) {
+                workerVO.setMemUsage((Double) info.get("memUsage"));
+            }
+            if (info.containsKey("runningTasks")) {
+                workerVO.setRunningTasks((Integer) info.get("runningTasks"));
+            }
+            if (info.containsKey("lastHeartbeat")) {
+                try {
+                    String lastHeartbeatStr = (String) info.get("lastHeartbeat");
+                    workerVO.setLastHeartbeat(LocalDateTime.parse(lastHeartbeatStr));
+                } catch (Exception e) {
+                    log.warn("解析Redis中的心跳时间失败 | WorkerID: {}", id);
+                }
+            }
+        }
+        
+        // 3. 获取Worker的标签信息
+        try {
+            Result<List<Integer>> tagIdsResult = workerTagService.getTagIdsByWorkerId(id);
+            if (tagIdsResult != null && tagIdsResult.getData() != null) {
+                List<Integer> tagIds = tagIdsResult.getData();
+                if (!tagIds.isEmpty()) {
+                    Set<Tag> tags = new HashSet<>();
+                    for (Integer tagId : tagIds) {
+                        Result<Tag> tagResult = tagService.getTagById(tagId);
+                        if (tagResult != null && tagResult.getData() != null) {
+                            tags.add(tagResult.getData());
+                        }
+                    }
+                    workerVO.setTags(tags);
+                }
+            }
+            log.info("成功获取Worker标签信息，WorkerID: {}, 标签数量: {}", id, 
+                    workerVO.getTags() != null ? workerVO.getTags().size() : 0);
+        } catch (Exception e) {
+            log.warn("获取Worker标签信息失败，WorkerID: {}, 错误: {}", id, e.getMessage());
+            // 标签获取失败不影响主体功能
+        }
+        
+        log.info("查询Worker详情完成，WorkerID: {}, 状态: {}", id, workerVO.getStatus());
+        return Result.success(workerVO);
     }
 
 }
