@@ -30,6 +30,11 @@ public class RedisKey {
     public static final String SCRIPT_CACHE = "scheduler:cache:scripts";
 
     /**
+     * AKSK 信息缓存名称
+     */
+    public static final String AKSK_CACHE = "scheduler:cache:aksk";
+
+    /**
      * 生成完整的 Worker 心跳 Key
      */
     public static final String getWorkerHeartbeatKey(String workerId) {

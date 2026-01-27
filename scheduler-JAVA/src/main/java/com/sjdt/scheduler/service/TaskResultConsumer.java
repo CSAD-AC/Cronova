@@ -76,6 +76,7 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
                 .durationMs(resultMessage.getDurationMs())
                 .errorMessage(resultMessage.getErrorMessage())
                 .retryNum(currentRetryNum) // 保持原有的重试次数
+                .lastHeartbeatTime(LocalDateTime.now()) // 更新心跳时间
                 .build();
         log.debug("TaskRun对象构建完成，ID: {}", taskRun.getId());
 

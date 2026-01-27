@@ -87,4 +87,13 @@ public interface ITaskService extends IService<Task> {
      * @param task 任务对象
      */
     void publishImmediateTask(Task task);
+
+    /**
+     * 重新发布已存在的任务实例（用于超时重试）
+     * 不创建新的TaskRun，而是重用现有的TaskRunID
+     *
+     * @param taskRunId 任务运行实例ID
+     * @param delaySeconds 延时秒数
+     */
+    void republishTaskRun(String taskRunId, int delaySeconds);
 }

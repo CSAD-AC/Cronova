@@ -481,4 +481,75 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             publishCallbackTask(task);
         }
     }
+
+    @Override
+    public void republishTaskRun(String taskRunId, int delaySeconds) {
+        TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+        if (taskRun == null) {
+            log.error("重新发布任务失败，TaskRun不存在: {}", taskRunId);
+            return;
+        }
+
+        Task task = this.getById(taskRun.getTaskId());
+        if (task == null) {
+            log.error("重新发布任务失败，Task不存在: {}", taskRun.getTaskId());
+            return;
+        }
+
+        if (task.getExecuteType() == ExecuteType.script) {
+            Script script = scriptService.getById(task.getScriptId());
+            if (script == null) {
+                log.error("重新发布任务失败，Script不存在: {}", task.getScriptId());
+                return;
+            }
+
+            TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
+                    .id(script.getId())
+                    .name(script.getName())
+                    .path(script.getPath())
+                    .tags(script.getTags())
+                    .build();
+
+            TaskExecuteMessage message = TaskExecuteMessage.builder()
+                    .taskId(task.getId())
+                    .taskName(task.getName())
+                    .taskRunId(taskRunId)
+                    .description(task.getDescription())
+                    .scriptType(task.getScriptType().name())
+                    .script(scriptInfo)
+                    .taskType(task.getTaskType().name())
+                    .cronExpr(task.getCronExpr())
+                    .targetWorkerId(task.getTargetWorker())
+                    .timeoutSeconds(task.getTimeoutSeconds())
+                    .build();
+
+            if (delaySeconds > 0) {
+                int delayLevel = com.sjdt.scheduler.util.RocketMQDelayUtil.getDelayLevel(delaySeconds);
+                taskProducerService.sendTaskWithDelay(message, delayLevel);
+                log.info("脚本任务已重新发布(超时重试)，TaskRunID: {}, 延时: {}s", taskRunId, delaySeconds);
+            } else {
+                taskProducerService.sendTask(message);
+                log.info("脚本任务已重新发布(超时重试)，TaskRunID: {}", taskRunId);
+            }
+
+        } else if (task.getExecuteType() == ExecuteType.callback) {
+            CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
+
+            com.sjdt.scheduler.domain.message.CallbackJobExecuteMessage message = com.sjdt.scheduler.domain.message.CallbackJobExecuteMessage.builder()
+                    .taskId(task.getId())
+                    .taskRunId(taskRunId)
+                    .configId(config.getId())
+                    .callbackUrl(config.getCallbackUrl())
+                    .callbackMethod(config.getCallbackMethod())
+                    .secretKey(config.getSecretKey())
+                    .timeoutSeconds(task.getTimeoutSeconds())
+                    .retryCount(task.getRetryCount())
+                    .retryIntervalSeconds(task.getRetryIntervalSeconds())
+                    .triggerTime(LocalDateTime.now())
+                    .build();
+
+            taskCallbackExecutor.executeCallbackJob(message);
+            log.info("回调任务已重新发布(超时重试)，TaskRunID: {}", taskRunId);
+        }
+    }
 }

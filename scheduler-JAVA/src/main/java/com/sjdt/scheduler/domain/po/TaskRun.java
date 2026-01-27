@@ -64,5 +64,8 @@ public class TaskRun implements Serializable {
     /** 创建时间（实例生成时间） */
     private LocalDateTime createTime;
 
+    /** 上次心跳/状态上报时间 */
+    private LocalDateTime lastHeartbeatTime;
+
 }
 

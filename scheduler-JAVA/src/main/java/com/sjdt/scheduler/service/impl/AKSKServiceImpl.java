@@ -4,14 +4,19 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.crypto.digest.HMac;
 import cn.hutool.crypto.digest.HmacAlgorithm;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.po.AKSK;
 import com.sjdt.scheduler.mapper.AKSKMapper;
 import com.sjdt.scheduler.service.IAKSKService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
+import java.util.concurrent.TimeUnit;
 
 /**
  * AKSK Service 实现类
@@ -20,6 +25,12 @@ import java.time.temporal.ChronoUnit;
 @Service
 @Slf4j
 public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IAKSKService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     /**
      * 时间戳有效期（秒），用于防止重放攻击
@@ -69,8 +80,8 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
     public boolean validateAKSK(String accessKey, String signature, String timestamp, String requestBody) {
         log.debug("开始验证AKSK签名，AccessKey: {}", accessKey);
         
-        // 1. 根据 Access Key 查询 AKSK 信息
-        AKSK aksk = this.baseMapper.selectByAccessKey(accessKey);
+        // 1. 根据 Access Key 查询 AKSK 信息 (带缓存)
+        AKSK aksk = this.getByAccessKey(accessKey);
         if (aksk == null) {
             log.warn("AKSK不存在，AccessKey: {}", accessKey);
             return false;
@@ -112,14 +123,31 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
     }
 
     /**
-     * 根据 Access Key 查询 AKSK 信息
+     * 根据 Access Key 查询 AKSK 信息 (带缓存)
      * @param accessKey Access Key
      * @return AKSK 实体
      */
     @Override
     public AKSK getByAccessKey(String accessKey) {
-        log.info("根据AccessKey查询AKSK信息，AccessKey: {}", accessKey);
-        return this.baseMapper.selectByAccessKey(accessKey);
+        String cacheKey = RedisKey.AKSK_CACHE + ":" + accessKey;
+        try {
+            Object cachedData = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedData != null) {
+                return objectMapper.convertValue(cachedData, AKSK.class);
+            }
+        } catch (Exception e) {
+            log.warn("从Redis加载AKSK缓存失败 | AccessKey: {}", accessKey, e);
+        }
+
+        AKSK aksk = this.baseMapper.selectByAccessKey(accessKey);
+        if (aksk != null) {
+            try {
+                redisTemplate.opsForValue().set(cacheKey, aksk, 1, TimeUnit.HOURS);
+            } catch (Exception e) {
+                log.warn("将AKSK信息写入Redis缓存失败 | AccessKey: {}", accessKey, e);
+            }
+        }
+        return aksk;
     }
 
     /**
@@ -142,6 +170,8 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
         
         if (result) {
             log.info("AKSK禁用成功，AKSKID: {}", id);
+            // 清理缓存
+            redisTemplate.delete(RedisKey.AKSK_CACHE + ":" + aksk.getAccessKey());
         } else {
             log.error("AKSK禁用失败，AKSKID: {}", id);
         }
@@ -168,10 +198,29 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
         
         if (result) {
             log.info("AKSK启用成功，AKSKID: {}", id);
+            // 清理缓存
+            redisTemplate.delete(RedisKey.AKSK_CACHE + ":" + aksk.getAccessKey());
         } else {
             log.error("AKSK启用失败，AKSKID: {}", id);
         }
         return result;
     }
 
+    @Override
+    public boolean updateById(AKSK entity) {
+        AKSK old = super.getById(entity.getId());
+        if (old != null) {
+            redisTemplate.delete(RedisKey.AKSK_CACHE + ":" + old.getAccessKey());
+        }
+        return super.updateById(entity);
+    }
+
+    @Override
+    public boolean removeById(Serializable id) {
+        AKSK old = super.getById(id);
+        if (old != null) {
+            redisTemplate.delete(RedisKey.AKSK_CACHE + ":" + old.getAccessKey());
+        }
+        return super.removeById(id);
+    }
 }

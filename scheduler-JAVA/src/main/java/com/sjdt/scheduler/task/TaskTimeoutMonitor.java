@@ -48,20 +48,19 @@ public class TaskTimeoutMonitor {
     public void checkTimeoutTasks() {
         log.debug("开始执行任务超时检查...");
         
-        // 查询所有处于 running 状态的任务实例
-        // 这里只查询 running 状态，因为 pending 状态可能是在排队，暂时不计入执行超时
-        List<TaskRun> runningTasks = taskRunMapper.selectList(
+        // 查询所有处于 running 或 pending 状态的任务实例
+        List<TaskRun> activeTaskRuns = taskRunMapper.selectList(
                 new LambdaQueryWrapper<TaskRun>()
-                        .eq(TaskRun::getStatus, TaskRunStatus.running)
+                        .in(TaskRun::getStatus, TaskRunStatus.running, TaskRunStatus.pending)
         );
 
-        if (runningTasks.isEmpty()) {
+        if (activeTaskRuns.isEmpty()) {
             return;
         }
 
         LocalDateTime now = LocalDateTime.now();
 
-        for (TaskRun taskRun : runningTasks) {
+        for (TaskRun taskRun : activeTaskRuns) {
             try {
                 checkSingleTask(taskRun, now);
             } catch (Exception e) {
@@ -74,39 +73,48 @@ public class TaskTimeoutMonitor {
         // 获取任务配置
         Task task = taskMapper.selectById(taskRun.getTaskId());
         if (task == null) {
-            // 任务定义已被删除，标记运行实例为 failed
             log.warn("任务定义不存在，标记实例为失败，TaskRunID: {}", taskRun.getId());
             updateTaskRunStatus(taskRun, TaskRunStatus.failed, "任务定义已被删除");
             return;
         }
 
-        Integer timeoutSeconds = task.getTimeoutSeconds();
-        if (timeoutSeconds == null || timeoutSeconds <= 0) {
-            // 未配置超时或超时为0（不限制），跳过
+        if (taskRun.getStatus() == TaskRunStatus.pending) {
+            // 检查派发超时：如果任务在 pending 状态停留太久（例如超过 120 秒执行器仍未领用）
+            long pendingSeconds = Duration.between(taskRun.getCreateTime(), now).getSeconds();
+            if (pendingSeconds > 120) { // 默认 120 秒派发超时
+                log.warn("任务派发超时（执行器未领用），TaskRunID: {}, TaskID: {}, 已等待: {}s", 
+                        taskRun.getId(), task.getId(), pendingSeconds);
+                
+                handleTimeoutRetry(task, taskRun, "任务派发超时（执行器未响应）");
+            }
             return;
         }
 
-        // 计算运行时长
-        LocalDateTime startTime = taskRun.getStartTime();
-        if (startTime == null) {
-            // 还没有开始时间（可能是刚从 pending 转 running 还没更新时间？或者数据异常）
-            // 使用 createTime 兜底
-            startTime = taskRun.getCreateTime();
+        // 以下是针对 running 状态的执行超时检查
+        Integer timeoutSeconds = task.getTimeoutSeconds();
+        if (timeoutSeconds == null || timeoutSeconds <= 0) {
+            return;
         }
 
-        long runSeconds = Duration.between(startTime, now).getSeconds();
-        if (runSeconds > timeoutSeconds) {
-            log.warn("任务执行超时，TaskRunID: {}, TaskID: {}, 已运行: {}s, 限制: {}s", 
-                    taskRun.getId(), task.getId(), runSeconds, timeoutSeconds);
+        // 计算运行时长，优先使用 lastHeartbeatTime
+        LocalDateTime lastActiveTime = taskRun.getLastHeartbeatTime();
+        if (lastActiveTime == null) {
+            lastActiveTime = taskRun.getStartTime();
+        }
+        if (lastActiveTime == null) {
+            lastActiveTime = taskRun.getCreateTime();
+        }
+
+        long inactiveSeconds = Duration.between(lastActiveTime, now).getSeconds();
+        if (inactiveSeconds > timeoutSeconds) {
+            log.warn("任务执行超时(无心跳)，TaskRunID: {}, TaskID: {}, 已由于: {}s 无响应, 限制: {}s", 
+                    taskRun.getId(), task.getId(), inactiveSeconds, timeoutSeconds);
 
             // 1. 发送停止消息给 Worker (尽力而为)
             sendStopMessage(taskRun, "任务执行超时，系统强制停止");
 
-            // 2. 更新数据库状态为 timeout
-            updateTaskRunStatus(taskRun, TaskRunStatus.timeout, "任务执行超时 (限制: " + timeoutSeconds + "s)");
-
-            // 3. 触发重试逻辑
-            triggerRetry(task, taskRun);
+            // 2. 处理超时重试
+            handleTimeoutRetry(task, taskRun, "任务执行超时 (限制: " + timeoutSeconds + "s)");
         }
     }
 
@@ -137,26 +145,51 @@ public class TaskTimeoutMonitor {
         }
     }
 
-    private void triggerRetry(Task task, TaskRun failedRun) {
+    /**
+     * 处理超时重试逻辑
+     * 超时情况下，不创建新实例，而是重用现有实例ID重新发布
+     */
+    private void handleTimeoutRetry(Task task, TaskRun taskRun, String reason) {
+        // 保存旧状态以便回滚
+        TaskRunStatus oldStatus = taskRun.getStatus();
+        Integer oldRetryNum = taskRun.getRetryNum();
+        if (oldRetryNum == null) oldRetryNum = 0;
+
+        // 1. 更新状态为超时 (这一步是为了如果后续逻辑都成功，数据库状态是正确的)
+        updateTaskRunStatus(taskRun, TaskRunStatus.timeout, reason);
+
         Integer maxRetryCount = task.getRetryCount();
         if (maxRetryCount == null || maxRetryCount <= 0) {
             return;
         }
 
-        Integer currentRetryNum = failedRun.getRetryNum();
-        if (currentRetryNum == null) currentRetryNum = 0;
-
-        if (currentRetryNum < maxRetryCount) {
-            int nextRetryNum = currentRetryNum + 1;
+        if (oldRetryNum < maxRetryCount) {
+            int nextRetryNum = oldRetryNum + 1;
             int intervalSeconds = task.getRetryIntervalSeconds() != null ? task.getRetryIntervalSeconds() : 60;
 
-            log.info("超时任务准备重试。TaskID: {}, 下次重试次数: {}, 间隔: {}秒", 
-                    task.getId(), nextRetryNum, intervalSeconds);
+            log.info("超时任务准备重试(重用实例)。TaskID: {}, TaskRunID: {}, 下次重试次数: {}, 间隔: {}秒", 
+                    task.getId(), taskRun.getId(), nextRetryNum, intervalSeconds);
 
-            // 改用 RocketMQ 延时消息
-            taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds);
+            // 2. 更新重试次数到数据库 (因为Worker/ResultConsumer会从数据库读取此值)
+            taskRun.setRetryNum(nextRetryNum);
+            taskRunMapper.updateById(taskRun);
+
+            // 3. 重新发布现有实例 (尝试发送MQ)
+            try {
+                taskService.republishTaskRun(taskRun.getId(), intervalSeconds);
+            } catch (Exception e) {
+                log.error("超时重试发送MQ失败，回滚任务状态以等待下一次扫描。TaskRunID: {}", taskRun.getId(), e);
+                
+                // 4. 发送失败，回滚状态
+                taskRun.setStatus(oldStatus);
+                taskRun.setRetryNum(oldRetryNum); // 回滚重试次数
+                taskRun.setErrorMessage(null); // 清除错误信息，或者记录MQ失败
+                taskRun.setEndTime(null); // 清除结束时间
+                taskRun.setDurationMs(null); // 清除耗时
+                taskRunMapper.updateById(taskRun);
+            }
         } else {
-            log.info("超时任务已达到最大重试次数，不再重试。TaskID: {}", task.getId());
+            log.info("超时任务已达到最大重试次数，不再重试。TaskID: {}, TaskRunID: {}", task.getId(), taskRun.getId());
         }
     }
 }

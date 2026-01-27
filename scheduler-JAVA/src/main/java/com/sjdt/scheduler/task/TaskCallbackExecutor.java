@@ -2,14 +2,21 @@ package com.sjdt.scheduler.task;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.CallbackJobExecuteMessage;
 import com.sjdt.scheduler.domain.po.CallbackJobConfig;
 import com.sjdt.scheduler.domain.po.CallbackJobRun;
+import com.sjdt.scheduler.domain.po.Task;
+import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.mapper.CallbackJobConfigMapper;
 import com.sjdt.scheduler.mapper.CallbackJobRunMapper;
+import com.sjdt.scheduler.mapper.TaskMapper;
+import com.sjdt.scheduler.mapper.TaskRunMapper;
+import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.util.MinioStorageUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -35,17 +42,26 @@ public class TaskCallbackExecutor {
     private final HttpCallbackClient httpCallbackClient;
     private final CallbackJobConfigMapper callbackJobConfigMapper;
     private final CallbackJobRunMapper callbackJobRunMapper;
+    private final TaskRunMapper taskRunMapper;
+    private final TaskMapper taskMapper;
     private final MinioStorageUtil minioStorageUtil;
+    private final ITaskService taskService;
 
     @Autowired
     public TaskCallbackExecutor(CallbackJobConfigMapper callbackJobConfigMapper,
                                 CallbackJobRunMapper callbackJobRunMapper,
+                                TaskRunMapper taskRunMapper,
+                                TaskMapper taskMapper,
                                 MinioStorageUtil minioStorageUtil,
                                 RestTemplate restTemplate,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                @Lazy ITaskService taskService) {
         this.callbackJobConfigMapper = callbackJobConfigMapper;
         this.callbackJobRunMapper = callbackJobRunMapper;
+        this.taskRunMapper = taskRunMapper;
+        this.taskMapper = taskMapper;
         this.minioStorageUtil = minioStorageUtil;
+        this.taskService = taskService;
         this.httpCallbackClient = new HttpCallbackClient(restTemplate, objectMapper);
     }
 
@@ -98,6 +114,9 @@ public class TaskCallbackExecutor {
         } catch (Exception e) {
             log.error("执行HTTP回调任务时发生异常，任务ID: {}, 配置ID: {}", taskId, configId, e);
             updateCallbackRunRecordOnError(runRecord, requestId, e.getMessage(), startTime);
+            // 同步更新 TaskRun 状态并触发重试
+            updateTaskRunStatus(taskRunId, TaskRunStatus.failed, e.getMessage(), (int)(System.currentTimeMillis() - startTime));
+            checkAndTriggerTaskRetry(message);
         }
     }
 
@@ -269,11 +288,73 @@ public class TaskCallbackExecutor {
             log.info("回调执行记录已更新，请求ID: {}, 状态: {}, 状态码: {}, 耗时: {}ms",
                 requestId, runRecord.getStatus(), result.getStatusCode(), durationMs);
 
+            // 更新关联的 TaskRun 状态
+            updateTaskRunStatus(message.getTaskRunId(), result.isSuccess() ? TaskRunStatus.success : TaskRunStatus.failed, 
+                    result.getErrorMessage(), durationMs);
+
             updateCallbackConfigStatistics(message, result);
+
+            // 如果失败，检查并触发任务级重试
+            if (!result.isSuccess()) {
+                checkAndTriggerTaskRetry(message);
+            }
 
         } catch (Exception e) {
             log.error("处理回调结果时发生异常，请求ID: {}", requestId, e);
             updateCallbackRunRecordOnError(runRecord, requestId, e.getMessage(), startTime);
+            // 发生异常时也尝试更新 TaskRun 为失败
+            updateTaskRunStatus(message.getTaskRunId(), TaskRunStatus.failed, e.getMessage(), 
+                    (int)(System.currentTimeMillis() - startTime));
+            checkAndTriggerTaskRetry(message);
+        }
+    }
+
+    /**
+     * 更新 TaskRun 状态
+     */
+    private void updateTaskRunStatus(String taskRunId, TaskRunStatus status, String errorMsg, int durationMs) {
+        if (taskRunId == null) return;
+        try {
+            TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+            if (taskRun != null) {
+                taskRun.setStatus(status);
+                taskRun.setErrorMessage(errorMsg);
+                taskRun.setEndTime(LocalDateTime.now());
+                taskRun.setDurationMs((long) durationMs);
+                taskRunMapper.updateById(taskRun);
+                log.info("任务运行状态已同步更新，RunID: {}, Status: {}", taskRunId, status);
+            }
+        } catch (Exception e) {
+            log.error("同步更新任务运行状态失败，RunID: {}", taskRunId, e);
+        }
+    }
+
+    /**
+     * 检查并触发任务级重试（针对回调任务）
+     */
+    private void checkAndTriggerTaskRetry(CallbackJobExecuteMessage message) {
+        try {
+            Task task = taskMapper.selectById(message.getTaskId());
+            TaskRun currentRun = taskRunMapper.selectById(message.getTaskRunId());
+            
+            if (task == null || currentRun == null) return;
+
+            Integer maxRetryCount = task.getRetryCount();
+            if (maxRetryCount == null || maxRetryCount <= 0) return;
+
+            int currentRetryNum = currentRun.getRetryNum() != null ? currentRun.getRetryNum() : 0;
+
+            if (currentRetryNum < maxRetryCount) {
+                int nextRetryNum = currentRetryNum + 1;
+                int intervalSeconds = task.getRetryIntervalSeconds() != null ? task.getRetryIntervalSeconds() : 60;
+
+                log.info("回调任务执行失败，准备重试。TaskID: {}, 当前重试: {}/{}, 间隔: {}秒", 
+                        task.getId(), currentRetryNum, maxRetryCount, intervalSeconds);
+
+                taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds);
+            }
+        } catch (Exception e) {
+            log.error("回调任务重试检查异常", e);
         }
     }
 

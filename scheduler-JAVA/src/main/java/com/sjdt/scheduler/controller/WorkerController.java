@@ -19,6 +19,7 @@ import com.sjdt.scheduler.mapper.WorkerMapper;
 import com.sjdt.scheduler.mapper.WorkerTagMapper;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskResultMessage;
+import com.sjdt.scheduler.service.IAKSKService;
 import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.common.RedisKey;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -32,10 +33,6 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-
-import com.sjdt.scheduler.common.RedisKey;
-import org.springframework.data.redis.core.RedisTemplate;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Worker控制器
@@ -55,11 +52,12 @@ public class WorkerController {
     private final TaskRunMapper taskRunMapper;
     private final TaskLogMapper taskLogMapper;
     private final ITaskService taskService;
+    private final IAKSKService akskService;
     private final RedisTemplate<String, Object> redisTemplate;
 
     public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper, 
                            TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, 
-                           ITaskService taskService, RedisTemplate<String, Object> redisTemplate) {
+                           ITaskService taskService, IAKSKService akskService, RedisTemplate<String, Object> redisTemplate) {
         this.workerMapper = workerMapper;
         this.akskMapper = akskMapper;
         this.workerTagMapper = workerTagMapper;
@@ -67,6 +65,7 @@ public class WorkerController {
         this.taskRunMapper = taskRunMapper;
         this.taskLogMapper = taskLogMapper;
         this.taskService = taskService;
+        this.akskService = akskService;
         this.redisTemplate = redisTemplate;
     }
 
@@ -99,6 +98,9 @@ public class WorkerController {
             existingWorker.setStatus(WorkerStatus.online);
             existingWorker.setLastHeartbeat(LocalDateTime.now());
             workerMapper.updateById(existingWorker);
+
+            // 清理可能存在的旧 AKSK 缓存，确保新下发的 AKSK 立即生效
+            redisTemplate.delete(RedisKey.AKSK_CACHE + ":" + aksk.getAccessKey());
 
             registerVO.setWorkerId(existingWorker.getId());
             registerVO.setAccessKey(aksk.getAccessKey());
@@ -179,7 +181,7 @@ public class WorkerController {
         
         // 1. 检查 Redis 中是否存在心跳键
         // 如果不存在，说明 Worker 可能是新启动或从离线状态恢复
-        if (Boolean.FALSE.equals(redisTemplate.hasKey(heartbeatKey))) {
+        if (!redisTemplate.hasKey(heartbeatKey)) {
             log.info("检测到心跳键缺失，尝试激活 Worker 状态为在线 | WorkerID: {}", workerId);
             Worker worker = workerMapper.selectById(workerId);
             if (worker != null && worker.getStatus() != WorkerStatus.online) {
@@ -229,17 +231,14 @@ public class WorkerController {
     }
 
     /**
-     * 验证AKSK有效性
+     * 验证AKSK有效性 (带缓存)
      */
     @PostMapping("/validate-aksk")
     @Operation(summary = "验证AKSK有效性", description = "Worker执行器验证本地存储的AKSK是否有效")
     public Result<Map<String, Boolean>> validateAKSK(@RequestParam String accessKey) {
         log.info("收到AKSK验证请求，AccessKey: {}", accessKey);
         
-        AKSK aksk = akskMapper.selectOne(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AKSK>()
-                        .eq(AKSK::getAccessKey, accessKey)
-        );
+        AKSK aksk = akskService.getByAccessKey(accessKey);
         Map<String, Boolean> resultMap = new HashMap<>();
 
         if (aksk != null && "active".equals(aksk.getStatus())) {

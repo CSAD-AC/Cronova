@@ -329,6 +329,7 @@ public class CronTaskScheduler {
 
     /**
      * 更新任务运行状态
+     * 修正：增加重试触发逻辑，确保同步执行失败的任务也能重试
      *
      * @param taskRunId 任务运行实例ID
      * @param status 状态
@@ -343,9 +344,40 @@ public class CronTaskScheduler {
                 taskRun.setErrorMessage(errorMessage);
                 taskRunMapper.updateById(taskRun);
                 log.info("任务运行状态已更新，RunID: {}, Status: {}", taskRunId, status);
+
+                // 如果是失败状态，触发重试逻辑
+                if (status == TaskRunStatus.failed || status == TaskRunStatus.timeout) {
+                    Task task = taskService.getById(taskRun.getTaskId());
+                    if (task != null) {
+                        triggerRetry(task, taskRun);
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("更新任务运行状态失败，RunID: {}", taskRunId, e);
+        }
+    }
+
+    /**
+     * 触发重试逻辑
+     */
+    private void triggerRetry(Task task, TaskRun failedRun) {
+        Integer maxRetryCount = task.getRetryCount();
+        if (maxRetryCount == null || maxRetryCount <= 0) {
+            return;
+        }
+
+        Integer currentRetryNum = failedRun.getRetryNum();
+        if (currentRetryNum == null) currentRetryNum = 0;
+
+        if (currentRetryNum < maxRetryCount) {
+            int nextRetryNum = currentRetryNum + 1;
+            int intervalSeconds = task.getRetryIntervalSeconds() != null ? task.getRetryIntervalSeconds() : 60;
+
+            log.info("定时任务失败/超时，准备重试。TaskID: {}, 下次重试次数: {}, 间隔: {}秒", 
+                    task.getId(), nextRetryNum, intervalSeconds);
+
+            taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds);
         }
     }
 
