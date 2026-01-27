@@ -1,46 +1,63 @@
-# 使用 Python 3.11.6 基础镜像
+# -------------- 基础镜像 --------------
 FROM python:3.11.6-slim
 
-# 设置工作目录
+# -------------- 工作目录 --------------
 WORKDIR /app
 
-# 设置环境变量
+# -------------- 环境变量 --------------
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
-    PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
+    PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:${PATH}
 
-# === 关键：切换 Debian apt 源（使用阿里云加速） ===
-# 适配 Debian Bookworm (Python 3.11 默认基础镜像)
+# -------------- 换阿里源（Debian Bookworm） --------------
 RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources; \
+        sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's|security.debian.org|mirrors.aliyun.com/debian-security|g' /etc/apt/sources.list.d/debian.sources; \
     else \
-        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-        sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list; \
+        sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list && \
+        sed -i 's|security.debian.org|mirrors.aliyun.com/debian-security|g' /etc/apt/sources.list; \
     fi
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
-    gcc \
-    python3-dev \
-    curl \
-    ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# -------------- 安装系统构建依赖 + vi（用于调试） --------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git \
+        gcc \
+        g++ \
+        python3-dev \
+        libpq-dev \
+        curl \
+        ca-certificates \
+        vim-tiny && \
+    rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件（相对于构建上下文 ..）
+# -------------- 复制并安装 Python 依赖 --------------
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple
+# -------------- 安装运行时系统依赖（JDK） --------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openjdk-17-jre-headless && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# 复制项目代码（相对于构建上下文 ..）
+# -------------- 清理构建依赖（但保留 vi） --------------
+# 注意：vim-tiny 是运行时保留项，不在此 purge 列表中
+RUN apt-get purge -y --auto-remove \
+        gcc \
+        g++ \
+        python3-dev \
+        libpq-dev \
+        git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+# -------------- 复制项目代码 --------------
 COPY . .
 
-# 创建必要的目录
+# -------------- 创建运行时目录 --------------
 RUN mkdir -p logs task_instances
 
-# 启动程序
+# -------------- 默认启动命令 --------------
 CMD ["python3", "main.py"]

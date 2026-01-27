@@ -1,17 +1,16 @@
 services:
   sjdt-worker:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
     image: sjdt-worker:1.0
+    network_mode: host
     container_name: sjdt-worker
     restart: always
     env_file:
       - .env
     volumes:
-      - ../app/local_config.json:/app/app/local_config.json
-      - ../logs:/app/logs
-      - ../task_instances:/app/task_instances
+      - ../../jupyter:/app
+    working_dir: /app
+    command: tail -f /dev/null
+    #command: ["python", "main.py"]
     logging:
       driver: "json-file"
       options:

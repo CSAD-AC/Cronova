@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class GoHandler(BaseHandler):
-    """Go任务处理器（执行二进制文件）"""
+    """Go任务处理器（执行编译后的二进制文件，无需Go环境）"""
 
     def __init__(self):
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="GoHandler")
@@ -28,10 +28,10 @@ class GoHandler(BaseHandler):
 
     def handle(self, task: TaskExecuteMessage) -> bool:
         """
-        异步处理Go二进制任务
+        异步处理Go任务（执行二进制文件）
         """
         try:
-            logger.info("开始异步执行Go二进制程序，任务ID：%s", task.taskId)
+            logger.info("开始异步执行Go二进制任务，任务ID：%s", task.taskId)
             
             # 创建任务实例
             task_instance_manager.create_instance(task.taskRunId, {
@@ -57,7 +57,7 @@ class GoHandler(BaseHandler):
         task_run_id = task.taskRunId
         
         try:
-            logger.info("开始执行Go程序，任务ID：%s，路径：%s，taskRunId：%s", task.taskId, task.script.path, task_run_id)
+            logger.info("开始执行Go二进制文件，任务ID：%s，路径：%s，taskRunId：%s", task.taskId, task.script.path, task_run_id)
             
             # 1. 下载二进制文件到临时目录
             script_bucket = Config.MINIO_BUCKET_NAME
@@ -84,7 +84,7 @@ class GoHandler(BaseHandler):
 
             # 5. 启动子进程执行程序
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
-            logger.info("开始运行Go二进制程序，超时时间：%d秒", timeout_seconds)
+            logger.info("开始运行二进制程序，超时时间：%d秒", timeout_seconds)
             
             process = subprocess.Popen(
                 [temp_bin_path],
@@ -188,17 +188,21 @@ class GoHandler(BaseHandler):
         """监控进程状态逻辑同PythonHandler"""
         try:
             exit_code = process.wait()
-            remaining_stdout = process.stdout.read() if process.stdout else ""
+            # 读取所有剩余的输出
+            remaining_output = process.stdout.read() if process.stdout else ""
             
-            if remaining_stdout:
-                self._append_log_to_minio(log_bucket, log_object, remaining_stdout)
+            # 定义本地日志路径
+            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
+
+            if remaining_output:
+                self._upload_partial_log_with_retry(log_bucket, log_object, remaining_output, local_log_path)
             
             end_time = datetime.utcnow()
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
             
             error_message = None
             if exit_code != 0:
-                error_message = remaining_stdout[:1000] if remaining_stdout else f"退出码：{exit_code}"
+                error_message = remaining_output[:1000] if remaining_output else f"退出码：{exit_code}"
             
             result = TaskResultMessage(
                 workerId=Config.WORKER_ID,

@@ -253,7 +253,7 @@ class JavaHandler(BaseHandler):
             
             # 定义本地日志路径
             local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
-            
+
             # 上传最终的完整日志
             if remaining_output:
                 self._upload_partial_log_with_retry(log_bucket, log_object, remaining_output, local_log_path)

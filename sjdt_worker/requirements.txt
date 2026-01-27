@@ -5,7 +5,7 @@ psutil==7.2.1
 pydantic==2.12.5
 requests==2.32.3
 rocketmq==0.4.4
-numpy==2.4.1
+numpy==1.26.4
 pandas[all]==2.3.3
 tzlocal==5.3.1
 pycryptodome==3.23.0
@@ -18,8 +18,9 @@ redis[all]==5.2.0
 hiredis==2.3.2
 elasticsearch==8.17.0
 pymongo==4.11.0
-sqlalchemy==2.0.36
-pymysql==1.1.1
+# SQLAlchemy: 使用自定义 GBase 兼容版本
+git+https://github.com/CSAD-AC/sqlalchemy.git@v2.0.36-gbase#egg=SQLAlchemy
+pymysql==1.1.1  
 pyjwt[crypto]==2.10.1
 celery[all]==5.4.0
 prometheus-client==0.21.1

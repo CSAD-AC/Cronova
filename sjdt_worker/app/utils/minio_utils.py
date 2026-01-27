@@ -59,14 +59,30 @@ def minio_upload_file(bucket_name: str, file_name: str, file_content: io.BytesIO
 def get_minio_file_object(bucket_name: str, file_name: str) -> io.BytesIO:
     """
     从MinIO获取文件对象
-    :param bucket_name: 存储桶名称
-    :param file_name: 文件名
+    :param bucket_name: 存储桶名称（兜底使用）
+    :param file_name: 文件名或完整路径（形如 bucket/object）
     :return: 内存中的文件对象（BytesIO）
     :raises Exception: 获取失败时抛出
     """
     minio_client = get_minio_client()
     try:
-        response = minio_client.get_object(bucket_name, file_name)
+        # 统一路径解析逻辑
+        actual_bucket = bucket_name
+        actual_object = file_name
+
+        # 如果 file_name 包含斜杠，且第一部分是 Config.MINIO_BUCKET_NAME，则进行剥离
+        if "/" in file_name:
+            parts = file_name.split("/", 1)
+            # 如果第一部分匹配配置的桶名，则更新
+            if parts[0] == Config.MINIO_BUCKET_NAME:
+                actual_bucket = parts[0]
+                actual_object = parts[1]
+            elif parts[0] == bucket_name:
+                # 兼容传入 bucket_name 且 file_name 也带 bucket 的情况
+                actual_bucket = parts[0]
+                actual_object = parts[1]
+
+        response = minio_client.get_object(actual_bucket, actual_object)
         # 转换为BytesIO对象便于后续处理
         file_object = io.BytesIO(response.read())
         response.close()
