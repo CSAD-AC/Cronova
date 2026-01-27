@@ -99,7 +99,15 @@ class TaskService:
             gunicorn_manager.set_max_wait_time(30)  # 设置最大等待时间30秒
             
             # 2. 正常停止该任务进程
-            success = process_manager.stop_process(stop_message.taskRunId, force=False)
+            # 修改：如果是超时强制停止，应该使用force=True，否则会等待进程自然结束，导致超时停止失败
+            # 这里的 reason 是 "任务执行超时，系统强制停止"
+            is_timeout_stop = stop_message.reason and "超时" in stop_message.reason
+            force_stop = is_timeout_stop
+            
+            if force_stop:
+                logger.info("检测到超时停止请求，将使用强制停止模式，taskRunId：%s", stop_message.taskRunId)
+            
+            success = process_manager.stop_process(stop_message.taskRunId, force=force_stop)
             
             if success:
                 logger.info("Gunicorn停止成功，taskRunId：%s", stop_message.taskRunId)

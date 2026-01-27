@@ -1,5 +1,5 @@
 import time
-from rocketmq.client import PushConsumer
+from rocketmq.client import PushConsumer, MessageModel
 from app.config import Config
 from app.model.task import TaskExecuteMessage, TaskStopMessage, TaskPauseMessage, TaskResumeMessage, TaskDeleteMessage
 from app.service.task_service import TaskService
@@ -12,26 +12,35 @@ logger = get_logger(__name__)
 class MQConsumer:
     def __init__(self):
         logger.info("初始化MQ消费者，配置信息：")
-        logger.info("- 消费者组：%s", Config.MQ_CONSUMER_GROUP)
+        logger.info("- 消费者组(Task)：%s", Config.MQ_CONSUMER_GROUP)
+        logger.info("- 消费者组(Control)：%s_CONTROL", Config.MQ_CONSUMER_GROUP)
         logger.info("- NameServer地址：%s", Config.MQ_NAMESRV_ADDR)
         logger.info("- 任务主题：%s", Config.MQ_TASK_TOPIC)
         logger.info("- 控制主题：%s", Config.MQ_TASK_CONTROL_TOPIC)
         logger.info("- 当前Worker ID：%s", Config.WORKER_ID)
         
-        self.consumer = PushConsumer(Config.MQ_CONSUMER_GROUP)
-        self.consumer.set_namesrv_addr(Config.MQ_NAMESRV_ADDR)
         self.task_service = TaskService()
 
+        # 1. 任务消费者 (默认集群模式)
+        self.task_consumer = PushConsumer(Config.MQ_CONSUMER_GROUP)
+        self.task_consumer.set_namesrv_addr(Config.MQ_NAMESRV_ADDR)
+        
         logger.info("开始订阅任务执行主题：%s", Config.MQ_TASK_TOPIC)
-        self.consumer.subscribe(
+        self.task_consumer.subscribe(
             Config.MQ_TASK_TOPIC,
             self._message_listener,
             expression="*"
         )
         logger.info("任务执行主题订阅成功")
         
-        logger.info("开始订阅任务控制主题：%s", Config.MQ_TASK_CONTROL_TOPIC)
-        self.consumer.subscribe(
+        # 2. 控制消费者 (广播模式)
+        # 使用独立的Group以避免冲突，并启用广播模式确保所有Worker都能收到控制指令
+        self.control_consumer = PushConsumer(Config.MQ_CONSUMER_GROUP + "_CONTROL")
+        self.control_consumer.set_namesrv_addr(Config.MQ_NAMESRV_ADDR)
+        self.control_consumer.set_message_model(MessageModel.BROADCASTING)
+        
+        logger.info("开始订阅任务控制主题(广播模式)：%s", Config.MQ_TASK_CONTROL_TOPIC)
+        self.control_consumer.subscribe(
             Config.MQ_TASK_CONTROL_TOPIC,
             self._control_task_listener,
             expression="*"
@@ -185,8 +194,9 @@ class MQConsumer:
     def start(self):
         """启动消费者"""
         try:
-            logger.info("启动RocketMQ消费者...")
-            self.consumer.start()
+            logger.info("启动RocketMQ消费者(Task & Control)...")
+            self.task_consumer.start()
+            self.control_consumer.start()
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
@@ -199,4 +209,12 @@ class MQConsumer:
     def shutdown(self):
         """关闭消费者"""
         logger.info("关闭RocketMQ消费者...")
-        self.consumer.shutdown()
+        try:
+            self.task_consumer.shutdown()
+        except Exception as e:
+            logger.error("关闭任务消费者失败: %s", str(e))
+            
+        try:
+            self.control_consumer.shutdown()
+        except Exception as e:
+            logger.error("关闭控制消费者失败: %s", str(e))

@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
  * 负责接收Worker返回的任务执行结果
  */
 @Service
-@RocketMQMessageListener(topic = "TASK_RESULT", consumerGroup = "WORKER_EXECUTOR_GROUP")
+@RocketMQMessageListener(topic = "TASK_RESULT", consumerGroup = "SCHEDULER_RESULT_GROUP")
 @Slf4j
 public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
 
