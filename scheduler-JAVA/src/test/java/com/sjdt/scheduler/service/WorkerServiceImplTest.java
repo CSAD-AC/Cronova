@@ -101,7 +101,6 @@ class WorkerServiceImplTest {
                 .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                 .scriptId("test-script-id")
                 .taskType(TaskType.once)
-                .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker(worker.getId())
                 .status(TaskStatus.active)

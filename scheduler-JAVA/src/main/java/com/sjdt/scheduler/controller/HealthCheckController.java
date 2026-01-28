@@ -62,6 +62,45 @@ public class HealthCheckController {
     }
 
     /**
+     * 转换Cron表达式为中文描述
+     * 
+     * 【功能说明】
+     * 接受cron表达式参数，返回中文含义描述和下次执行时间
+     * 用于前端显示Cron表达式的语义化信息
+     */
+    @GetMapping("/cron/description")
+    @Operation(summary = "Cron表达式转中文描述", description = "接受cron表达式，返回中文含义和下次执行时间")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "转换成功",
+                     content = @Content(schema = @Schema(implementation = CronDescriptionResult.class))),
+        @ApiResponse(responseCode = "400", description = "Cron表达式不合法",
+                     content = @Content(schema = @Schema(implementation = Result.class)))
+    })
+    public Result<CronDescriptionResult> getCronDescription(
+            @Parameter(description = "Cron表达式", required = true, example = "0 0 12 * * ?")
+            @RequestParam String cronExpr) {
+        log.info("转换Cron表达式为中文描述：{}", cronExpr);
+        
+        if (cronExpr == null || cronExpr.trim().isEmpty()) {
+            return Result.error(400, "Cron表达式不能为空");
+        }
+        
+        CronValidationResult cronResult = validateCronExpression(cronExpr);
+        if (!cronResult.isValid()) {
+            log.warn("Cron表达式不合法：{}，错误信息：{}", cronExpr, cronResult.getDescription());
+            return Result.error(400, "Cron表达式不合法：" + cronResult.getDescription());
+        }
+        
+        CronDescriptionResult result = new CronDescriptionResult();
+        result.setCronExpr(cronExpr);
+        result.setDescription(cronResult.getDescription());
+        result.setNextExecutionTime(cronResult.getNextExecutionTime());
+        
+        log.info("Cron转换成功：{} -> {}", cronExpr, cronResult.getDescription());
+        return Result.success(result);
+    }
+
+    /**
      * 回调任务配置健康检查
      * 
      * 【健康检查流程】
@@ -400,6 +439,21 @@ public class HealthCheckController {
         } else {
             return callbackUrl + "/health";
         }
+    }
+
+    /**
+     * Cron表达式描述结果
+     */
+    @Data
+    public static class CronDescriptionResult {
+        /** Cron表达式 */
+        private String cronExpr;
+
+        /** 中文描述 */
+        private String description;
+
+        /** 下次执行时间 */
+        private String nextExecutionTime;
     }
 
     /**

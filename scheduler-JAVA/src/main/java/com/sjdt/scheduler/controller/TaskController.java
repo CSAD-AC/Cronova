@@ -184,7 +184,6 @@ public class TaskController {
             }
 
             existingTask.setStatus(TaskStatus.deleted);
-            existingTask.setEnabled(false);
             existingTask.setUpdateTime(LocalDateTime.now());
             taskService.updateById(existingTask);
             logger.info("任务删除成功，任务ID：{}", id);
@@ -219,7 +218,7 @@ public class TaskController {
                 return Result.error(ErrorCodeEnum.TASK_NOT_FOUND);
             }
 
-            task.setEnabled(true);
+            task.setStatus(TaskStatus.active);
             task.setUpdateTime(LocalDateTime.now());
             taskService.updateById(task);
             logger.info("任务启用成功，任务ID：{}", id);
@@ -253,7 +252,7 @@ public class TaskController {
                 return Result.error(ErrorCodeEnum.TASK_NOT_FOUND);
             }
 
-            task.setEnabled(false);
+            task.setStatus(TaskStatus.paused);
             task.setUpdateTime(LocalDateTime.now());
             taskService.updateById(task);
             logger.info("任务禁用成功，任务ID：{}", id);

@@ -57,9 +57,7 @@ public class TaskUpdateDTO {
     )
     private String cronExpr;
 
-    /** 是否启用 */
-    @Schema(description = "是否启用", example = "true")
-    private Boolean enabled;
+
 
     /** 超时时间（秒），0表示不限制 */
     @Schema(description = "超时时间（秒），0表示不限制", example = "60")

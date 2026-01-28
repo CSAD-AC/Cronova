@@ -48,7 +48,6 @@ class TaskServiceImplTest {
                     .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                     .scriptId("test-script-id")
                     .taskType(TaskType.valueOf(TaskType.once.getValue()))
-                    .enabled(true)
                     .timeoutSeconds(300)
                     .targetWorker(workerId)
                     .status(TaskStatus.valueOf(TaskStatus.active.getValue()))
@@ -68,7 +67,6 @@ class TaskServiceImplTest {
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.cron.getValue()))
                 .cronExpr("0 0 * * *")
-                .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker("other-worker")
                 .status(TaskStatus.valueOf(TaskStatus.active.getValue()))
@@ -106,7 +104,6 @@ class TaskServiceImplTest {
                 .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.go)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.once.getValue()))
-                .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker("test-worker-save")
                 .status(TaskStatus.valueOf(TaskStatus.active.getValue()))
@@ -149,7 +146,6 @@ class TaskServiceImplTest {
                 .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.java)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.once.getValue()))
-                .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker(null) // 公共任务，没有指定Worker
                 .status(TaskStatus.valueOf(TaskStatus.active.getValue()))
@@ -191,7 +187,6 @@ class TaskServiceImplTest {
                 .scriptType(com.sjdt.scheduler.domain.enums.ScriptType.python)
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.once.getValue()))
-                .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker("test-worker-id") // 定向任务，指定了Worker
                 .status(TaskStatus.valueOf(TaskStatus.active.getValue()))
@@ -235,7 +230,6 @@ class TaskServiceImplTest {
                 .scriptId("test-script-id")
                 .taskType(TaskType.valueOf(TaskType.cron.getValue()))
                 .cronExpr("0 0 * * *") // Cron表达式
-                .enabled(true)
                 .timeoutSeconds(300)
                 .targetWorker(null)
                 .status(TaskStatus.valueOf(TaskStatus.active.getValue()))

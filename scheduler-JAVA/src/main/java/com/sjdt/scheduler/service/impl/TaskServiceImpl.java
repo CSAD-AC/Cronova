@@ -105,8 +105,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         return this.list(
             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
                 .eq(Task::getTaskType, TaskType.cron)
-                .eq(Task::getEnabled, true)
-                .eq(Task::getStatus, com.sjdt.scheduler.domain.enums.TaskStatus.active)
+                .eq(Task::getStatus, TaskStatus.active)
         );
     }
 
@@ -160,7 +159,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         }
 
         // 更新基本信息
-        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "enabled", "status", "createdBy", "createTime");
+        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "status", "createdBy", "createTime");
         task.setUpdateTime(LocalDateTime.now());
         this.updateById(task);
 
@@ -211,7 +210,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
 
     @Override
     public List<TaskVO> listTaskVOs() {
-        List<Task> tasks = this.list();
+        List<Task> tasks = this.list(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
+                .ne(Task::getStatus, TaskStatus.deleted)
+        );
         return tasks.stream().map(this::buildTaskVO).collect(Collectors.toList());
     }
 
@@ -219,6 +221,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     public List<TaskVO> listRecentTasks(int limit) {
         List<Task> tasks = this.list(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
+                        .ne(Task::getStatus, TaskStatus.deleted)
                         .orderByDesc(Task::getCreateTime)
                         .last("LIMIT " + limit)
         );
@@ -274,12 +277,11 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .scriptId(dto.getScriptId())
                 .taskType(dto.getTaskType())
                 .cronExpr(dto.getCronExpr())
-                .enabled(true)
                 .timeoutSeconds(dto.getTimeoutSeconds() != null ? dto.getTimeoutSeconds() : 180)
                 .retryCount(dto.getRetryCount() != null ? dto.getRetryCount() : 0)
                 .retryIntervalSeconds(dto.getRetryIntervalSeconds() != null ? dto.getRetryIntervalSeconds() : 60)
                 .targetWorker(dto.getTargetWorker())
-                .status(com.sjdt.scheduler.domain.enums.TaskStatus.active)
+                .status(TaskStatus.active)
                 .createdBy("system")
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
@@ -358,11 +360,13 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         TaskRun taskRun = TaskRun.builder()
                 .taskId(task.getId())
                 .status(TaskRunStatus.pending)
+                .startTime(LocalDateTime.now())
                 .retryNum(retryNum)
                 .createTime(LocalDateTime.now())
                 .build();
         taskRunMapper.insert(taskRun);
         String taskRunId = taskRun.getId();
+        log.warn("运行实例已插入， 开始时间为{} id为{}", taskRun.getStartTime(), taskRunId);
 
         TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
                 .id(script.getId())

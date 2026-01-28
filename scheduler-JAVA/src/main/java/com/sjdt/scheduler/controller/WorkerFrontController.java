@@ -152,7 +152,7 @@ public class WorkerFrontController {
         String infoKey = RedisKey.getWorkerInfoKey(id);
         
         // 1. 实时在线状态
-        boolean isAlive = Boolean.TRUE.equals(redisTemplate.hasKey(heartbeatKey));
+        boolean isAlive = redisTemplate.hasKey(heartbeatKey);
         workerVO.setStatus(isAlive ? WorkerStatus.online.name() : WorkerStatus.offline.name());
         
         // 2. 实时负载信息

@@ -38,8 +38,7 @@ public class TaskVO {
     /** Cron表达式 */
     private String cronExpr;
 
-    /** 是否启用 */
-    private Boolean enabled;
+
 
     /** 超时时间（秒） */
     private Integer timeoutSeconds;
@@ -55,6 +54,12 @@ public class TaskVO {
 
     /** 任务状态 */
     private TaskStatus status;
+
+    /** 执行耗时（毫秒），用于任务执行记录 */
+    private Long duration;
+
+    /** 任务实例执行状态（pending/running/success/failed/timeout），用于仪表盘展示 */
+    private String runStatus;
 
     /** 创建人 */
     private String createdBy;

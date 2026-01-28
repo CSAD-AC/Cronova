@@ -1,0 +1,426 @@
+<template>
+  <div class="task-edit-container">
+    <div class="page-header">
+      <el-page-header @back="$router.back()">
+        <template #content>
+          <span class="page-title">编辑任务</span>
+        </template>
+      </el-page-header>
+    </div>
+    
+    <el-card class="form-card">
+      <el-form
+        ref="formRef"
+        :model="formData"
+        :rules="rules"
+        label-width="120px"
+        class="task-form"
+      >
+        <el-divider content-position="left">基本信息</el-divider>
+        
+        <el-row :gutter="24">
+          <el-col :span="12">
+            <el-form-item label="任务名称" prop="name">
+              <el-input v-model="formData.name" placeholder="请输入任务名称" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="执行类型" prop="executeType">
+              <el-radio-group v-model="formData.executeType" disabled>
+                <el-radio value="script">脚本执行</el-radio>
+                <el-radio value="callback">HTTP回调</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-form-item label="任务描述" prop="description">
+          <el-input 
+            v-model="formData.description" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入任务描述" 
+          />
+        </el-form-item>
+        
+        <template v-if="formData.executeType === 'script'">
+          <el-divider content-position="left">脚本配置</el-divider>
+          
+          <el-row :gutter="24">
+            <el-col :span="12">
+              <el-form-item label="脚本类型" prop="scriptType">
+                <el-select v-model="formData.scriptType" style="width: 100%">
+                  <el-option label="Python" value="python" />
+                  <el-option label="Java" value="java" />
+                  <el-option label="Go" value="go" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="目标执行器" prop="targetWorker">
+                <el-select v-model="formData.targetWorker" clearable style="width: 100%">
+                  <el-option label="自动匹配" value="" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
+        
+        <template v-if="formData.executeType === 'callback'">
+          <el-divider content-position="left">回调配置</el-divider>
+          
+          <el-form-item label="回调URL" prop="callbackUrl">
+            <el-input v-model="formData.callbackUrl" placeholder="https://api.example.com/callback" />
+          </el-form-item>
+          
+          <el-row :gutter="24">
+            <el-col :span="12">
+              <el-form-item label="请求方法" prop="callbackMethod">
+                <el-select v-model="formData.callbackMethod" style="width: 100%">
+                  <el-option label="GET" value="GET" />
+                  <el-option label="POST" value="POST" />
+                  <el-option label="PUT" value="PUT" />
+                  <el-option label="DELETE" value="DELETE" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="密钥" prop="secretKey">
+                <el-input v-model="formData.secretKey" placeholder="用于回调验证的密钥" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
+        
+        <el-divider content-position="left">执行控制</el-divider>
+        <el-row :gutter="24">
+            <el-col :span="8">
+              <el-form-item label="超时时间" prop="timeoutSeconds">
+                <el-input-number v-model="formData.timeoutSeconds" :min="0" :max="86400" />
+                <span class="form-tip">秒 (0不限制)</span>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="重试次数" prop="retryCount">
+                <el-input-number v-model="formData.retryCount" :min="0" :max="10" />
+                <span class="form-tip">次</span>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="重试间隔" prop="retryIntervalSeconds">
+                <el-input-number v-model="formData.retryIntervalSeconds" :min="1" :max="3600" />
+                <span class="form-tip">秒</span>
+              </el-form-item>
+            </el-col>
+        </el-row>
+        
+        <el-divider content-position="left">调度配置</el-divider>
+        
+        <el-form-item label="任务类型" prop="taskType">
+          <el-radio-group v-model="formData.taskType">
+            <el-radio value="cron">Cron定时任务</el-radio>
+            <el-radio value="once">一次性执行</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        
+        <el-form-item v-if="formData.taskType === 'cron'" label="Cron表达式" prop="cronExpr">
+          <el-input v-model="formData.cronExpr" placeholder="0 0 0 * * ?" />
+        </el-form-item>
+        
+        <el-form-item>
+          <el-button type="primary" :loading="loading" @click="handleSubmit">
+            {{ loading ? '保存中...' : '保 存' }}
+          </el-button>
+          <el-button @click="$router.back()">取消</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useTaskStore } from '@/stores/task'
+import type { FormInstance, FormRules } from 'element-plus'
+
+const route = useRoute()
+const router = useRouter()
+const taskStore = useTaskStore()
+const formRef = ref<FormInstance>()
+const loading = ref(false)
+
+const taskId = route.params.id as string
+
+const formData = reactive({
+  id: '',
+  name: '',
+  description: '',
+  executeType: 'script' as 'script' | 'callback',
+  scriptType: '' as '' | 'python' | 'java' | 'go',
+  scriptId: '',
+  targetWorker: '',
+  timeoutSeconds: 180,
+  taskType: 'cron' as 'cron' | 'once',
+  cronExpr: '',
+  // 回调配置字段
+  callbackUrl: '',
+  callbackMethod: 'POST',
+  secretKey: '',
+  retryCount: 3,
+  retryIntervalSeconds: 60,
+})
+
+const rules: FormRules = {
+  name: [
+    { required: true, message: '请输入任务名称', trigger: 'blur' },
+    { min: 2, max: 50, message: '任务名称长度在2-50个字符', trigger: 'blur' },
+  ],
+  scriptType: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (formData.executeType === 'script' && !value) {
+          callback(new Error('脚本类型为必填项'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
+  ],
+  scriptId: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (formData.executeType === 'script' && !value) {
+          callback(new Error('脚本文件为必填项'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
+  ],
+  callbackUrl: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (formData.executeType === 'callback') {
+          if (!value) {
+            callback(new Error('回调URL为必填项'))
+          } else if (!/^https?:\/\/.+/.test(value)) {
+            callback(new Error('请输入有效的HTTP或HTTPS URL'))
+          } else {
+            callback()
+          }
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+  callbackMethod: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (formData.executeType === 'callback' && !value) {
+          callback(new Error('请求方法为必填项'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
+  ],
+  timeoutSeconds: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (value !== undefined && value < 0) {
+          callback(new Error('超时时间不能为负数'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
+  ],
+  retryCount: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (value !== undefined && value < 0) {
+          callback(new Error('重试次数不能为负数'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
+  ],
+  retryIntervalSeconds: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (value !== undefined && value <= 0) {
+          callback(new Error('重试间隔必须大于0'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
+  ],
+  cronExpr: [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (formData.taskType === 'cron') {
+          if (!value) {
+            callback(new Error('Cron表达式为必填项'))
+          } else {
+            // 验证六字段cron表达式格式：秒 分 时 日 月 星期
+            const cronPattern = /^([0-9]|[1-5][0-9]|\*|\*\/\d+)\s+([0-9]|[1-5][0-9]|\*|\*\/\d+)\s+([0-9]|[1-2][0-9]|\*|\*\/\d+)\s+([0-9]|[12][0-9]|[3][01]|\?|\*|\*\/\d+)\s+([1-9]|1[0-2]|\*|\*\/\d+)\s+([0-6]|\?|\*|\*\/\d+)$/
+            if (!cronPattern.test(value)) {
+              callback(new Error('请输入有效的六字段Cron表达式（秒 分 时 日 月 星期）'))
+            } else {
+              // 验证不能同时指定日字段和星期字段
+              const parts = value.trim().split(/\s+/)
+              if (parts.length === 6) {
+                const dayField = parts[3] // 日字段
+                const weekField = parts[5] // 星期字段
+                
+                // 如果日字段和星期字段都指定了非"?"值，则不合法
+                const hasSpecificDay = dayField !== '?' && dayField !== '*'
+                const hasSpecificWeek = weekField !== '?' && weekField !== '*'
+                
+                if (hasSpecificDay && hasSpecificWeek) {
+                  callback(new Error('日字段和星期字段不能同时指定具体值'))
+                } else if (dayField === '*' && weekField === '*') {
+                  callback(new Error('日字段和星期字段不能同时为"*"'))
+                } else {
+                  callback()
+                }
+              } else {
+                callback(new Error('Cron表达式格式错误'))
+              }
+            }
+          }
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+}
+
+async function fetchTask() {
+  const task = await taskStore.fetchTaskById(taskId)
+  if (task) {
+    // 加载任务数据到表单
+    Object.assign(formData, {
+      id: task.id,
+      name: task.name || '',
+      description: task.description || '',
+      executeType: task.executeType || 'script',
+      scriptType: (task as any).scriptType || task.type || '', // 支持两种字段名
+      scriptId: task.scriptId || '',
+      targetWorker: task.targetWorker || '',
+      timeoutSeconds: task.timeoutSeconds || 180,
+      status: task.status || 'active',
+      taskType: task.taskType,
+      cronExpr: task.cronExpr || '',
+    })
+
+    // 如果是回调任务，尝试加载回调配置
+    if (task.executeType === 'callback' && task.callbackConfig) {
+      formData.callbackUrl = task.callbackConfig.callbackUrl || ''
+      formData.callbackMethod = task.callbackConfig.callbackMethod || 'POST'
+      formData.secretKey = task.callbackConfig.secretKey || ''
+    }
+  }
+}
+
+async function handleSubmit() {
+  if (!formRef.value) return
+  
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    
+    loading.value = true
+    try {
+      // 构建更新请求体，根据executeType动态添加字段，只包含非空值
+      const updateData: any = {
+        id: formData.id,
+        name: formData.name,
+        description: formData.description,
+        executeType: formData.executeType,
+        taskType: formData.taskType,
+        timeoutSeconds: formData.timeoutSeconds,
+        retryCount: formData.retryCount,
+        retryIntervalSeconds: formData.retryIntervalSeconds,
+      }
+
+      // 根据执行类型添加特定字段
+      if (formData.executeType === 'script') {
+        if (formData.scriptType) updateData.scriptType = formData.scriptType
+        if (formData.scriptId) updateData.scriptId = formData.scriptId
+        if (formData.targetWorker) updateData.targetWorker = formData.targetWorker
+      } else if (formData.executeType === 'callback') {
+        const callbackConfig: any = {}
+        if (formData.callbackUrl) callbackConfig.callbackUrl = formData.callbackUrl
+        if (formData.callbackMethod) callbackConfig.callbackMethod = formData.callbackMethod
+        if (formData.secretKey) callbackConfig.secretKey = formData.secretKey
+        
+        // 只有当callbackConfig有值时才添加
+        if (Object.keys(callbackConfig).length > 0) {
+          updateData.callbackConfig = callbackConfig
+        }
+      }
+
+      // 添加调度配置
+      if (formData.taskType === 'cron' && formData.cronExpr) {
+        updateData.cronExpr = formData.cronExpr
+      }
+
+      await taskStore.updateTask(updateData)
+      ElMessage.success('保存成功')
+      router.push('/tasks')
+    } catch (error) {
+      console.error('保存失败:', error)
+      ElMessage.error('保存失败')
+    } finally {
+      loading.value = false
+    }
+  })
+}
+
+onMounted(() => {
+  fetchTask()
+})
+</script>
+
+<style scoped>
+.task-edit-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.form-card {
+  border-radius: 12px;
+}
+
+.task-form {
+  padding: 20px 0;
+}
+
+.form-tip {
+  margin-left: 8px;
+  color: #64748b;
+}
+</style>

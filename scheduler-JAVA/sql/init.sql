@@ -131,7 +131,6 @@ CREATE TABLE tasks (
                        script_id        VARCHAR(36) COMMENT '关联 script.id（script类型必填）',
                        task_type       VARCHAR(16) NOT NULL COMMENT '任务调度类型: once / cron',
                        cron_expr       VARCHAR(64) COMMENT 'Cron 表达式，如: 0 0 * * *',
-                       enabled         BOOLEAN DEFAULT TRUE COMMENT '是否启用',
                        timeout_seconds INT DEFAULT 180 COMMENT '超时时间（秒）',
                        target_worker   VARCHAR(64) COMMENT '指定 Worker（为空表示自动调度）',
                        status          VARCHAR(16) NOT NULL COMMENT '任务状态: active/paused/deleted',

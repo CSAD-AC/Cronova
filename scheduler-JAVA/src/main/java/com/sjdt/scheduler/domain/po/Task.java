@@ -68,8 +68,7 @@ public class Task implements Serializable {
     @TableField(value = "cron_expr")
     private String cronExpr;
 
-    /** 是否启用 */
-    private Boolean enabled;
+
 
     /** 超时时间（秒），0 表示不限制 */
     @TableField(value = "timeout_seconds")
@@ -88,6 +87,7 @@ public class Task implements Serializable {
     private String targetWorker;
 
     /** 任务状态：active / paused / deleted */
+    @TableField(value = "status")
     private TaskStatus status;
 
     /** 创建人 */

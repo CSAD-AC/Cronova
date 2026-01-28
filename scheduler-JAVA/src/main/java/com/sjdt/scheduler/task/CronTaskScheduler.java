@@ -217,10 +217,11 @@ public class CronTaskScheduler {
      */
     private String createTaskRun(Task task) {
         TaskRun taskRun = TaskRun.builder()
-            .taskId(task.getId())
-            .status(TaskRunStatus.pending)
-            .createTime(LocalDateTime.now())
-            .build();
+                .taskId(task.getId())
+                .status(TaskRunStatus.pending)
+                .createTime(LocalDateTime.now())
+                .startTime(LocalDateTime.now())
+                .build();
         taskRunMapper.insert(taskRun);
         log.info("创建任务运行记录成功，运行ID: {}", taskRun.getId());
         return taskRun.getId();

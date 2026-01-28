@@ -1,12 +1,16 @@
 ### 本地测试使用文件 ###
 minio.exe
 frpc/
-Vue/
+**/node_modules/
+**/.vscode/
+**/dist/
 *.rar
 test-flask.py
 test.py
 **/__pycache__/
 *.tar
+sjdt-task-engine/
+
 
 HELP.md
 target/

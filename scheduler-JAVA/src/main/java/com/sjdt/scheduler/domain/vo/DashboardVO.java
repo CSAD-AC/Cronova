@@ -7,8 +7,9 @@ import java.util.Map;
 @Data
 public class DashboardVO {
     private Stats stats;
-    private List<TaskVO> recentTasks;
+    private List<TaskRunVO> recentTasks;
     private List<ChartData> chartData;
+    private List<TaskTypeData> taskTypeDistribution;
 
     @Data
     public static class Stats {
@@ -28,5 +29,13 @@ public class DashboardVO {
         private String date;
         private long success;
         private long failure;
+    }
+
+    @Data
+    public static class TaskTypeData {
+        private String type;
+        private String label;
+        private long count;
+        private double percentage;
     }
 }
