@@ -50,22 +50,3 @@ minio:
   bucket-name-scripts: task-engine
   bucket-name: task-engine
 
-
-# 定时任务配置（开发环境覆盖）
-scheduled:
-  task:
-    sync-staff-to-es:
-      # 测试阶段：启动后立即执行一次，然后每1小时执行一次
-      enabled: false
-      initial-delay: PT10S  # 启动后10秒执行第一次
-      fixed-delay: PT1H     # 每1小时执行一次
-
-    sync-user-path:
-      # 测试阶段：启动后40秒执行（在同步ES之后），然后每1小时执行一次
-      enabled: false
-      initial-delay: PT40S  # 启动后40秒执行
-      fixed-delay: PT1H     # 每1小时执行一次
-
-customs:
-  guid-map:
-    path: classpath:json/customs_guid_map.json
