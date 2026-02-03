@@ -38,7 +38,7 @@
           <el-input 
             v-model="formData.description" 
             type="textarea" 
-            :rows="3"
+            :rows="3" 
             placeholder="请输入任务描述" 
           />
         </el-form-item>
@@ -58,12 +58,41 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="目标执行器" prop="targetWorker">
-                <el-select v-model="formData.targetWorker" clearable style="width: 100%">
+                <el-select v-model="formData.targetWorker" placeholder="自动匹配" clearable style="width: 100%">
                   <el-option label="自动匹配" value="" />
+                  <el-option 
+                    v-for="worker in workers" 
+                    :key="worker.id" 
+                    :label="worker.host + ' (' + worker.ip + ')'" 
+                    :value="worker.id" 
+                  />
                 </el-select>
               </el-form-item>
             </el-col>
           </el-row>
+          
+          <el-form-item label="脚本文件" prop="scriptId">
+            <el-select v-model="formData.scriptId" placeholder="选择已有脚本" clearable style="width: 100%; margin-bottom: 10px;">
+              <el-option 
+                v-for="script in scripts" 
+                :key="script.id" 
+                :label="script.name" 
+                :value="script.id" 
+              />
+            </el-select>
+            <el-upload
+              action="#"
+              :auto-upload="false"
+              :on-change="handleScriptChange"
+              accept=".py,.java,.go"
+              :show-file-list="false"
+            >
+              <el-button type="primary" plain>
+                <el-icon><Upload /></el-icon>
+                上传新脚本
+              </el-button>
+            </el-upload>
+          </el-form-item>
         </template>
         
         <template v-if="formData.executeType === 'callback'">
@@ -127,6 +156,10 @@
           <el-input v-model="formData.cronExpr" placeholder="0 0 0 * * ?" />
         </el-form-item>
         
+        <el-form-item label="启用状态">
+          <el-switch v-model="formData.enabled" active-text="启用" inactive-text="禁用" />
+        </el-form-item>
+        
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="handleSubmit">
             {{ loading ? '保存中...' : '保 存' }}
@@ -142,16 +175,47 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Upload } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
+import { workerApi, scriptApi } from '@/services'
 import type { FormInstance, FormRules } from 'element-plus'
+import type { WorkerVO, ScriptVO } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const workers = ref<WorkerVO[]>([])
+const scripts = ref<ScriptVO[]>([])
 
 const taskId = route.params.id as string
+
+const fetchWorkers = async () => {
+  try {
+    const response = await workerApi.list({ pageSize: 1000 })
+    if (Array.isArray(response)) {
+      workers.value = response
+    } else {
+      workers.value = response.records || []
+    }
+  } catch (error) {
+    console.error('获取执行器列表失败:', error)
+  }
+}
+
+const fetchScripts = async () => {
+  try {
+    const response = await scriptApi.list({ pageSize: 1000 })
+    if (Array.isArray(response)) {
+      scripts.value = response
+    } else {
+      scripts.value = response.records || []
+    }
+  } catch (error) {
+    console.error('获取脚本列表失败:', error)
+  }
+}
 
 const formData = reactive({
   id: '',
@@ -164,6 +228,7 @@ const formData = reactive({
   timeoutSeconds: 180,
   taskType: 'cron' as 'cron' | 'once',
   cronExpr: '',
+  enabled: true,
   // 回调配置字段
   callbackUrl: '',
   callbackMethod: 'POST',
@@ -313,19 +378,21 @@ const rules: FormRules = {
 async function fetchTask() {
   const task = await taskStore.fetchTaskById(taskId)
   if (task) {
-    // 加载任务数据到表单
+    // 基础字段
     Object.assign(formData, {
       id: task.id,
-      name: task.name || '',
+      name: task.name,
       description: task.description || '',
       executeType: task.executeType || 'script',
-      scriptType: (task as any).scriptType || task.type || '', // 支持两种字段名
+      scriptType: task.type || '',
       scriptId: task.scriptId || '',
       targetWorker: task.targetWorker || '',
       timeoutSeconds: task.timeoutSeconds || 180,
-      status: task.status || 'active',
+      retryCount: task.retryCount !== undefined ? task.retryCount : 3,
+      retryIntervalSeconds: task.retryIntervalSeconds || 60,
       taskType: task.taskType,
       cronExpr: task.cronExpr || '',
+      enabled: task.enabled,
     })
 
     // 如果是回调任务，尝试加载回调配置
@@ -333,6 +400,31 @@ async function fetchTask() {
       formData.callbackUrl = task.callbackConfig.callbackUrl || ''
       formData.callbackMethod = task.callbackConfig.callbackMethod || 'POST'
       formData.secretKey = task.callbackConfig.secretKey || ''
+    }
+  }
+}
+
+async function handleScriptChange(file: any) {
+  // 处理脚本文件选择
+  const uploadedFile = file.raw || file
+  if (uploadedFile) {
+    try {
+      const uploadFormData = new FormData()
+      uploadFormData.append('file', uploadedFile)
+      
+      const response = await scriptApi.upload(uploadFormData)
+      const scriptId = response.id
+      
+      // 上传成功后刷新脚本列表
+      await fetchScripts()
+      
+      // 自动选取上传的脚本
+      formData.scriptId = scriptId
+      
+      ElMessage.success('脚本上传成功')
+    } catch (error) {
+      console.error('脚本上传失败:', error)
+      ElMessage.error('脚本上传失败')
     }
   }
 }
@@ -352,6 +444,7 @@ async function handleSubmit() {
         description: formData.description,
         executeType: formData.executeType,
         taskType: formData.taskType,
+        enabled: formData.enabled,
         timeoutSeconds: formData.timeoutSeconds,
         retryCount: formData.retryCount,
         retryIntervalSeconds: formData.retryIntervalSeconds,
@@ -381,7 +474,7 @@ async function handleSubmit() {
 
       await taskStore.updateTask(updateData)
       ElMessage.success('保存成功')
-      router.push('/tasks')
+      router.push(`/tasks/${taskId}`)
     } catch (error) {
       console.error('保存失败:', error)
       ElMessage.error('保存失败')
@@ -392,6 +485,8 @@ async function handleSubmit() {
 }
 
 onMounted(() => {
+  fetchWorkers()
+  fetchScripts()
   fetchTask()
 })
 </script>

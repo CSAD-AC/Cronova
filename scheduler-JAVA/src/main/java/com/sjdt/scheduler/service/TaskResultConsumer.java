@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskResultMessage;
 import com.sjdt.scheduler.domain.po.TaskLog;
@@ -15,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * RocketMQ消费者服务
@@ -147,19 +149,31 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         if (resultMessage.getLogPath() != null && !resultMessage.getLogPath().isEmpty()) {
             log.info("开始保存任务日志，TaskRunID: {}, LogPath: {}", 
                     resultMessage.getTaskRunId(), resultMessage.getLogPath());
-            TaskLog taskLog = TaskLog.builder()
-                    .runId(resultMessage.getTaskRunId())
-                    .stdoutPath(resultMessage.getLogPath())
-                    .stderrPath(resultMessage.getLogPath())
-                    .createTime(LocalDateTime.now())
-                    .build();
             
             try {
-                TaskLog existingLog = taskLogMapper.selectById(resultMessage.getTaskRunId());
+                // 根据 runId 查询现有的日志记录，使用 selectList 并取第一个以防历史数据中存在重复
+                List<TaskLog> taskLogs = taskLogMapper.selectList(
+                        new LambdaQueryWrapper<TaskLog>()
+                                .eq(TaskLog::getRunId, resultMessage.getTaskRunId())
+                                .orderByDesc(TaskLog::getCreateTime)
+                );
+                
+                TaskLog existingLog = taskLogs.isEmpty() ? null : taskLogs.get(0);
+                
                 if (existingLog != null) {
-                    taskLogMapper.updateById(taskLog);
+                    existingLog.setStdoutPath(resultMessage.getLogPath());
+                    existingLog.setStderrPath(resultMessage.getLogPath());
+                    taskLogMapper.updateById(existingLog);
+                    log.info("任务日志记录更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
                 } else {
+                    TaskLog taskLog = TaskLog.builder()
+                            .runId(resultMessage.getTaskRunId())
+                            .stdoutPath(resultMessage.getLogPath())
+                            .stderrPath(resultMessage.getLogPath())
+                            .createTime(LocalDateTime.now())
+                            .build();
                     taskLogMapper.insert(taskLog);
+                    log.info("任务日志记录插入成功，TaskRunID: {}", resultMessage.getTaskRunId());
                 }
             } catch (Exception e) {
                 log.error("日志记录保存失败，TaskRunID: {}, Error: {}", 

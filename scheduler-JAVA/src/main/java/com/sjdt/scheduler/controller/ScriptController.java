@@ -144,4 +144,33 @@ public class ScriptController {
     public Result<List<Integer>> getTagIdsByScriptId(@RequestParam String scriptId) {
         return scriptTagService.getTagIdsByScriptId(scriptId);
     }
+
+    /**
+     * 删除脚本
+     * @param id 脚本ID
+     * @return 操作结果
+     */
+    @DeleteMapping("/{id}")
+    @Operation(summary = "删除脚本", description = "根据脚本ID删除脚本及其MinIO文件")
+    public Result<Void> deleteScript(@PathVariable String id) {
+        if (scriptService.deleteScript(id)) {
+            return Result.success();
+        }
+        return Result.error(500, "删除失败");
+    }
+
+    /**
+     * 更新脚本内容
+     * @param id 脚本ID
+     * @param content 脚本内容
+     * @return 操作结果
+     */
+    @PutMapping(value = "/{id}", consumes = MediaType.TEXT_PLAIN_VALUE)
+    @Operation(summary = "更新脚本内容", description = "更新指定脚本在MinIO中的内容")
+    public Result<Void> updateScriptContent(@PathVariable String id, @RequestBody String content) {
+        if (scriptService.updateScriptContent(id, content)) {
+            return Result.success();
+        }
+        return Result.error(500, "更新失败");
+    }
 }

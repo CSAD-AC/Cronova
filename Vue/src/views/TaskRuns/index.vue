@@ -16,12 +16,14 @@
     <el-card class="filter-card">
       <el-form :inline="true" :model="filterForm" class="filter-form">
         <el-form-item label="任务">
-          <el-input 
-            v-model="filterForm.taskKeyword" 
-            placeholder="输入任务名称或描述关键词"
-            clearable
-            style="width: 200px"
-          />
+          <el-select v-model="filterForm.taskId" placeholder="选择任务" clearable filterable style="width: 200px">
+            <el-option
+              v-for="[id, name] in taskMap"
+              :key="id"
+              :label="name"
+              :value="id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="filterForm.status" placeholder="全部状态" clearable style="width: 140px">
@@ -32,7 +34,7 @@
             <el-option label="超时" value="timeout" />
           </el-select>
         </el-form-item>
-        <el-form-item label="执行时间">
+        <el-form-item label="时间范围">
           <el-date-picker
             v-model="filterForm.dateRange"
             type="datetimerange"
@@ -40,15 +42,13 @@
             start-placeholder="开始时间"
             end-placeholder="结束时间"
             value-format="YYYY-MM-DD HH:mm:ss"
-            style="width: 340px"
-            clearable
+            style="width: 360px"
           />
         </el-form-item>
         <el-form-item label="排序">
-          <el-select v-model="filterForm.sortOrder" style="width: 140px">
-            <el-option label="时间降序" value="time_desc" />
-            <el-option label="时间升序" value="time_asc" />
-            <el-option label="状态排序" value="status" />
+          <el-select v-model="filterForm.sortOrder" style="width: 120px">
+            <el-option label="最新在前" value="desc" />
+            <el-option label="最早在前" value="asc" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -111,7 +111,7 @@
         </el-table-column>
         <el-table-column prop="startTime" label="开始时间" width="170">
           <template #default="{ row }">
-            {{ row.startTime || '-' }}
+            {{ formatDateTime(row.startTime) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
@@ -167,9 +167,9 @@
             <el-descriptions-item label="执行耗时">
               {{ currentRun.durationMs ? formatDuration(currentRun.durationMs) : '-' }}
             </el-descriptions-item>
-            <el-descriptions-item label="开始时间">{{ currentRun.startTime || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="结束时间">{{ currentRun.endTime || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ currentRun.createTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="开始时间">{{ formatDateTime(currentRun.startTime) }}</el-descriptions-item>
+            <el-descriptions-item label="结束时间">{{ formatDateTime(currentRun.endTime) }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatDateTime(currentRun.createTime) }}</el-descriptions-item>
             <template v-if="isCallbackTask(currentRun.taskId)">
               <el-descriptions-item label="请求URL">{{ currentRun.requestUrl || '-' }}</el-descriptions-item>
               <el-descriptions-item label="请求方法">{{ currentRun.requestMethod || '-' }}</el-descriptions-item>
@@ -279,18 +279,18 @@ import { Refresh, Search, View, Document, Download, Loading, Delete } from '@ele
 import { taskRunApi, taskApi, workerApi, minioApi, callbackJobRunApi } from '@/services'
 import type { TaskRun, TaskVO, WorkerVO } from '@/types'
 import { ElMessageBox } from 'element-plus'
+import { formatDateTime, formatDuration } from '@/utils/date'
 
 const router = useRouter()
 const loading = ref(false)
 const taskRuns = ref<TaskRun[]>([])
 const taskMap = ref<Map<string, string>>(new Map())
-const taskDetailMap = ref<Map<string, { name: string; description: string }>>(new Map())
 const workerMap = ref<Map<string, string>>(new Map())
 const filterForm = ref({
-  taskKeyword: '',
   status: '',
+  taskId: '',
   dateRange: [] as string[],
-  sortOrder: 'time_desc'
+  sortOrder: 'desc'
 })
 const detailDialogVisible = ref(false)
 const currentRun = ref<any>(null)
@@ -308,73 +308,10 @@ const currentRequestContent = ref('')
 const currentResponseContent = ref('')
 
 const filteredTaskRuns = computed(() => {
-  let filtered = [...taskRuns.value]
-
-  // 任务关键词搜索（在运行记录中搜索匹配的任务）
-  if (filterForm.value.taskKeyword && filterForm.value.taskKeyword.trim()) {
-    const searchText = filterForm.value.taskKeyword.trim().toLowerCase()
-    filtered = filtered.filter(run => {
-      const taskDetail = taskDetailMap.value.get(run.taskId)
-      if (!taskDetail) return false
-      
-      // 搜索任务名称和描述中包含关键词的运行记录
-      return taskDetail.name.toLowerCase().includes(searchText) ||
-             taskDetail.description.toLowerCase().includes(searchText)
-    })
+  if (!filterForm.value.status) {
+    return taskRuns.value
   }
-
-  // 状态筛选
-  if (filterForm.value.status) {
-    filtered = filtered.filter(run => run.status === filterForm.value.status)
-  }
-
-  // 时间范围筛选
-  if (filterForm.value.dateRange && filterForm.value.dateRange.length === 2) {
-    const [startDate, endDate] = filterForm.value.dateRange
-    const startTime = new Date(startDate || Date.now()).getTime()
-    const endTime = new Date(endDate || Date.now()).getTime()
-    
-    filtered = filtered.filter(run => {
-      const runTime = new Date(run.startTime || run.createTime || Date.now()).getTime()
-      return runTime >= startTime && runTime <= endTime
-    })
-  }
-
-  // 排序
-  switch (filterForm.value.sortOrder) {
-    case 'time_asc':
-      filtered.sort((a, b) => {
-        const timeA = new Date(a.startTime || a.createTime || Date.now()).getTime()
-        const timeB = new Date(b.startTime || b.createTime || Date.now()).getTime()
-        return timeA - timeB
-      })
-      break
-    case 'status':
-      filtered.sort((a, b) => {
-        // 按状态排序：pending < running < success < failed < timeout
-        const statusOrder = { pending: 0, running: 1, success: 2, failed: 3, timeout: 4 }
-        const orderA = (statusOrder as any)[a.status] || 999
-        const orderB = (statusOrder as any)[b.status] || 999
-        if (orderA !== orderB) {
-          return orderA - orderB
-        }
-        // 同状态按时间降序
-        const timeA = new Date(a.startTime || a.createTime || Date.now()).getTime()
-        const timeB = new Date(b.startTime || b.createTime || Date.now()).getTime()
-        return timeB - timeA
-      })
-      break
-    case 'time_desc':
-    default:
-      filtered.sort((a, b) => {
-        const timeA = new Date(a.startTime || a.createTime || Date.now()).getTime()
-        const timeB = new Date(b.startTime || b.createTime || Date.now()).getTime()
-        return timeB - timeA
-      })
-      break
-  }
-
-  return filtered
+  return taskRuns.value.filter(run => run.status === filterForm.value.status)
 })
 
 async function fetchTaskRuns() {
@@ -435,17 +372,10 @@ async function fetchTaskNames() {
     } else {
       tasks = response.records || []
     }
-    
-    // 保持原有的映射关系
     taskMap.value.clear()
-    taskDetailMap.value.clear()
     taskTypeMap.value.clear()
     tasks.forEach(task => {
       taskMap.value.set(task.id, task.name)
-      taskDetailMap.value.set(task.id, {
-        name: task.name,
-        description: task.description || ''
-      })
       taskTypeMap.value.set(task.id, task.executeType || 'script') // 默认script类型
     })
   } catch (error) {
@@ -493,19 +423,15 @@ function isCallbackTask(taskId: string): boolean {
 }
 
 function handleSearch() {
-  // 由于使用computed自动筛选，这里不需要重新获取数据
-  // 只需要确保任务名称映射是最新的
-  if (taskDetailMap.value.size === 0) {
-    fetchTaskNames()
-  }
+  fetchTaskRuns()
 }
 
 function handleReset() {
-  filterForm.value.taskKeyword = ''
   filterForm.value.status = ''
+  filterForm.value.taskId = ''
   filterForm.value.dateRange = []
-  filterForm.value.sortOrder = 'time_desc'
-  // 重置后自动应用筛选，computed会自动重新计算
+  filterForm.value.sortOrder = 'desc'
+  fetchTaskRuns()
 }
 
 async function handleDelete(row: TaskRun) {
@@ -766,24 +692,6 @@ function getStatusText(status: string): string {
     timeout: '超时',
   }
   return map[status] || status
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    return `${ms}ms`
-  }
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) {
-    return `${seconds}s`
-  }
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) {
-    return `${minutes}m ${remainingSeconds}s`
-  }
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}h ${remainingMinutes}m`
 }
 
 onMounted(() => {

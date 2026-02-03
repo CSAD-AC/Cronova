@@ -1,9 +1,9 @@
 import { get, post } from '@/utils/request'
-import type { UserVO } from '@/types'
+import type { User, UserVO, LoginRequest, LoginResponse } from '@/types'
 
 export const userApi = {
-  login: (data: any) => {
-    return post('/api/auth/login', data)
+  login: (data: LoginRequest) => {
+    return post<LoginResponse>('/api/auth/login', data)
   },
   
   register: (data: any) => {
@@ -12,6 +12,11 @@ export const userApi = {
   
   logout: () => {
     return post('/api/auth/logout')
+  },
+  
+  getProfile: () => {
+    // 后端没有profile接口，从token中获取或返回null
+    return Promise.resolve(null)
   },
   
   getById: (id: string) => {
@@ -29,8 +34,4 @@ export const userApi = {
 
 function put(url: string, data?: any): Promise<any> {
   return import('@/utils/request').then(module => module.default.put(url, data))
-}
-
-function del(url: string): Promise<any> {
-  return import('@/utils/request').then(module => module.default.delete(url))
 }

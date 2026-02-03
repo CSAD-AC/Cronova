@@ -3,7 +3,8 @@ import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8085'
+// const API_BASE_URL = "/api"
+const API_BASE_URL = "http://localhost:8085"
 
 const request = axios.create({
   baseURL: API_BASE_URL,
@@ -28,6 +29,11 @@ request.interceptors.request.use(
 
 request.interceptors.response.use(
   (response: AxiosResponse) => {
+    // 处理文件下载
+    if (response.config.responseType === 'blob') {
+      return response.data
+    }
+
     const { code, message, data } = response.data
     if (code === 200) {
       return data

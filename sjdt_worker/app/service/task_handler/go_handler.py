@@ -59,7 +59,10 @@ class GoHandler(BaseHandler):
         try:
             logger.info("开始执行Go二进制文件，任务ID：%s，路径：%s，taskRunId：%s", task.taskId, task.script.path, task_run_id)
             
-            # 1. 下载二进制文件到临时目录
+            # 1. 验证环境依赖
+            self._validate_dependencies(task, task_run_id)
+            
+            # 2. 下载二进制文件到临时目录
             script_bucket = Config.MINIO_BUCKET_NAME
             script_object = task.script.path
             
@@ -259,3 +262,74 @@ class GoHandler(BaseHandler):
         finally:
             if producer:
                 producer.shutdown()
+
+    def _validate_dependencies(self, task: TaskExecuteMessage, task_run_id: str):
+        """
+        验证Worker环境是否满足任务依赖要求
+        :param task: 任务消息
+        :param task_run_id: 任务运行ID
+        :raises Exception: 依赖不满足时抛出异常
+        """
+        from app.utils.env_utils import EnvUtils
+        
+        script_tags = task.script.tags if task.script else []
+        
+        if not script_tags:
+            logger.info("任务 %s 无依赖标签要求，跳过依赖验证", task.taskId)
+            return
+        
+        logger.info("开始验证任务 %s 的依赖要求，任务RunId: %s", task.taskId, task_run_id)
+        
+        worker_packages = {pkg['name'].lower(): pkg['version'] for pkg in Config.TAGS}
+        
+        missing_deps = []
+        version_mismatch = []
+        
+        for tag in script_tags:
+            if not tag.name:
+                continue
+                
+            pkg_name = tag.name.lower()
+            
+            if pkg_name not in worker_packages:
+                missing_deps.append(tag)
+                logger.warning("缺少必需依赖：%s", tag.name)
+                continue
+            
+            if tag.version and tag.operator:
+                is_valid, actual_version = EnvUtils.check_package_version(
+                    tag.name, tag.version, tag.operator
+                )
+                if not is_valid:
+                    version_mismatch.append({
+                        'name': tag.name,
+                        'required': f"{tag.operator} {tag.version}",
+                        'actual': actual_version
+                    })
+                    logger.warning("版本不匹配：%s", tag.name)
+        
+        error_messages = []
+        
+        if missing_deps:
+            deps_str = ", ".join([f"{t.name} {t.operator or '>='} {t.version or 'any'}" 
+                                  for t in missing_deps])
+            error_messages.append(f"缺少必需依赖：{deps_str}")
+        
+        if version_mismatch:
+            versions_str = ", ".join([f"{v['name']}（要求：{v['required']}，实际：{v['actual']}）" 
+                                     for v in version_mismatch])
+            error_messages.append(f"版本不满足：{versions_str}")
+        
+        if error_messages:
+            error_msg = "; ".join(error_messages)
+            logger.error("依赖验证失败：%s", error_msg)
+            
+            task_instance_manager.update_status(
+                task_run_id, 
+                "failed",
+                error_message=f"依赖验证失败：{error_msg}"
+            )
+            
+            raise Exception(f"依赖验证失败：{error_msg}")
+        
+        logger.info("任务 %s 依赖验证通过，任务RunId: %s", task.taskId, task_run_id)

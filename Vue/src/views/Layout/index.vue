@@ -82,7 +82,6 @@ import { useUserStore } from '@/stores/user'
 import { ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
-  User,
   SwitchButton,
   Odometer,
   List,

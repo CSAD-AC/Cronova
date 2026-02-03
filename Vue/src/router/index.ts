@@ -75,7 +75,7 @@ const router = createRouter({
           name: 'tags',
           component: () => import('@/views/Tags/index.vue'),
           meta: { title: '标签管理', icon: 'PriceTag' },
-        },
+        }
       ],
     },
     {

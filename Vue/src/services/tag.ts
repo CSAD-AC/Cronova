@@ -2,8 +2,8 @@ import { get, post, put, del } from '@/utils/request'
 import type { PageResponse, Tag, TagVO } from '@/types'
 
 export interface TagListParams {
-  pageNum?: number
-  pageSize?: number
+  page?: number
+  size?: number
   name?: string
   operator?: string
   version?: string
@@ -14,7 +14,7 @@ export const tagApi = {
     return get<PageResponse<TagVO>>('/api/tag/list', params)
   },
   
-  getById: (id: string) => {
+  getById: (id: string | number) => {
     return get<TagVO>(`/api/tag/${id}`)
   },
   
@@ -22,11 +22,11 @@ export const tagApi = {
     return post<string>('/api/tag', data)
   },
   
-  update: (data: Tag) => {
-    return put('/api/tag', data)
+  update: (data: Partial<Tag> & { id: string | number }) => {
+    return put(`/api/tag/${data.id}`, data)
   },
   
-  delete: (id: string) => {
+  delete: (id: string | number) => {
     return del(`/api/tag/${id}`)
   },
 }

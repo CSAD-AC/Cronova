@@ -126,7 +126,11 @@
             <el-tag size="small">{{ row.runningTasks || 0 }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="lastHeartbeat" label="最后心跳" width="180" />
+        <el-table-column prop="lastHeartbeat" label="最后心跳" width="180">
+          <template #default="{ row }">
+            {{ formatDateTime(row.lastHeartbeat) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button-group>
@@ -167,6 +171,7 @@ import {
   CircleCheck, CircleClose, Cpu, Search, Refresh, View, Delete
 } from '@element-plus/icons-vue'
 import { useWorkerStore } from '@/stores/worker'
+import { formatDateTime } from '@/utils/date'
 
 const workerStore = useWorkerStore()
 

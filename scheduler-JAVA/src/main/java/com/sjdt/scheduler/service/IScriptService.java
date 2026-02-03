@@ -36,4 +36,19 @@ public interface IScriptService extends IService<Script> {
      * @throws IOException IO异常
      */
     void downloadScript(String id, HttpServletResponse response) throws IOException;
+
+    /**
+     * 删除脚本及其对应的MinIO文件
+     * @param id 脚本ID
+     * @return 是否成功
+     */
+    boolean deleteScript(String id);
+
+    /**
+     * 更新脚本内容
+     * @param id 脚本ID
+     * @param content 脚本内容
+     * @return 是否成功
+     */
+    boolean updateScriptContent(String id, String content);
 }

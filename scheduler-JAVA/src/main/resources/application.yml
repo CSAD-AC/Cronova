@@ -10,6 +10,9 @@ spring:
   web:
     resources:
       add-mappings: false   # 关闭默认的 /static、/public、/resources、/META-INF/resources 映射
+  jackson:
+    time-zone: UTC
+    date-format: yyyy-MM-dd HH:mm:ss
 # MyBatis-Plus 通用配置
 mybatis-plus:
   # Mapper.xml文件位置

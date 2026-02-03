@@ -72,8 +72,8 @@
               <el-descriptions-item label="重试间隔">{{ task.callbackConfig.retryIntervalSeconds || 60 }}秒</el-descriptions-item>
             </template>
             <el-descriptions-item label="创建人">{{ task?.createdBy || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ task?.createTime }}</el-descriptions-item>
-            <el-descriptions-item label="更新时间">{{ task?.updateTime }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatDateTime(task?.createTime) }}</el-descriptions-item>
+            <el-descriptions-item label="更新时间">{{ formatDateTime(task?.updateTime) }}</el-descriptions-item>
             <el-descriptions-item label="任务描述" :span="2">{{ task?.description || '-' }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
@@ -111,8 +111,16 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="startTime" label="开始时间" width="160" />
-            <el-table-column prop="endTime" label="结束时间" width="160" />
+            <el-table-column prop="startTime" label="开始时间" width="160">
+              <template #default="{ row }">
+                {{ formatDateTime(row.startTime) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="endTime" label="结束时间" width="160">
+              <template #default="{ row }">
+                {{ formatDateTime(row.endTime) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="durationMs" label="耗时" width="80">
               <template #default="{ row }">
                 {{ row.durationMs ? formatDuration(row.durationMs) : '-' }}
@@ -252,6 +260,7 @@ import { useTaskStore } from '@/stores/task'
 import { taskRunApi } from '@/services'
 import { taskApi } from '@/services/task'
 import type { TaskRun } from '@/types'
+import { formatDateTime, formatDuration } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -299,23 +308,6 @@ function getStatusText(status: string) {
     timeout: '超时',
   }
   return map[status] || status
-}
-
-/**
- * 格式化持续时间显示
- * @param duration 持续时间（毫秒）
- * @returns 格式化后的时间字符串
- */
-function formatDuration(duration: number): string {
-  if (duration < 1000) {
-    return `${duration}ms`
-  } else if (duration < 60000) {
-    return `${(duration / 1000).toFixed(2)}s`
-  } else {
-    const minutes = Math.floor(duration / 60000)
-    const seconds = ((duration % 60000) / 1000).toFixed(0)
-    return `${minutes}m${seconds}s`
-  }
 }
 
 async function fetchTask() {

@@ -44,6 +44,9 @@ public class TaskRunController {
     private final TaskControlProducerService taskControlProducerService;
     private final MinioClient minioClient;
 
+    @org.springframework.beans.factory.annotation.Value("${minio.bucket-name:task-engine}")
+    private String defaultBucketName;
+
     @Autowired
     public TaskRunController(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, 
                             TaskControlProducerService taskControlProducerService,
@@ -158,10 +161,12 @@ public class TaskRunController {
                 return Result.error(404, "TaskRun not found");
             }
 
-            TaskLog taskLog = taskLogMapper.selectOne(
+            List<TaskLog> taskLogs = taskLogMapper.selectList(
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
                             .eq(TaskLog::getRunId, taskRunId)
+                            .orderByDesc(TaskLog::getCreateTime)
             );
+            TaskLog taskLog = taskLogs.isEmpty() ? null : taskLogs.get(0);
             if (taskLog == null) {
                 log.warn("日志记录不存在，TaskRunID: {}", taskRunId);
                 return Result.error(404, "TaskLog not found");
@@ -170,18 +175,20 @@ public class TaskRunController {
             String logPath = taskLog.getStdoutPath();
             log.info("日志文件路径：{}", logPath);
             
-            // 统一解析逻辑：优先使用配置或剥离路径前缀
-            String bucketName = "task-engine"; // 默认桶名
+            // 统一解析逻辑：优先识别桶名，否则使用默认桶
+            String bucketName = defaultBucketName != null ? defaultBucketName : "task-engine";
             String objectName = logPath;
             
-            if (logPath.contains("/")) {
+            if (logPath != null && logPath.contains("/")) {
                 int firstSlashIndex = logPath.indexOf('/');
-                String potentialBucket = logPath.substring(0, firstSlashIndex);
-                // 如果路径确实以桶名开头（例如 task-engine/logs/...）
-                if (potentialBucket.length() > 0 && logPath.length() > firstSlashIndex + 1) {
-                    bucketName = potentialBucket;
-                    objectName = logPath.substring(firstSlashIndex + 1);
+                String firstPart = logPath.substring(0, firstSlashIndex);
+                String remainingPart = logPath.substring(firstSlashIndex + 1);
+                
+                // 如果第一部分匹配默认桶名，则将其分离
+                if (firstPart.equals(bucketName)) {
+                    objectName = remainingPart;
                 }
+                // 否则，保持 bucketName 为默认桶，objectName 为完整 logPath
             }
             
             String fileName = "task_log_" + taskRunId + ".log";

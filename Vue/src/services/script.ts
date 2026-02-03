@@ -1,4 +1,4 @@
-import { get, post, del } from '@/utils/request'
+import { get, post, del, put } from '@/utils/request'
 import type { PageResponse, Script, ScriptVO } from '@/types'
 
 export interface ScriptListParams {
@@ -17,19 +17,17 @@ export const scriptApi = {
   },
   
   upload: (formData: FormData) => {
-    return post<string>('/api/script/upload', formData, {
+    return post<ScriptVO>('/api/script/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
   
   download: (id: string) => {
-    // 后端暂无此接口，返回模拟数据
-    return Promise.resolve(new Blob())
+    return get<Blob>(`/api/script/download/${id}`, {}, { responseType: 'blob' })
   },
   
   delete: (id: string) => {
-    // 后端暂无此接口，返回成功
-    return Promise.resolve()
+    return del(`/api/script/${id}`)
   },
   
   addTags: (scriptId: string, tagIds: number[]) => {
@@ -37,8 +35,9 @@ export const scriptApi = {
   },
   
   update: (id: string, content: string) => {
-    // 模拟更新
-    return Promise.resolve()
+    return put(`/api/script/${id}`, content, {
+      headers: { 'Content-Type': 'text/plain' }
+    })
   },
 
   removeTag: (scriptId: string, tagId: string) => {
@@ -46,7 +45,6 @@ export const scriptApi = {
   },
   
   getTags: (scriptId: string) => {
-    // 后端暂无此接口，返回空数组
-    return Promise.resolve([])
+    return get<number[]>(`/api/script/tags?scriptId=${scriptId}`)
   },
 }

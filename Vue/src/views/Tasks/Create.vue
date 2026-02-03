@@ -171,7 +171,10 @@
             </template>
           </el-input>
         </el-form-item>
-    
+        
+        <el-form-item label="启用状态">
+          <el-switch v-model="formData.enabled" active-text="启用" inactive-text="禁用" />
+        </el-form-item>
         
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="handleSubmit">
@@ -219,14 +222,11 @@ const fetchScripts = async () => {
     const response = await scriptApi.list({ pageSize: 1000 })
     if (Array.isArray(response)) {
       scripts.value = response
-    } else if (response && typeof response === 'object') {
-      scripts.value = (response as any).records || []
     } else {
-      scripts.value = []
+      scripts.value = response.records || []
     }
   } catch (error) {
     console.error('获取脚本列表失败:', error)
-    scripts.value = []
   }
 }
 
@@ -245,6 +245,7 @@ const formData = reactive({
   timeoutSeconds: 180,
   taskType: 'cron' as 'cron' | 'once',
   cronExpr: '',
+  enabled: true,
   callbackUrl: '',
   callbackMethod: 'POST',
   secretKey: '',
@@ -404,11 +405,14 @@ async function handleScriptChange(file: any) {
       const uploadFormData = new FormData()
       uploadFormData.append('file', uploadedFile)
       
-      const scriptId = await scriptApi.upload(uploadFormData)
-      formData.scriptId = scriptId
+      const response = await scriptApi.upload(uploadFormData)
+      const scriptId = response.id
       
       // 上传成功后刷新脚本列表
       await fetchScripts()
+      
+      // 自动选取上传的脚本
+      formData.scriptId = scriptId
       
       ElMessage.success('脚本上传成功')
     } catch (error) {

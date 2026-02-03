@@ -1,19 +1,21 @@
 package com.sjdt.scheduler.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.common.BizException;
 import com.sjdt.scheduler.common.RedisKey;
+import com.sjdt.scheduler.domain.enums.TaskStatus;
 import com.sjdt.scheduler.domain.po.Script;
 import com.sjdt.scheduler.domain.po.Tag;
+import com.sjdt.scheduler.domain.po.Task;
 import com.sjdt.scheduler.domain.vo.ScriptVO;
 import com.sjdt.scheduler.mapper.ScriptMapper;
 import com.sjdt.scheduler.mapper.ScriptTagMapper;
 import com.sjdt.scheduler.mapper.TagMapper;
+import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.service.IScriptService;
-import io.minio.BucketExistsArgs;
-import io.minio.MakeBucketArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
+import io.minio.*;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -23,8 +25,10 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -55,6 +59,9 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
 
     @Autowired
     private ScriptTagMapper scriptTagMapper;
+
+    @Autowired
+    private TaskMapper taskMapper;
 
     @Override
     public Script getById(Serializable id) {
@@ -217,6 +224,89 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
             }
         } catch (Exception e) {
             throw new IOException("下载脚本文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean deleteScript(String id) {
+        log.info("开始删除脚本 | ScriptID: {}", id);
+        Script script = getById(id);
+        if (script == null) {
+            log.warn("脚本不存在，删除失败 | ScriptID: {}", id);
+            return false;
+        }
+
+        // 1. 检查是否有非删除状态的任务正在使用该脚本
+        LambdaQueryWrapper<Task> queryWrapper = new LambdaQueryWrapper<Task>()
+                .eq(Task::getScriptId, id)
+                .ne(Task::getStatus, TaskStatus.deleted);
+        Long taskCount = taskMapper.selectCount(queryWrapper);
+        if (taskCount > 0) {
+            log.warn("脚本正在被任务使用，无法删除 | ScriptID: {}, TaskCount: {}", id, taskCount);
+            throw new BizException(400, "脚本正在被任务使用，无法删除");
+        }
+
+        // 2. 从数据库删除
+        removeById(id);
+
+        // 3. 从MinIO删除文件
+        try {
+            String path = script.getPath();
+            String objectName = path;
+            if (path.startsWith(BUCKET_NAME + "/")) {
+                objectName = path.substring(BUCKET_NAME.length() + 1);
+            }
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(BUCKET_NAME)
+                            .object(objectName)
+                            .build()
+            );
+            log.info("从MinIO删除脚本文件成功 | Object: {}", objectName);
+        } catch (Exception e) {
+            log.error("从MinIO删除脚本文件失败 | ScriptID: {}, Path: {}", id, script.getPath(), e);
+            // 数据库已经删除了，MinIO删除失败仅记录日志
+        }
+
+        return true;
+    }
+
+    @Override
+    public boolean updateScriptContent(String id, String content) {
+        log.info("开始更新脚本内容 | ScriptID: {}", id);
+        Script script = getById(id);
+        if (script == null) {
+            log.warn("脚本不存在，更新失败 | ScriptID: {}", id);
+            return false;
+        }
+
+        try {
+            String path = script.getPath();
+            String objectName = path;
+            if (path.startsWith(BUCKET_NAME + "/")) {
+                objectName = path.substring(BUCKET_NAME.length() + 1);
+            }
+
+            // 更新MinIO中的文件内容
+            byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(BUCKET_NAME)
+                            .object(objectName)
+                            .stream(new ByteArrayInputStream(contentBytes), contentBytes.length, -1)
+                            .contentType("text/plain")
+                            .build()
+            );
+
+            // 更新数据库更新时间
+            script.setUpdateTime(LocalDateTime.now());
+            updateById(script);
+            
+            log.info("脚本内容更新成功 | ScriptID: {}, Object: {}", id, objectName);
+            return true;
+        } catch (Exception e) {
+            log.error("更新脚本内容失败 | ScriptID: {}", id, e);
+            throw new RuntimeException("更新脚本内容失败: " + e.getMessage());
         }
     }
 }

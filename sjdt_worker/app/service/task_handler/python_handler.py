@@ -62,7 +62,10 @@ class PythonHandler(BaseHandler):
         try:
             logger.info("开始执行Python脚本，任务ID：%s，脚本路径：%s，taskRunId：%s", task.taskId, task.script.path, task_run_id)
             
-            # 1. 下载脚本到临时文件
+            # 1. 验证环境依赖
+            self._validate_dependencies(task, task_run_id)
+            
+            # 2. 下载脚本到临时文件
             script_bucket = Config.MINIO_BUCKET_NAME
             script_object = task.script.path
             
@@ -76,19 +79,19 @@ class PythonHandler(BaseHandler):
             
             logger.info("脚本下载成功，保存到临时文件：%s，文件大小：%d字节", temp_script_path, len(script_content))
 
-            # 2. 准备日志存储
+            # 3. 准备日志存储
             log_bucket = Config.MINIO_BUCKET_NAME
             log_object = f"task-logs/{task.taskId}/{task_run_id}.log"
             
             logger.info("日志存储准备完成，bucket：%s，object：%s", log_bucket, log_object)
             
-            # 3. 更新任务状态为运行中（包含日志路径）
+            # 4. 更新任务状态为运行中（包含日志路径）
             task_instance_manager.update_status(task_run_id, "running",
                                              log_bucket=log_bucket,
                                              log_object=log_object)
             logger.info("任务状态已更新为运行中，taskRunId：%s", task_run_id)
 
-            # 4. 启动子进程执行脚本
+            # 5. 启动子进程执行脚本
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
             
@@ -350,4 +353,84 @@ class PythonHandler(BaseHandler):
         finally:
             if producer:
                 producer.shutdown()
+
+    def _validate_dependencies(self, task: TaskExecuteMessage, task_run_id: str):
+        """
+        验证Worker环境是否满足任务依赖要求
+        :param task: 任务消息
+        :param task_run_id: 任务运行ID
+        :raises Exception: 依赖不满足时抛出异常
+        """
+        from app.utils.env_utils import EnvUtils
+        
+        # 获取脚本的依赖标签
+        script_tags = task.script.tags if task.script else []
+        
+        if not script_tags:
+            logger.info("任务 %s 无依赖标签要求，跳过依赖验证", task.taskId)
+            return
+        
+        logger.info("开始验证任务 %s 的依赖要求，任务RunId: %s", task.taskId, task_run_id)
+        
+        # 获取Worker的已安装包列表
+        worker_packages = {pkg['name'].lower(): pkg['version'] for pkg in Config.TAGS}
+        
+        missing_deps = []
+        version_mismatch = []
+        
+        for tag in script_tags:
+            if not tag.name:
+                continue
+                
+            pkg_name = tag.name.lower()
+            
+            # 检查包是否已安装
+            if pkg_name not in worker_packages:
+                missing_deps.append(tag)
+                logger.warning("缺少必需依赖：%s（要求：%s %s %s）", 
+                              tag.name, tag.operator or '>=', tag.version or 'any', '')
+                continue
+            
+            # 检查版本约束
+            if tag.version and tag.operator:
+                current_version = worker_packages[pkg_name]
+                is_valid, actual_version = EnvUtils.check_package_version(
+                    tag.name, tag.version, tag.operator
+                )
+                if not is_valid:
+                    version_mismatch.append({
+                        'name': tag.name,
+                        'required': f"{tag.operator} {tag.version}",
+                        'actual': actual_version
+                    })
+                    logger.warning("版本不匹配：%s（要求：%s %s，实际：%s）",
+                                  tag.name, tag.operator, tag.version, actual_version)
+        
+        # 构建错误信息
+        error_messages = []
+        
+        if missing_deps:
+            deps_str = ", ".join([f"{t.name} {t.operator or '>='} {t.version or 'any'}" 
+                                  for t in missing_deps])
+            error_messages.append(f"缺少必需依赖：{deps_str}")
+        
+        if version_mismatch:
+            versions_str = ", ".join([f"{v['name']}（要求：{v['required']}，实际：{v['actual']}）" 
+                                     for v in version_mismatch])
+            error_messages.append(f"版本不满足：{versions_str}")
+        
+        if error_messages:
+            error_msg = "; ".join(error_messages)
+            logger.error("依赖验证失败：%s", error_msg)
+            
+            # 更新任务状态为失败
+            task_instance_manager.update_status(
+                task_run_id, 
+                "failed",
+                error_message=f"依赖验证失败：{error_msg}"
+            )
+            
+            raise Exception(f"依赖验证失败：{error_msg}")
+        
+        logger.info("任务 %s 依赖验证通过，任务RunId: %s", task.taskId, task_run_id)
 

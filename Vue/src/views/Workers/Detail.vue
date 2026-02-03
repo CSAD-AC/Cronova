@@ -31,8 +31,8 @@
               </div>
             </el-descriptions-item>
             <el-descriptions-item label="IP地址">{{ worker?.ip }}</el-descriptions-item>
-            <el-descriptions-item label="最后心跳">{{ worker?.lastHeartbeat }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ worker?.createTime }}</el-descriptions-item>
+            <el-descriptions-item label="最后心跳">{{ formatDateTime(worker?.lastHeartbeat) }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatDateTime(worker?.createTime) }}</el-descriptions-item>
             <el-descriptions-item label="运行任务数">
               <el-tag size="small">{{ worker?.runningTasks || 0 }}</el-tag>
             </el-descriptions-item>
@@ -117,43 +117,6 @@
         </el-card>
       </el-col>
     </el-row>
-
-    <!-- 编辑主机名对话框 -->
-    <el-dialog 
-      v-model="editHostDialogVisible" 
-      title="修改主机名" 
-      width="500px"
-      @close="editHostDialogVisible = false"
-    >
-      <el-form 
-        ref="editHostFormRef"
-        :model="editHostForm"
-        :rules="hostRules"
-        label-width="100px"
-      >
-        <el-form-item label="主机名" prop="host">
-          <el-input 
-            v-model="editHostForm.host" 
-            placeholder="请输入主机名"
-            maxlength="50"
-            show-word-limit
-          />
-        </el-form-item>
-      </el-form>
-      
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="editHostDialogVisible = false">取消</el-button>
-          <el-button 
-            type="primary" 
-            @click="handleUpdateHost" 
-            :loading="editingHost"
-          >
-            确定
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -165,6 +128,7 @@ import { Refresh, List, Delete, Edit } from '@element-plus/icons-vue'
 import { useWorkerStore } from '@/stores/worker'
 import { workerApi } from '@/services'
 import type { FormInstance } from 'element-plus'
+import { formatDateTime } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -179,15 +143,6 @@ const editingHost = ref(false)
 const editHostForm = reactive({
   host: ''
 })
-
-// 表单验证规则
-const hostRules = {
-  host: [
-    { required: true, message: '请输入主机名', trigger: 'blur' },
-    { min: 1, max: 50, message: '主机名长度在 1 到 50 个字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_-]+$/, message: '主机名只能包含字母、数字、下划线和连字符', trigger: 'blur' }
-  ]
-}
 
 function getCpuColor(usage: number) {
   if (usage < 50) return '#10b981'

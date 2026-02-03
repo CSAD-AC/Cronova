@@ -74,7 +74,11 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="createTime" label="创建时间" width="180" />
+            <el-table-column prop="createTime" label="创建时间" width="180">
+              <template #default="{ row }">
+                {{ formatDateTime(row.createTime) }}
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="handleEdit(row)">
@@ -210,6 +214,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Download, PriceTag, Delete, Folder, Document, Edit, UploadFilled } from '@element-plus/icons-vue'
 import { scriptApi, tagApi } from '@/services'
 import type { ScriptVO, TagVO } from '@/types'
+import { formatDateTime } from '@/utils/date'
 
 const loading = ref(false)
 const uploading = ref(false)
@@ -227,14 +232,10 @@ const uploadFile = ref<any>(null)
 const groupedAllTags = computed(() => {
   const groups: Record<string, { name: string; versions: TagVO[] }> = {}
   allTags.value.forEach(tag => {
-    if (tag && tag.name) {
-      const group = groups[tag.name]
-      if (!group) {
-        groups[tag.name] = { name: tag.name, versions: [tag] }
-      } else {
-        group.versions.push(tag)
-      }
+    if (!groups[tag.name]) {
+      groups[tag.name] = { name: tag.name, versions: [] }
     }
+    groups[tag.name].versions.push(tag)
   })
   return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name))
 })
@@ -305,10 +306,8 @@ async function fetchScripts() {
     const response = await scriptApi.list({ pageSize: 1000 })
     if (Array.isArray(response)) {
       scripts.value = response
-    } else if (response && typeof response === 'object') {
-      scripts.value = (response as any).records || []
     } else {
-      scripts.value = []
+      scripts.value = response.records || []
     }
   } catch (error) {
     console.error('获取脚本列表失败:', error)
@@ -320,7 +319,7 @@ async function fetchScripts() {
 
 async function fetchTags() {
   try {
-    const response = await tagApi.list({ pageSize: 100 })
+    const response = await tagApi.list({ size: 100 })
     if (Array.isArray(response)) {
       allTags.value = response
     } else {
@@ -461,7 +460,7 @@ function getTagType(tagName: string): string {
     a = ((a << 5) - a) + b.charCodeAt(0)
     return a & a
   }, 0)
-  return types[Math.abs(hash) % types.length] || 'info'
+  return types[Math.abs(hash) % types.length]
 }
 
 async function handleDelete(row: ScriptVO) {

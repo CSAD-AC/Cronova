@@ -87,7 +87,11 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="startTime" label="执行时间" width="180" />
+            <el-table-column prop="startTime" label="执行时间" width="180">
+              <template #default="{ row }">
+                {{ formatDateTime(row.startTime) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="duration" label="耗时" width="100">
               <template #default="{ row }">
                 {{ row.duration }}ms
@@ -254,6 +258,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useWorkerStore } from '@/stores/worker'
 import { dashboardApi } from '@/services'
+import { formatDateTime, formatDuration } from '@/utils/date'
 
 const router = useRouter()
 const workerStore = useWorkerStore()
@@ -338,20 +343,6 @@ function getStatusText(status: string) {
 function viewRunDetail(row: any) {
   currentRun.value = row
   detailDialogVisible.value = true
-}
-
-function formatDateTime(dateTime: string | undefined | null): string {
-  if (!dateTime) return '-'
-  return dateTime
-}
-
-function formatDuration(ms: number | undefined | null): string {
-  if (!ms || ms < 0) return '-'
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`
-  const minutes = Math.floor(ms / 60000)
-  const seconds = ((ms % 60000) / 1000).toFixed(0)
-  return `${minutes}m ${seconds}s`
 }
 
 function goToWorkerDetail(workerId: string) {

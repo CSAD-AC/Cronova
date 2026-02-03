@@ -85,7 +85,11 @@
         </el-table-column>
         <el-table-column prop="scriptCount" label="关联脚本" width="100" align="center" />
         <el-table-column prop="workerCount" label="关联执行器" width="100" align="center" />
-        <el-table-column prop="createTime" label="创建时间" width="180" />
+        <el-table-column prop="createTime" label="创建时间" width="180">
+          <template #default="{ row }">
+            {{ formatDateTime(row.createTime) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="showEditDialog(row)">
@@ -156,6 +160,7 @@ import { Plus, Edit, Delete, Search, PriceTag, Document, Cpu } from '@element-pl
 import { tagApi } from '@/services'
 import type { TagVO } from '@/types'
 import type { FormInstance, FormRules } from 'element-plus'
+import { formatDateTime } from '@/utils/date'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -203,7 +208,7 @@ const rules: FormRules = {
 async function fetchTags() {
   loading.value = true
   try {
-    const response = await tagApi.list({ pageNum: currentPage.value, pageSize: pageSize.value })
+    const response = await tagApi.list({ page: currentPage.value, size: pageSize.value })
     tags.value = response.records
     total.value = response.total
   } finally {

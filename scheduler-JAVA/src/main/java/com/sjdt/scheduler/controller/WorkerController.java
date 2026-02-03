@@ -23,6 +23,8 @@ import com.sjdt.scheduler.service.IAKSKService;
 import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.common.RedisKey;
 import org.springframework.data.redis.core.RedisTemplate;
+
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -289,15 +291,30 @@ public class WorkerController {
         }
         
         if (resultMessage.getLogPath() != null && !resultMessage.getLogPath().isEmpty()) {
-            TaskLog taskLog = TaskLog.builder()
-                    .runId(resultMessage.getTaskRunId())
-                    .stdoutPath(resultMessage.getLogPath())
-                    .stderrPath(resultMessage.getLogPath())
-                    .createTime(LocalDateTime.now())
-                    .build();
+            List<TaskLog> taskLogs = taskLogMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
+                            .eq(TaskLog::getRunId, resultMessage.getTaskRunId())
+                            .orderByDesc(TaskLog::getCreateTime)
+            );
             
-            taskLogMapper.insert(taskLog);
-            log.info("任务日志路径保存成功，TaskRunID: {}, LogPath: {}", resultMessage.getTaskRunId(), resultMessage.getLogPath());
+            TaskLog existingTaskLog = taskLogs.isEmpty() ? null : taskLogs.get(0);
+
+            if (existingTaskLog != null) {
+                existingTaskLog.setStdoutPath(resultMessage.getLogPath());
+                existingTaskLog.setStderrPath(resultMessage.getLogPath());
+                taskLogMapper.updateById(existingTaskLog);
+                log.info("任务日志路径更新成功，TaskRunID: {}, LogPath: {}", resultMessage.getTaskRunId(), resultMessage.getLogPath());
+            } else {
+                TaskLog taskLog = TaskLog.builder()
+                        .runId(resultMessage.getTaskRunId())
+                        .stdoutPath(resultMessage.getLogPath())
+                        .stderrPath(resultMessage.getLogPath())
+                        .createTime(LocalDateTime.now())
+                        .build();
+                
+                taskLogMapper.insert(taskLog);
+                log.info("任务日志路径插入成功，TaskRunID: {}, LogPath: {}", resultMessage.getTaskRunId(), resultMessage.getLogPath());
+            }
         }
 
         return Result.success();
@@ -360,10 +377,13 @@ public class WorkerController {
                     taskRunId, taskStatus.getStatus(), taskStatus.getDurationMs(), taskStatus.getWorkerId());
             
             if (taskStatus.getLogPath() != null && !taskStatus.getLogPath().isEmpty()) {
-                TaskLog existingTaskLog = taskLogMapper.selectOne(
+                List<TaskLog> taskLogs = taskLogMapper.selectList(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
                                 .eq(TaskLog::getRunId, taskRunId)
+                                .orderByDesc(TaskLog::getCreateTime)
                 );
+                
+                TaskLog existingTaskLog = taskLogs.isEmpty() ? null : taskLogs.get(0);
                 
                 if (existingTaskLog == null) {
                     TaskLog newTaskLog = TaskLog.builder()

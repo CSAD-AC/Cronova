@@ -38,11 +38,8 @@ class Config:
     SECRET_KEY = None  # 注册后由调度器返回
     HOST = None  # 本机主机名
     IP = None  # 本机IP
-    # 需要检测的目标包列表
-    TARGET_PACKAGES = [
-        "numpy", "pandas", "minio", "requests", "rocketmq"
-    ]
-    TAGS = EnvUtils.get_installed_packages(TARGET_PACKAGES)
+    # 使用所有已安装的包作为标签（不局限于TARGET_PACKAGES）
+    TAGS = EnvUtils.get_all_installed_packages()
 
     WORKER_HEARTBEAT_URL = None
     WORKER_STATUS_REPORT_URL = None
