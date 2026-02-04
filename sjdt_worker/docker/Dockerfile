@@ -53,11 +53,10 @@ RUN apt-get purge -y --auto-remove \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /root/.cache/pip
 
+# -------------- 创建运行时目录（确保在COPY之前） --------------
+RUN mkdir -p scripts_tmp
+
 # -------------- 复制项目代码 --------------
 COPY . .
-
-# -------------- 创建运行时目录 --------------
-RUN mkdir -p logs task_instances
-
 # -------------- 默认启动命令 --------------
 CMD ["python3", "main.py"]

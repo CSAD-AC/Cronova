@@ -3,6 +3,7 @@ import tempfile
 import subprocess
 import threading
 import time
+import uuid
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from app.model.task import TaskExecuteMessage, TaskResultMessage
@@ -65,19 +66,29 @@ class PythonHandler(BaseHandler):
             # 1. 验证环境依赖
             self._validate_dependencies(task, task_run_id)
             
-            # 2. 下载脚本到临时文件
+            # 2. 下载脚本到固定目录
             script_bucket = Config.MINIO_BUCKET_NAME
             script_object = task.script.path
             
             logger.info("从MinIO下载脚本，bucket：%s，object：%s", script_bucket, script_object)
             
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                from app.utils.minio_utils import get_minio_file_object
-                script_content = get_minio_file_object(script_bucket, script_object).read().decode('utf-8')
-                f.write(script_content)
-                temp_script_path = f.name
+            # 确保scripts_tmp目录存在
+            scripts_dir = "/app/app/scripts_tmp"
+            os.makedirs(scripts_dir, exist_ok=True)
             
-            logger.info("脚本下载成功，保存到临时文件：%s，文件大小：%d字节", temp_script_path, len(script_content))
+            # 生成唯一的脚本文件名
+            unique_filename = f"script_{task_run_id}_{uuid.uuid4().hex[:8]}.py"
+            temp_script_path = os.path.join(scripts_dir, unique_filename)
+            
+            # 从MinIO下载脚本内容
+            from app.utils.minio_utils import get_minio_file_object
+            script_content = get_minio_file_object(script_bucket, script_object).read().decode('utf-8')
+            
+            # 保存到固定目录
+            with open(temp_script_path, 'w', encoding='utf-8') as f:
+                f.write(script_content)
+            
+            logger.info("脚本下载成功，保存到：%s，文件大小：%d字节", temp_script_path, len(script_content))
 
             # 3. 准备日志存储
             log_bucket = Config.MINIO_BUCKET_NAME

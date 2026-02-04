@@ -6,10 +6,6 @@
 logs/
 *.log
 
-# 忽略任务执行产生的临时目录和文件
-task_instances/
-/tmp/
-
 # 忽略 Python 缓存
 __pycache__/
 *.pyc

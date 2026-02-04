@@ -158,8 +158,14 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             throw new IllegalArgumentException("任务不存在，ID: " + taskUpdateDTO.getId());
         }
 
-        // 更新基本信息
-        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "status", "createdBy", "createTime");
+        // 更新基本信息（排除createdBy和createTime，不排除status以允许状态更新）
+        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "createdBy", "createTime");
+        
+        // 如果请求中包含状态更新，则更新状态
+        if (taskUpdateDTO.getStatus() != null) {
+            task.setStatus(taskUpdateDTO.getStatus());
+        }
+        
         task.setUpdateTime(LocalDateTime.now());
         this.updateById(task);
 
@@ -366,7 +372,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .build();
         taskRunMapper.insert(taskRun);
         String taskRunId = taskRun.getId();
-        log.warn("运行实例已插入， 开始时间为{} id为{}", taskRun.getStartTime(), taskRunId);
+        log.info("运行实例已插入， 开始时间为{} id为{}", taskRun.getStartTime(), taskRunId);
 
         TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
                 .id(script.getId())

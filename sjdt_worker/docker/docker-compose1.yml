@@ -7,10 +7,10 @@ services:
     env_file:
       - .env
     volumes:
-      - ../../jupyter:/app
-    working_dir: /app
-    command: tail -f /dev/null
-    #command: ["python", "main.py"]
+      - ../../jupyter:/app/jupyter
+    working_dir: /app/jupyter
+    #command: tail -f /dev/null
+    command: ["python", "../main.py"]
     logging:
       driver: "json-file"
       options:

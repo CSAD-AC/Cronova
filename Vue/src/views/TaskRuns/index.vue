@@ -86,7 +86,7 @@
             </el-link>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="80">
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusText(row.status) }}
@@ -126,6 +126,22 @@
               @click="previewLog(row)"
             >
               <el-icon class="mr-1"><Document /></el-icon>日志
+            </el-button>
+            <el-button 
+              v-if="canPause(row)" 
+              link 
+              type="warning" 
+              @click="handlePause(row)"
+            >
+              <el-icon class="mr-1"><VideoPause /></el-icon>暂停
+            </el-button>
+            <el-button 
+              v-if="canResume(row)" 
+              link 
+              type="success" 
+              @click="handleResume(row)"
+            >
+              <el-icon class="mr-1"><VideoPlay /></el-icon>恢复
             </el-button>
             <el-button link type="danger" @click="handleDelete(row)">
               <el-icon class="mr-1"><Delete /></el-icon>删除
@@ -268,6 +284,47 @@
         </el-tab-pane>
       </el-tabs>
     </el-dialog>
+    
+    <el-dialog v-model="controlDialogVisible" :title="getControlDialogTitle()" width="500px">
+      <div class="control-warning">
+        <el-icon :size="20" class="warning-icon"><Warning /></el-icon>
+        <span>{{ getControlWarningMessage() }}</span>
+      </div>
+      
+      <div v-if="showReasonInput" class="control-reason">
+        <el-form-item label="操作原因">
+          <el-input 
+            v-model="controlReason" 
+            type="textarea"
+            :rows="3"
+            placeholder="请输入操作原因（可选）"
+          />
+        </el-form-item>
+      </div>
+      
+      <div class="control-task-info">
+        <el-descriptions :column="1" size="small">
+          <el-descriptions-item label="任务ID">{{ controlTaskRun?.taskId }}</el-descriptions-item>
+          <el-descriptions-item label="任务名称">{{ getTaskName(controlTaskRun?.taskId) }}</el-descriptions-item>
+          <el-descriptions-item label="当前状态">
+            <el-tag :type="getStatusType(controlTaskRun?.status)" size="small">
+              {{ getStatusText(controlTaskRun?.status) }}
+            </el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+      
+      <template #footer>
+        <el-button @click="controlDialogVisible = false" :loading="controlling">取消</el-button>
+        <el-button 
+          :type="getControlConfirmButtonType()" 
+          @click="confirmControl" 
+          :loading="controlling"
+        >
+          {{ getControlConfirmButtonText() }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -275,7 +332,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, Search, View, Document, Download, Loading, Delete } from '@element-plus/icons-vue'
+import { Refresh, Search, View, Document, Download, Loading, Delete, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
 import { taskRunApi, taskApi, workerApi, minioApi, callbackJobRunApi } from '@/services'
 import type { TaskRun, TaskVO, WorkerVO } from '@/types'
 import { ElMessageBox } from 'element-plus'
@@ -306,20 +363,53 @@ const downloadingRequest = ref(false)
 const downloadingResponse = ref(false)
 const currentRequestContent = ref('')
 const currentResponseContent = ref('')
+const controlDialogVisible = ref(false)
+const controlType = ref<'pause' | 'resume'>('pause')
+const controlTaskRun = ref<any>(null)
+const controlReason = ref('')
+const controlling = ref(false)
+const showReasonInput = ref(false)
 
 const filteredTaskRuns = computed(() => {
-  if (!filterForm.value.status) {
-    return taskRuns.value
+  let result = [...taskRuns.value]
+  
+  // 状态筛选
+  if (filterForm.value.status) {
+    result = result.filter(run => run.status === filterForm.value.status)
   }
-  return taskRuns.value.filter(run => run.status === filterForm.value.status)
+  
+  // 任务名称筛选
+  if (filterForm.value.taskId) {
+    result = result.filter(run => run.taskId === filterForm.value.taskId)
+  }
+  
+  // 时间范围筛选
+  if (filterForm.value.dateRange && filterForm.value.dateRange.length === 2) {
+    const [startDate, endDate] = filterForm.value.dateRange
+    const startTime = new Date(startDate || Date.now()).getTime()
+    const endTime = new Date(endDate || Date.now()).getTime()
+    
+    result = result.filter(run => {
+      const runTime = new Date(run.startTime || run.createTime || Date.now()).getTime()
+      return runTime >= startTime && runTime <= endTime
+    })
+  }
+  
+  // 排序
+  result.sort((a, b) => {
+    const timeA = new Date(a.startTime || a.createTime || Date.now()).getTime()
+    const timeB = new Date(b.startTime || b.createTime || Date.now()).getTime()
+    return filterForm.value.sortOrder === 'asc' ? timeA - timeB : timeB - timeA
+  })
+  
+  return result
 })
 
 async function fetchTaskRuns() {
   loading.value = true
   try {
-    // 1. 先获取任务名称和类型，以便后续过滤
-    await fetchTaskNames()
-    await fetchWorkerNames()
+    // 1. 先获取所有任务信息
+    await fetchAllTasksInfo()
 
     // 2. 同时获取脚本任务运行记录和回调任务运行记录
     const [scriptRuns, callbackRuns] = await Promise.all([
@@ -346,14 +436,17 @@ async function fetchTaskRuns() {
       combinedRuns = [...combinedRuns, ...(callbackRuns as any).records]
     }
     
-    // 5. 按开始时间或创建时间倒序排列
+    // 5. 按开始时间倒序排列（默认排序，筛选后会重新排序）
     combinedRuns.sort((a, b) => {
-      const timeA = new Date(a.startTime || a.createTime).getTime()
-      const timeB = new Date(b.startTime || b.createTime).getTime()
+      const timeA = new Date(a.startTime || a.createTime || Date.now()).getTime()
+      const timeB = new Date(b.startTime || b.createTime || Date.now()).getTime()
       return timeB - timeA
     })
     
     taskRuns.value = combinedRuns
+    
+    // 6. 筛选出有运行记录的任务，只显示这些任务
+    filterTaskOptions(combinedRuns)
   } catch (error) {
     console.error('获取运行记录失败:', error)
     ElMessage.error('获取运行记录失败')
@@ -363,7 +456,10 @@ async function fetchTaskRuns() {
   }
 }
 
-async function fetchTaskNames() {
+/**
+ * 获取所有任务信息（用于获取任务类型等）
+ */
+async function fetchAllTasksInfo() {
   try {
     const response = await taskApi.list({ pageSize: 1000 })
     let tasks: TaskVO[] = []
@@ -376,11 +472,38 @@ async function fetchTaskNames() {
     taskTypeMap.value.clear()
     tasks.forEach(task => {
       taskMap.value.set(task.id, task.name)
-      taskTypeMap.value.set(task.id, task.executeType || 'script') // 默认script类型
+      taskTypeMap.value.set(task.id, task.executeType || 'script')
     })
   } catch (error) {
-    console.error('获取任务名称失败:', error)
+    console.error('获取任务信息失败:', error)
   }
+}
+
+/**
+ * 筛选出有运行记录的任务，用于下拉框显示
+ * @param runs 任务运行记录列表
+ */
+function filterTaskOptions(runs: any[]) {
+  // 提取所有有运行记录的任务ID
+  const taskIdsWithRuns = new Set(runs.map(run => run.taskId))
+  
+  // 清空并重新填充 taskMap，只包含有运行记录的任务
+  const filteredTaskMap = new Map<string, string>()
+  const filteredTaskTypeMap = new Map<string, string>()
+  
+  taskIdsWithRuns.forEach(taskId => {
+    const name = taskMap.value.get(taskId)
+    const type = taskTypeMap.value.get(taskId)
+    if (name) {
+      filteredTaskMap.set(taskId, name)
+    }
+    if (type) {
+      filteredTaskTypeMap.set(taskId, type)
+    }
+  })
+  
+  taskMap.value = filteredTaskMap
+  taskTypeMap.value = filteredTaskTypeMap
 }
 
 async function fetchWorkerNames() {
@@ -423,7 +546,8 @@ function isCallbackTask(taskId: string): boolean {
 }
 
 function handleSearch() {
-  fetchTaskRuns()
+  // 筛选在computed属性中自动进行，无需重新获取数据
+  ElMessage.info('正在筛选运行记录...')
 }
 
 function handleReset() {
@@ -431,7 +555,7 @@ function handleReset() {
   filterForm.value.taskId = ''
   filterForm.value.dateRange = []
   filterForm.value.sortOrder = 'desc'
-  fetchTaskRuns()
+  ElMessage.info('已重置筛选条件')
 }
 
 async function handleDelete(row: TaskRun) {
@@ -672,10 +796,97 @@ async function downloadResponseData() {
   }
 }
 
+function canPause(row: TaskRun): boolean {
+  return row.status === 'running' && isScriptTask(row.taskId)
+}
+
+function canResume(row: TaskRun): boolean {
+  return row.status === 'paused' && isScriptTask(row.taskId)
+}
+
+function handlePause(row: TaskRun) {
+  controlType.value = 'pause'
+  controlTaskRun.value = row
+  controlReason.value = ''
+  showReasonInput.value = true
+  controlDialogVisible.value = true
+}
+
+function handleResume(row: TaskRun) {
+  controlType.value = 'resume'
+  controlTaskRun.value = row
+  controlReason.value = ''
+  showReasonInput.value = false
+  controlDialogVisible.value = true
+}
+
+async function confirmControl() {
+  if (!controlTaskRun.value || !controlType.value) return
+  
+  controlling.value = true
+  
+  try {
+    const taskRunId = controlTaskRun.value.id
+    const reason = controlReason.value || undefined
+    
+    switch (controlType.value) {
+      case 'pause':
+        await taskRunApi.pause(taskRunId, reason)
+        ElMessage.success('暂停指令已发送，任务即将暂停')
+        break
+      case 'resume':
+        await taskRunApi.resume(taskRunId, reason)
+        ElMessage.success('恢复指令已发送，任务即将继续执行')
+        break
+    }
+    
+    controlDialogVisible.value = false
+    fetchTaskRuns()
+  } catch (error) {
+    console.error('控制操作失败:', error)
+    ElMessage.error('控制操作失败，请重试')
+  } finally {
+    controlling.value = false
+  }
+}
+
+function getControlDialogTitle(): string {
+  const titles: Record<string, string> = {
+    pause: '暂停任务',
+    resume: '恢复任务'
+  }
+  return titles[controlType.value] || '操作确认'
+}
+
+function getControlConfirmButtonType(): string {
+  const types: Record<string, string> = {
+    pause: 'warning',
+    resume: 'success'
+  }
+  return types[controlType.value] || 'primary'
+}
+
+function getControlConfirmButtonText(): string {
+  const texts: Record<string, string> = {
+    pause: '确认暂停',
+    resume: '确认恢复'
+  }
+  return texts[controlType.value] || '确认'
+}
+
+function getControlWarningMessage(): string {
+  const messages: Record<string, string> = {
+    pause: '确定要暂停该任务吗？暂停后任务将进入暂停状态，可以手动恢复执行。',
+    resume: '确定要恢复该任务吗？恢复后任务将继续执行。'
+  }
+  return messages[controlType.value] || '确定要执行此操作吗？'
+}
+
 function getStatusType(status: string): string {
   const map: Record<string, string> = {
     pending: 'info',
     running: 'primary',
+    paused: 'warning',
     success: 'success',
     failed: 'danger',
     timeout: 'warning',
@@ -687,6 +898,7 @@ function getStatusText(status: string): string {
   const map: Record<string, string> = {
     pending: '等待中',
     running: '运行中',
+    paused: '已暂停',
     success: '成功',
     failed: '失败',
     timeout: '超时',
@@ -825,5 +1037,34 @@ onMounted(() => {
 
 .callback-loading .el-icon {
   margin-right: 8px;
+}
+
+.control-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  color: #991b1b;
+  line-height: 1.5;
+}
+
+.warning-icon {
+  color: #ef4444;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.control-reason {
+  margin-bottom: 20px;
+}
+
+.control-task-info {
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
 }
 </style>

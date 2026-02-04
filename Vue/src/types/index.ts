@@ -129,6 +129,8 @@ export interface TaskVO {
   cronExpr?: string
   cronDescription?: string  // Cron表达式的中文含义
   timeoutSeconds?: number
+  retryCount?: number
+  retryIntervalSeconds?: number
   targetWorker?: string
   status: TaskStatus
   executeType?: ExecuteType
@@ -147,6 +149,7 @@ export interface TaskCreateDTO {
   scriptId?: string
   taskType: TaskType
   cronExpr?: string
+  status?: TaskStatus
   timeoutSeconds?: number
   targetWorker?: string
 }

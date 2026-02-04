@@ -172,10 +172,6 @@
           </el-input>
         </el-form-item>
         
-        <el-form-item label="启用状态">
-          <el-switch v-model="formData.enabled" active-text="启用" inactive-text="禁用" />
-        </el-form-item>
-        
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="handleSubmit">
             {{ loading ? '创建中...' : '创 建' }}
@@ -245,7 +241,6 @@ const formData = reactive({
   timeoutSeconds: 180,
   taskType: 'cron' as 'cron' | 'once',
   cronExpr: '',
-  enabled: true,
   callbackUrl: '',
   callbackMethod: 'POST',
   secretKey: '',

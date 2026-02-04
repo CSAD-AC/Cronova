@@ -62,7 +62,7 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         int currentRetryNum = 0;
         if (originalRun != null && originalRun.getRetryNum() != null) {
             currentRetryNum = originalRun.getRetryNum();
-            log.warn("原有任务实例开始时间为{}, 结束时间为{} id为{}", originalRun.getStartTime(), originalRun.getEndTime(), resultMessage.getTaskRunId());
+            log.info("原有任务实例开始时间为{}, 结束时间为{} id为{}", originalRun.getStartTime(), originalRun.getEndTime(), resultMessage.getTaskRunId());
         }
 
 
@@ -82,7 +82,7 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
                 .lastHeartbeatTime(LocalDateTime.now()) // 更新心跳时间
                 .build();
         log.debug("TaskRun对象构建完成，ID: {}", taskRun.getId());
-        log.warn("TaskRun对象构建完成, 开始时间为{}, 结束时间为{} ", taskRun.getStartTime(), taskRun.getEndTime());
+        log.info("TaskRun对象构建完成, 开始时间为{}, 结束时间为{} ", taskRun.getStartTime(), taskRun.getEndTime());
 
         // 3. 保存或更新任务执行结果（避免重复键异常）
         log.info("保存任务执行结果，TaskRunID: {}, Status: {}", taskRun.getId(), taskRun.getStatus());

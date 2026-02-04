@@ -50,7 +50,7 @@
     
     <el-card class="table-card">
       <el-table 
-        :data="taskStore.tasks" 
+        :data="paginatedTasks" 
         v-loading="taskStore.loading"
         style="width: 100%"
         stripe
@@ -141,7 +141,7 @@
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
-          :total="taskStore.total"
+          :total="filteredTasks.length"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
@@ -152,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -173,25 +173,56 @@ const filterForm = reactive({
   status: '',
 })
 
+const filteredTasks = computed(() => {
+  let result = [...taskStore.tasks]
+  
+  // 任务名称筛选（模糊匹配）
+  if (filterForm.name.trim()) {
+    const searchName = filterForm.name.trim().toLowerCase()
+    result = result.filter(task => 
+      task.name.toLowerCase().includes(searchName) ||
+      (task.description && task.description.toLowerCase().includes(searchName))
+    )
+  }
+  
+  // 任务类型筛选
+  if (filterForm.taskType) {
+    result = result.filter(task => task.taskType === filterForm.taskType)
+  }
+  
+  // 状态筛选
+  if (filterForm.status) {
+    result = result.filter(task => task.status === filterForm.status)
+  }
+  
+  return result
+})
+
+const paginatedTasks = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredTasks.value.slice(start, end)
+})
+
 function handleSearch() {
   currentPage.value = 1
-  fetchTasks()
+  // 筛选在computed属性中自动进行，无需重新获取数据
 }
 
 function handleReset() {
   filterForm.name = ''
   filterForm.taskType = ''
   filterForm.status = ''
-  handleSearch()
+  currentPage.value = 1
 }
 
 function handleSizeChange() {
   currentPage.value = 1
-  fetchTasks()
+  // 不需要重新获取数据，只需要重新分页
 }
 
 function handleCurrentChange() {
-  fetchTasks()
+  // 不需要重新获取数据，只需要重新分页
 }
 
 function getScriptTypeTag(type: string): string {
@@ -215,9 +246,8 @@ function getScriptTypeText(type: string): string {
 
 async function fetchTasks() {
   await taskStore.fetchTasks({
-    pageNum: currentPage.value,
-    pageSize: pageSize.value,
-    ...filterForm,
+    pageNum: 1,
+    pageSize: 9999, // 获取所有数据进行本地筛选
   })
 }
 

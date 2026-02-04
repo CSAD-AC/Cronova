@@ -157,7 +157,13 @@
         </el-form-item>
         
         <el-form-item label="启用状态">
-          <el-switch v-model="formData.enabled" active-text="启用" inactive-text="禁用" />
+          <el-switch 
+            v-model="formData.status" 
+            active-value="active"
+            inactive-value="paused"
+            active-text="启用" 
+            inactive-text="禁用" 
+          />
         </el-form-item>
         
         <el-form-item>
@@ -228,7 +234,7 @@ const formData = reactive({
   timeoutSeconds: 180,
   taskType: 'cron' as 'cron' | 'once',
   cronExpr: '',
-  enabled: true,
+  status: 'active' as 'active' | 'paused' | 'deleted',
   // 回调配置字段
   callbackUrl: '',
   callbackMethod: 'POST',
@@ -384,7 +390,7 @@ async function fetchTask() {
       name: task.name,
       description: task.description || '',
       executeType: task.executeType || 'script',
-      scriptType: task.type || '',
+      scriptType: task.scriptType || task.type || '', // 优先使用scriptType，兼容旧数据
       scriptId: task.scriptId || '',
       targetWorker: task.targetWorker || '',
       timeoutSeconds: task.timeoutSeconds || 180,
@@ -392,7 +398,7 @@ async function fetchTask() {
       retryIntervalSeconds: task.retryIntervalSeconds || 60,
       taskType: task.taskType,
       cronExpr: task.cronExpr || '',
-      enabled: task.enabled,
+      status: task.status || 'active',
     })
 
     // 如果是回调任务，尝试加载回调配置
@@ -444,7 +450,7 @@ async function handleSubmit() {
         description: formData.description,
         executeType: formData.executeType,
         taskType: formData.taskType,
-        enabled: formData.enabled,
+        status: formData.status,
         timeoutSeconds: formData.timeoutSeconds,
         retryCount: formData.retryCount,
         retryIntervalSeconds: formData.retryIntervalSeconds,
@@ -474,7 +480,7 @@ async function handleSubmit() {
 
       await taskStore.updateTask(updateData)
       ElMessage.success('保存成功')
-      router.push(`/tasks/${taskId}`)
+      router.push('/tasks')
     } catch (error) {
       console.error('保存失败:', error)
       ElMessage.error('保存失败')

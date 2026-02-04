@@ -224,54 +224,6 @@ public class TaskRunController {
     }
 
     /**
-     * 保留原有的下载接口，但标记为已废弃
-     */
-    @Deprecated
-    @GetMapping("/{taskRunId}/log/download")
-    @Operation(summary = "下载任务运行实例日志文件(已废弃)", description = "下载任务运行实例的日志文件，建议使用/log/info接口获取MinIO信息")
-    public void downloadTaskRunLog(
-            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
-            HttpServletResponse response) {
-        log.warn("调用了已废弃的下载接口，建议使用/log/info接口，TaskRunID: {}", taskRunId);
-        
-        try {
-            Result<LogFileInfo> result = getLogFileInfo(taskRunId);
-            if (result.getCode() != 200) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                return;
-            }
-            
-            LogFileInfo logFileInfo = result.getData();
-            
-            response.setContentType("application/octet-stream");
-            response.setHeader("Content-Disposition", "attachment; filename=" + logFileInfo.getFileName());
-            
-            try (InputStream inputStream = minioClient.getObject(
-                    GetObjectArgs.builder()
-                            .bucket(logFileInfo.getBucket())
-                            .object(logFileInfo.getObjectName())
-                            .build()
-            ); ServletOutputStream outputStream = response.getOutputStream()) {
-                byte[] buffer = new byte[1024 * 1024];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                }
-                outputStream.flush();
-            }
-            
-            log.info("下载任务运行实例日志成功，TaskRunID: {}", taskRunId);
-        } catch (Exception e) {
-            log.error("下载任务运行实例日志失败，TaskRunID: {}", taskRunId, e);
-            try {
-                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            } catch (Exception ex) {
-                log.error("设置响应状态失败", ex);
-            }
-        }
-    }
-
-    /**
      * 暂停任务运行实例
      */
     @PostMapping("/{taskRunId}/pause")
