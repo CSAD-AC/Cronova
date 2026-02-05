@@ -52,13 +52,18 @@
                 {{ task?.taskType === 'cron' ? 'Cron定时任务' : '一次性任务' }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="脚本类型">{{ task?.type || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="task?.executeType === 'script'" label="脚本类型">
+              {{ getScriptTypeText(task?.scriptType || task?.type) || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item v-if="task?.executeType === 'script' && scriptName" label="脚本文件">
+              {{ scriptName }}
+            </el-descriptions-item>
             <el-descriptions-item label="Cron表达式">
               <div v-if="task?.cronExpr">
                 <div class="cron-expr">{{ task.cronExpr }}</div>
                 <div class="cron-desc" v-if="cronDescription">{{ cronDescription }}</div>
               </div>
-              <span v-else>-</span>
+              <span v-else>无</span>
             </el-descriptions-item>
             <el-descriptions-item label="超时时间">{{ task?.timeoutSeconds }}秒</el-descriptions-item>
             <el-descriptions-item label="目标执行器">{{ task?.targetWorker || '自动匹配' }}</el-descriptions-item>
@@ -222,24 +227,50 @@
         <el-skeleton :rows="10" animated />
       </div>
       <div v-else class="log-content">
-        <div class="log-toolbar">
-          <el-button size="small" @click="refreshLogs">
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-          <el-button size="small" @click="clearLog">
-            <el-icon><Delete /></el-icon>
-            清空
-          </el-button>
-          <el-button size="small" @click="downloadCurrentLog">
-            <el-icon><Download /></el-icon>
-            下载
-          </el-button>
+          <div class="log-toolbar">
+            <el-button size="small" @click="refreshLogs">
+              <el-icon><Refresh /></el-icon>
+              刷新
+            </el-button>
+            <el-button size="small" @click="clearLog">
+              <el-icon><Delete /></el-icon>
+              清空
+            </el-button>
+            <el-divider direction="vertical" />
+            <el-button size="small" @click="toggleFullscreen">
+              <el-icon><FullScreen /></el-icon>
+              {{ isFullscreen ? '退出全屏' : '全屏查看' }}
+            </el-button>
+            <el-dropdown>
+              <el-button size="small">
+                <el-icon><Filter /></el-icon>
+                日志筛选
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-checkbox-group v-model="selectedLogLevels" @change="handleFilterChange">
+                    <div class="log-level-filter">
+                      <el-checkbox value="DEBUG">调试信息</el-checkbox>
+                      <el-checkbox value="INFO">一般信息</el-checkbox>
+                      <el-checkbox value="WARNING">警告信息</el-checkbox>
+                      <el-checkbox value="ERROR">错误信息</el-checkbox>
+                      <el-checkbox value="CRITICAL">严重错误</el-checkbox>
+                    </div>
+                  </el-checkbox-group>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-divider direction="vertical" />
+            <el-button size="small" @click="downloadCurrentLog">
+              <el-icon><Download /></el-icon>
+              下载
+            </el-button>
+          </div>
+          <div ref="logContainer" class="log-container" :class="{ 'fullscreen': isFullscreen }">
+            <pre class="log-text" v-html="displayLogContent || logContentHtml || '暂无日志内容'"></pre>
+          </div>
         </div>
-        <div ref="logContainer" class="log-container">
-          <pre class="log-text">{{ logContent }}</pre>
-        </div>
-      </div>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="logDialogVisible = false">关闭</el-button>
@@ -250,15 +281,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Edit, VideoPlay, Switch, Delete, Refresh, Document, Download, Monitor
+  Edit, VideoPlay, Switch, Delete, Refresh, Document, Download, Monitor, 
+  FullScreen, Filter, ArrowDown
 } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { taskRunApi } from '@/services'
 import { taskApi } from '@/services/task'
+import { scriptApi } from '@/services/script'
 import type { TaskRun } from '@/types'
 import { formatDateTime, formatDuration } from '@/utils/date'
 
@@ -272,6 +305,7 @@ const task = ref<any>(null)
 const taskRuns = ref<TaskRun[]>([])
 const healthCheckLoading = ref(false)
 const cronDescription = ref('')
+const scriptName = ref('')
 
 // 执行历史相关数据
 const runsLoading = ref(false)
@@ -283,8 +317,16 @@ const runsTotal = ref(0)
 const logDialogVisible = ref(false)
 const logLoading = ref(false)
 const logContent = ref('')
+const logContentHtml = ref('')  // 处理后的HTML内容
 const currentLogTask = ref<any>(null)
 const logContainer = ref<HTMLDivElement>()
+
+// 全屏和筛选功能相关数据
+const isFullscreen = ref(false)
+const selectedLogLevels = ref<string[]>(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+const allLogLevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+const filteredLogContent = ref('')
+const displayLogContent = ref('') // 统一的显示内容
 
 function getStatusType(status: string) {
   const map: Record<string, string> = {
@@ -310,10 +352,251 @@ function getStatusText(status: string) {
   return map[status] || status
 }
 
+function getScriptTypeText(type: string | undefined) {
+  const map: Record<string, string> = {
+    python: 'Python',
+    java: 'Java', 
+    go: 'Go'
+  }
+  return map[type || ''] || type || ''
+}
+
+/**
+ * 处理日志内容，应用颜色高亮
+ * @param content 原始日志内容
+ * @returns 处理后的HTML内容
+ */
+function processLogContent(content: string): string {
+  if (!content) return ''
+  
+  // 按行处理
+  const lines = content.split('\n')
+  const processedLines = lines.map(line => {
+    // 匹配日志级别模式（基于我们统一日志格式）
+    // 格式: 2026-02-04 14:25:27 | INFO     | module.py:function:123 - message
+    
+    // 1. 匹配整个日志行格式
+    const logPattern = /^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s*\|\s*(\w+)\s*\|\s*(.*?)(?:\s*-\s*)(.*)$/
+    const match = line.match(logPattern)
+    
+    if (match) {
+      const [, timestamp, level, location, message] = match
+      
+      // 根据日志级别确定颜色（护眼配色）
+      const levelColors: Record<string, string> = {
+        'DEBUG': '#4FC3F7',     // 柔和青色
+        'INFO': '#66BB6A',      // 柔和绿色
+        'WARNING': '#FFB74D',   // 柔和琥珀色
+        'ERROR': '#EF5350',     // 柔和红色
+        'CRITICAL': '#AB47BC',  // 柔和紫色
+        'CRIT': '#AB47BC'       // 兼容简写
+      }
+      
+      const color = levelColors[level?.toUpperCase() || ''] || '#FFFFFF'
+      
+      // 构建带颜色的HTML
+      return `<span style="color: ${color};">${timestamp}</span>` +
+             ` | <span style="color: ${color}; font-weight: bold;">${level}</span>` +
+             ` | <span style="color: #B0BEC5;">${location}</span>` +
+             ` - <span style="color: ${color};">${message}</span>`
+    }
+    
+    // 2. 匹配包含异常信息的行
+    if (line.includes('Traceback (most recent call last):') || 
+        line.includes('File ') && line.includes('line ') ||
+        line.match(/^\s*[A-Za-z_][A-Za-z0-9_]*Error:/) ||
+        line.match(/^\s*at\s+/)) {
+      return `<span style="color: #E57373;">${escapeHtml(line)}</span>`
+    }
+    
+    // 3. 匹配包含关键字的行（护眼配色）
+    const keywords = [
+      { pattern: /\b(exception|Exception|ERROR|Error)\b/g, color: '#EF5350' },
+      { pattern: /\b(warning|Warning|WARN|Warn)\b/g, color: '#FFB74D' },
+      { pattern: /\b(info|Info|INFO)\b/g, color: '#66BB6A' },
+      { pattern: /\b(debug|Debug|DEBUG)\b/g, color: '#4FC3F7' },
+      { pattern: /\b(success|Success|SUCCESS)\b/g, color: '#66BB6A' },
+      { pattern: /\b(failed|Failed|FAILED|FAIL|Fail)\b/g, color: '#EF5350' },
+      { pattern: /\b(start|Start|START)\b/g, color: '#4FC3F7' },
+      { pattern: /\b(end|End|END)\b/g, color: '#FFB74D' },
+      { pattern: /\b(complete|Complete|COMPLETE|finish|Finish|FINISH)\b/g, color: '#66BB6A' }
+    ]
+    
+    let processedLine = escapeHtml(line)
+    keywords.forEach(({ pattern, color }) => {
+      processedLine = processedLine.replace(pattern, 
+        `<span style="color: ${color}; font-weight: bold;">$&</span>`)
+    })
+    
+    return processedLine
+  })
+  
+  return processedLines.join('\n')
+}
+
+/**
+ * HTML转义函数
+ * @param text 要转义的文本
+ * @returns 转义后的文本
+ */
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+/**
+ * 切换全屏模式
+ */
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
+  
+  // 如果进入全屏模式，更新显示内容并添加ESC键监听
+  if (isFullscreen.value) {
+    filteredLogContent.value = filterLogs()
+    // 添加ESC键监听
+    addKeyboardListener()
+  } else {
+    // 退出全屏时移除监听并清空内容
+    removeKeyboardListener()
+    filteredLogContent.value = ''
+  }
+}
+
+/**
+ * ESC键退出全屏
+ */
+function handleKeydown(event: KeyboardEvent) {
+  // 只在全屏模式下响应ESC键
+  if (event.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
+    filteredLogContent.value = ''
+  }
+}
+
+/**
+ * 添加/移除键盘事件监听
+ */
+function addKeyboardListener() {
+  document.addEventListener('keydown', handleKeydown)
+}
+
+function removeKeyboardListener() {
+  document.removeEventListener('keydown', handleKeydown)
+}
+
+// 监听全屏状态变化，自动管理ESC键监听器
+watch(isFullscreen, (newValue, oldValue) => {
+  if (newValue && !oldValue) {
+    // 进入全屏模式，添加ESC键监听
+    addKeyboardListener()
+  } else if (!newValue && oldValue) {
+    // 退出全屏模式，移除ESC键监听
+    removeKeyboardListener()
+  }
+})
+
+// 监听筛选级别变化，自动更新显示内容
+watch(selectedLogLevels, () => {
+  updateDisplayContent()
+}, { deep: true })
+
+/**
+ * 筛选日志内容
+ */
+function filterLogs(): string {
+  const originalContent = logContent.value || ''
+  
+  // 如果没有筛选条件或选择了全部级别，返回处理后的完整内容
+  if (selectedLogLevels.value.length === 0 || selectedLogLevels.value.length === allLogLevels.length) {
+    return logContentHtml.value || '暂无日志内容'
+  }
+  
+  // 按行分割原始内容（不包含HTML标签）
+  const lines = originalContent.split('\n')
+  const filteredLines: string[] = []
+  
+  lines.forEach(line => {
+    // 检查是否包含选中的日志级别
+    const hasSelectedLevel = selectedLogLevels.value.some(level => {
+      // 更精确的匹配模式 - 匹配日志级别
+      const pattern = new RegExp(`\\b${level}\\b`, 'i')
+      return pattern.test(line)
+    })
+    
+    if (hasSelectedLevel) {
+      filteredLines.push(line)
+    }
+  })
+  
+  // 如果没有匹配的行，返回空内容
+  if (filteredLines.length === 0) {
+    return '暂无匹配的日志内容'
+  }
+  
+  // 对筛选后的内容应用颜色高亮
+  const filteredContent = filteredLines.join('\n')
+  return processLogContent(filteredContent)
+}
+
+/**
+ * 全选日志级别
+ */
+function selectAllLevels() {
+  selectedLogLevels.value = [...allLogLevels]
+  filteredLogContent.value = filterLogs()
+}
+
+/**
+ * 清空所有日志级别
+ */
+function clearAllLevels() {
+  selectedLogLevels.value = []
+  filteredLogContent.value = ''
+}
+
+/**
+ * 更新显示内容
+ */
+function updateDisplayContent() {
+  // 获取筛选后的内容
+  const filtered = filterLogs()
+  
+  // 如果在全屏模式，使用filteredLogContent
+  if (isFullscreen.value) {
+    filteredLogContent.value = filtered
+  }
+  
+  // 更新统一显示内容
+  displayLogContent.value = filtered
+}
+
+/**
+ * 处理筛选变化
+ */
+function handleFilterChange() {
+  // 更新显示内容
+  updateDisplayContent()
+}
+
+
+
 async function fetchTask() {
   loading.value = true
   try {
     task.value = await taskStore.fetchTaskById(taskId)
+    
+    // 如果是脚本任务且有scriptId，获取脚本名称
+    if (task.value?.executeType === 'script' && task.value?.scriptId) {
+      try {
+        const scriptDetail = await scriptApi.getById(task.value.scriptId)
+        if (scriptDetail?.name) {
+          scriptName.value = scriptDetail.name
+        }
+      } catch (error) {
+        console.warn('获取脚本详情失败:', error)
+      }
+    }
     
     // 如果有cron表达式，自动获取中文描述（适用于所有任务类型）
     if (task.value?.cronExpr && task.value?.taskType === 'cron') {
@@ -518,6 +801,7 @@ async function viewLogs(row: any) {
   currentLogTask.value = row
   logDialogVisible.value = true
   logContent.value = ''
+  logContentHtml.value = ''
   
   await loadLogs()
 }
@@ -539,22 +823,30 @@ async function loadLogs() {
       if (response.ok) {
         const text = await response.text()
         logContent.value = text || '暂无日志内容'
+        logContentHtml.value = processLogContent(text || '暂无日志内容')
       } else {
-        logContent.value = '无法获取日志内容'
+        const errorText = '无法获取日志内容'
+        logContent.value = errorText
+        logContentHtml.value = processLogContent(errorText)
       }
     } else {
       // 尝试直接获取日志内容
       try {
         const logText = await taskRunApi.getLogs(currentLogTask.value.id)
         logContent.value = logText || '暂无日志内容'
+        logContentHtml.value = processLogContent(logText || '暂无日志内容')
       } catch (error) {
         console.warn('无法获取日志内容:', error)
-        logContent.value = '暂无日志内容或无法访问'
+        const warnText = '暂无日志内容或无法访问'
+        logContent.value = warnText
+        logContentHtml.value = processLogContent(warnText)
       }
     }
   } catch (error) {
     console.error('加载日志失败:', error)
-    logContent.value = '加载日志失败'
+    const failText = '加载日志失败'
+    logContent.value = failText
+    logContentHtml.value = processLogContent(failText)
   } finally {
     logLoading.value = false
     // 滚动到底部
@@ -628,6 +920,11 @@ async function downloadCurrentLog() {
 onMounted(() => {
   fetchTask()
   fetchTaskRuns()
+  addKeyboardListener()
+})
+
+onUnmounted(() => {
+  removeKeyboardListener()
 })
 </script>
 
@@ -721,26 +1018,128 @@ onMounted(() => {
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e5e7eb;
+  align-items: center;
+}
+
+/* 全屏模式样式 */
+.log-container.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background-color: #000000 !important;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  padding: 20px;
+  max-height: none !important;
+}
+
+/* 筛选下拉框样式 */
+.log-level-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  min-width: 200px;
+}
+
+.log-level-filter .el-checkbox {
+  margin-right: 0;
+}
+
+.log-level-filter .el-checkbox__label {
+  color: #e5e7eb;
+}
+
+/* 下拉菜单样式优化 */
+:deep(.el-dropdown-menu) {
+  background-color: #1f2937;
+  border: 1px solid #374151;
+}
+
+:deep(.el-dropdown-menu__item) {
+  color: #e5e7eb;
+  padding: 0;
+}
+
+:deep(.el-dropdown-menu__item:hover) {
+  background-color: #374151;
+}
+
+:deep(.el-checkbox__inner) {
+  background-color: #374151;
+  border-color: #4b5563;
+}
+
+:deep(.el-checkbox__inner:hover) {
+  border-color: #60a5fa;
+}
+
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner::after) {
+  border-color: #ffffff;
 }
 
 .log-container {
   flex: 1;
   overflow: auto;
-  background-color: #1e1e1e;
+  background-color: #000000;  /* 纯黑色背景 */
   border-radius: 8px;
   padding: 16px;
-  border: 1px solid #374151;
+  border: 1px solid #333333;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);  /* 内部阴影效果 */
 }
 
 .log-text {
   margin: 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;  /* 经典终端字体 */
   font-size: 13px;
-  line-height: 1.5;
-  color: #e5e7eb;
+  line-height: 1.4;  /* 稍微紧凑的行距 */
+  color: #FFFFFF;  /* 白色文字 */
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-all;
+  background: transparent;
+}
+
+/* 终端风格增强 */
+.log-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 70%);
+  pointer-events: none;
+  border-radius: 8px;
+}
+
+/* 滚动条样式 */
+.log-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.log-container::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+  background: #444444;
+  border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+  background: #555555;
 }
 
 .cron-expr {

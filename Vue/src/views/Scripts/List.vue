@@ -232,10 +232,12 @@ const uploadFile = ref<any>(null)
 const groupedAllTags = computed(() => {
   const groups: Record<string, { name: string; versions: TagVO[] }> = {}
   allTags.value.forEach(tag => {
-    if (!groups[tag.name]) {
-      groups[tag.name] = { name: tag.name, versions: [] }
+    if (tag.name) {
+      if (!groups[tag.name]) {
+        groups[tag.name] = { name: tag.name, versions: [] }
+      }
+      groups[tag.name]!.versions.push(tag)
     }
-    groups[tag.name].versions.push(tag)
   })
   return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name))
 })
@@ -307,7 +309,7 @@ async function fetchScripts() {
     if (Array.isArray(response)) {
       scripts.value = response
     } else {
-      scripts.value = response.records || []
+      scripts.value = (response as any)?.records || []
     }
   } catch (error) {
     console.error('获取脚本列表失败:', error)
@@ -460,7 +462,7 @@ function getTagType(tagName: string): string {
     a = ((a << 5) - a) + b.charCodeAt(0)
     return a & a
   }, 0)
-  return types[Math.abs(hash) % types.length]
+  return types[Math.abs(hash) % types.length] || 'info'
 }
 
 async function handleDelete(row: ScriptVO) {

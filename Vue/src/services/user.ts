@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import { get, post, del } from '@/utils/request'
 import type { User, UserVO, LoginRequest, LoginResponse } from '@/types'
 
 export const userApi = {

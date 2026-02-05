@@ -219,7 +219,7 @@ const fetchScripts = async () => {
     if (Array.isArray(response)) {
       scripts.value = response
     } else {
-      scripts.value = response.records || []
+      scripts.value = (response as any)?.records || []
     }
   } catch (error) {
     console.error('获取脚本列表失败:', error)

@@ -86,9 +86,15 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="cronExpr" label="Cron表达式" width="140">
+        <el-table-column prop="cronExpr" label="Cron表达式" width="200">
           <template #default="{ row }">
-            {{ row.cronExpr || '-' }}
+            <div v-if="row.cronExpr && row.taskType === 'cron'">
+              <div class="cron-expr">{{ row.cronExpr }}</div>
+              <div class="cron-desc" v-if="cronDescriptions.get(row.id)">
+                {{ cronDescriptions.get(row.id) }}
+              </div>
+            </div>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="150">
@@ -151,6 +157,21 @@
   </div>
 </template>
 
+<style scoped>
+.cron-expr {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #409EFF;
+  margin-bottom: 4px;
+}
+
+.cron-desc {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.3;
+}
+</style>
+
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -160,12 +181,14 @@ import {
 } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { formatDateTime } from '@/utils/date'
+import { taskApi } from '@/services/task'
 
 const router = useRouter()
 const taskStore = useTaskStore()
 
 const currentPage = ref(1)
 const pageSize = ref(10)
+const cronDescriptions = ref<Map<string, string>>(new Map()) // 存储任务ID到cron描述的映射
 
 const filterForm = reactive({
   name: '',
@@ -249,6 +272,40 @@ async function fetchTasks() {
     pageNum: 1,
     pageSize: 9999, // 获取所有数据进行本地筛选
   })
+  // 获取所有cron任务的中文描述
+  await fetchCronDescriptions()
+}
+
+/**
+ * 获取Cron表达式的中文描述
+ */
+async function fetchCronDescriptions() {
+  try {
+    const tasks = taskStore.tasks
+    const cronTasks = tasks.filter(task => 
+      task.taskType === 'cron' && 
+      task.cronExpr && 
+      !cronDescriptions.value.has(task.id)
+    )
+
+    // 并发获取所有cron任务的描述
+    const promises = cronTasks.map(async (task) => {
+      try {
+        const result = await taskApi.getCronDescription(task.cronExpr || '')
+        if (result?.description) {
+          cronDescriptions.value.set(task.id, result.description)
+        }
+      } catch (error) {
+        console.warn(`获取任务 ${task.id} 的cron描述失败:`, error)
+        // 不显示错误，只是静默失败
+      }
+    })
+
+    await Promise.all(promises)
+  } catch (error) {
+    console.warn('批量获取cron描述失败:', error)
+    // 不显示错误，只是静默失败
+  }
 }
 
 async function toggleStatus(row: any) {

@@ -216,7 +216,7 @@ const fetchScripts = async () => {
     if (Array.isArray(response)) {
       scripts.value = response
     } else {
-      scripts.value = response.records || []
+      scripts.value = (response as any)?.records || []
     }
   } catch (error) {
     console.error('获取脚本列表失败:', error)
@@ -390,7 +390,7 @@ async function fetchTask() {
       name: task.name,
       description: task.description || '',
       executeType: task.executeType || 'script',
-      scriptType: task.scriptType || task.type || '', // 优先使用scriptType，兼容旧数据
+      scriptType: (task as any).scriptType || task.type || '', // 优先使用scriptType，兼容旧数据
       scriptId: task.scriptId || '',
       targetWorker: task.targetWorker || '',
       timeoutSeconds: task.timeoutSeconds || 180,

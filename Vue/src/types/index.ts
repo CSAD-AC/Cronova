@@ -18,8 +18,12 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string
-  user: UserVO
+  token?: string
+  user?: UserVO
+  data?: {
+    token?: string
+    user?: UserVO
+  }
 }
 
 export interface User {

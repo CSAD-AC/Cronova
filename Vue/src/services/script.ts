@@ -35,7 +35,7 @@ export const scriptApi = {
   },
   
   update: (id: string, content: string) => {
-    return put(`/api/script/${id}`, content, {
+    return put(`/api/script/${id}`, { content }, {
       headers: { 'Content-Type': 'text/plain' }
     })
   },

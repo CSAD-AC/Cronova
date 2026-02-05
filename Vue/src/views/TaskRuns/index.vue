@@ -207,24 +207,50 @@
           <div class="log-section">
             <div class="log-header">
               <span class="log-title">执行日志</span>
-              <el-button size="small" type="primary" @click="downloadCurrentLog" :loading="downloadingLog">
-                <el-icon><Download /></el-icon>
-                下载日志
-              </el-button>
+              <div class="log-toolbar">
+                <el-button size="small" @click="toggleFullscreen">
+                  <el-icon><FullScreen /></el-icon>
+                  {{ isFullscreen ? '退出全屏' : '全屏查看' }}
+                </el-button>
+                <el-dropdown>
+                  <el-button size="small">
+                    <el-icon><Filter /></el-icon>
+                    日志筛选
+                    <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-checkbox-group v-model="selectedLogLevels" @change="filterLogs">
+                    <div class="log-level-filter">
+                      <el-checkbox value="DEBUG">调试信息</el-checkbox>
+                      <el-checkbox value="INFO">一般信息</el-checkbox>
+                      <el-checkbox value="WARNING">警告信息</el-checkbox>
+                      <el-checkbox value="ERROR">错误信息</el-checkbox>
+                      <el-checkbox value="CRITICAL">严重错误</el-checkbox>
+                    </div>
+                  </el-checkbox-group>
+                      <el-dropdown-item>
+                        <el-button size="small" type="primary" @click="selectAllLevels">全选</el-button>
+                        <el-button size="small" @click="clearAllLevels">清空</el-button>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-divider direction="vertical" />
+                <el-button size="small" type="primary" @click="downloadCurrentLog" :loading="downloadingLog">
+                  <el-icon><Download /></el-icon>
+                  下载日志
+                </el-button>
+              </div>
             </div>
             <div class="log-content-wrapper">
               <div v-if="loadingLog" class="log-loading">
                 <el-icon class="is-loading"><Loading /></el-icon>
                 加载日志中...
               </div>
-              <el-input
-                v-else
-                type="textarea"
-                :model-value="currentLogContent"
-                readonly
-                :rows="20"
-                class="log-content"
-              />
+              <div v-else ref="logContainer" class="log-container" :class="{ 'fullscreen': isFullscreen }">
+                <pre class="log-text" v-html="displayLogContent || currentLogContentHtml || '暂无日志内容'"></pre>
+              </div>
             </div>
           </div>
         </el-tab-pane>
@@ -329,10 +355,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, Search, View, Document, Download, Loading, Delete, VideoPause, VideoPlay, Warning } from '@element-plus/icons-vue'
+import { Refresh, Search, View, Document, Download, Loading, Delete, VideoPause, VideoPlay, Warning, FullScreen, Filter, ArrowDown } from '@element-plus/icons-vue'
 import { taskRunApi, taskApi, workerApi, minioApi, callbackJobRunApi } from '@/services'
 import type { TaskRun, TaskVO, WorkerVO } from '@/types'
 import { ElMessageBox } from 'element-plus'
@@ -356,7 +382,15 @@ const activeTab = ref('basic')
 const loadingLog = ref(false)
 const downloadingLog = ref(false)
 const currentLogContent = ref('')
+const currentLogContentHtml = ref('')  // 处理后的HTML内容
 const taskTypeMap = ref<Map<string, string>>(new Map()) // 存储任务类型：'script' | 'callback'
+
+// 全屏和筛选功能相关数据
+const isFullscreen = ref(false)
+const selectedLogLevels = ref<string[]>(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+const allLogLevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+const filteredLogContent = ref('')
+const displayLogContent = ref('') // 统一的显示内容
 const loadingRequest = ref(false)
 const loadingResponse = ref(false)
 const downloadingRequest = ref(false)
@@ -617,6 +651,8 @@ async function viewDetail(row: TaskRun) {
     ElMessage.warning('获取详细信息失败，显示列表数据')
   }
   
+  currentLogContent.value = ''
+  currentLogContentHtml.value = ''
   detailDialogVisible.value = true
 }
 
@@ -630,6 +666,228 @@ function handleTabChange(tabName: string) {
   }
 }
 
+/**
+ * 处理日志内容，应用颜色高亮
+ * @param content 原始日志内容
+ * @returns 处理后的HTML内容
+ */
+function processLogContent(content: string): string {
+  if (!content) return ''
+  
+  // 按行处理
+  const lines = content.split('\n')
+  const processedLines = lines.map(line => {
+    // 匹配日志级别模式（基于我们统一日志格式）
+    // 格式: 2026-02-04 14:25:27 | INFO     | module.py:function:123 - message
+    
+    // 1. 匹配整个日志行格式
+    const logPattern = /^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s*\|\s*(\w+)\s*\|\s*(.*?)(?:\s*-\s*)(.*)$/
+    const match = line.match(logPattern)
+    
+    if (match) {
+      const [, timestamp, level, location, message] = match
+      
+      // 根据日志级别确定颜色（护眼配色）
+      const levelColors: Record<string, string> = {
+        'DEBUG': '#4FC3F7',     // 柔和青色
+        'INFO': '#66BB6A',      // 柔和绿色
+        'WARNING': '#FFB74D',   // 柔和琥珀色
+        'ERROR': '#EF5350',     // 柔和红色
+        'CRITICAL': '#AB47BC',  // 柔和紫色
+        'CRIT': '#AB47BC'       // 兼容简写
+      }
+      
+      const color = levelColors[level?.toUpperCase() || ''] || '#FFFFFF'
+      
+      // 构建带颜色的HTML
+      return `<span style="color: ${color};">${timestamp}</span>` +
+             ` | <span style="color: ${color}; font-weight: bold;">${level}</span>` +
+             ` | <span style="color: #B0BEC5;">${location}</span>` +
+             ` - <span style="color: ${color};">${message}</span>`
+    }
+    
+    // 2. 匹配包含异常信息的行
+    if (line.includes('Traceback (most recent call last):') || 
+        line.includes('File ') && line.includes('line ') ||
+        line.match(/^\s*[A-Za-z_][A-Za-z0-9_]*Error:/) ||
+        line.match(/^\s*at\s+/)) {
+      return `<span style="color: #E57373;">${escapeHtml(line)}</span>`
+    }
+    
+    // 3. 匹配包含关键字的行（护眼配色）
+    const keywords = [
+      { pattern: /\b(exception|Exception|ERROR|Error)\b/g, color: '#EF5350' },
+      { pattern: /\b(warning|Warning|WARN|Warn)\b/g, color: '#FFB74D' },
+      { pattern: /\b(info|Info|INFO)\b/g, color: '#66BB6A' },
+      { pattern: /\b(debug|Debug|DEBUG)\b/g, color: '#4FC3F7' },
+      { pattern: /\b(success|Success|SUCCESS)\b/g, color: '#66BB6A' },
+      { pattern: /\b(failed|Failed|FAILED|FAIL|Fail)\b/g, color: '#EF5350' },
+      { pattern: /\b(start|Start|START)\b/g, color: '#4FC3F7' },
+      { pattern: /\b(end|End|END)\b/g, color: '#FFB74D' },
+      { pattern: /\b(complete|Complete|COMPLETE|finish|Finish|FINISH)\b/g, color: '#66BB6A' }
+    ]
+    
+    let processedLine = escapeHtml(line)
+    keywords.forEach(({ pattern, color }) => {
+      processedLine = processedLine.replace(pattern, 
+        `<span style="color: ${color}; font-weight: bold;">$&</span>`)
+    })
+    
+    return processedLine
+  })
+  
+  return processedLines.join('\n')
+}
+
+/**
+ * HTML转义函数
+ * @param text 要转义的文本
+ * @returns 转义后的文本
+ */
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+/**
+ * 切换全屏模式
+ */
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value
+  
+  // 如果进入全屏模式，更新显示内容并添加ESC键监听
+  if (isFullscreen.value) {
+    filteredLogContent.value = filterLogs()
+    // 延迟添加监听，确保DOM已经更新
+    setTimeout(() => {
+      addKeyboardListener()
+    }, 100)
+  } else {
+    // 退出全屏时移除监听并清空内容
+    removeKeyboardListener()
+    filteredLogContent.value = ''
+  }
+}
+
+/**
+ * ESC键退出全屏
+ */
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
+    filteredLogContent.value = ''
+  }
+}
+
+/**
+ * 添加/移除键盘事件监听
+ */
+function addKeyboardListener() {
+  document.addEventListener('keydown', handleKeydown)
+}
+
+function removeKeyboardListener() {
+  document.removeEventListener('keydown', handleKeydown)
+}
+
+// 监听全屏状态变化，自动管理ESC键监听器
+watch(isFullscreen, (newValue, oldValue) => {
+  if (newValue && !oldValue) {
+    // 进入全屏模式，添加ESC键监听
+    addKeyboardListener()
+  } else if (!newValue && oldValue) {
+    // 退出全屏模式，移除ESC键监听
+    removeKeyboardListener()
+  }
+})
+
+// 监听筛选级别变化，自动更新显示内容
+watch(selectedLogLevels, () => {
+  updateDisplayContent()
+}, { deep: true })
+
+/**
+ * 筛选日志内容
+ */
+function filterLogs(): string {
+  const originalContent = currentLogContent.value || ''
+  
+  // 如果没有筛选条件或选择了全部级别，返回处理后的完整内容
+  if (selectedLogLevels.value.length === 0 || selectedLogLevels.value.length === allLogLevels.length) {
+    return currentLogContentHtml.value || '暂无日志内容'
+  }
+  
+  // 按行分割原始内容（不包含HTML标签）
+  const lines = originalContent.split('\n')
+  const filteredLines: string[] = []
+  
+  lines.forEach(line => {
+    // 检查是否包含选中的日志级别
+    const hasSelectedLevel = selectedLogLevels.value.some(level => {
+      // 更精确的匹配模式 - 匹配日志级别
+      const pattern = new RegExp(`\\b${level}\\b`, 'i')
+      return pattern.test(line)
+    })
+    
+    if (hasSelectedLevel) {
+      filteredLines.push(line)
+    }
+  })
+  
+  // 如果没有匹配的行，返回空内容
+  if (filteredLines.length === 0) {
+    return '暂无匹配的日志内容'
+  }
+  
+  // 对筛选后的内容应用颜色高亮
+  const filteredContent = filteredLines.join('\n')
+  return processLogContent(filteredContent)
+}
+
+/**
+ * 更新显示内容
+ */
+function updateDisplayContent() {
+  // 获取筛选后的内容
+  const filtered = filterLogs()
+  
+  // 如果在全屏模式，使用filteredLogContent
+  if (isFullscreen.value) {
+    filteredLogContent.value = filtered
+  }
+  
+  // 更新统一显示内容
+  displayLogContent.value = filtered
+}
+
+/**
+ * 处理筛选变化
+ */
+function handleFilterChange() {
+  // 更新显示内容
+  updateDisplayContent()
+}
+
+/**
+ * 全选日志级别
+ */
+function selectAllLevels() {
+  selectedLogLevels.value = [...allLogLevels]
+  filteredLogContent.value = ''
+  filteredLogContent.value = filterLogs()
+}
+
+/**
+ * 清空所有日志级别
+ */
+function clearAllLevels() {
+  selectedLogLevels.value = []
+  filteredLogContent.value = ''
+}
+
+
+
 async function loadLogContent(taskRunId: string) {
   loadingLog.value = true
   try {
@@ -639,9 +897,12 @@ async function loadLogContent(taskRunId: string) {
     // 使用 MinIO API 下载文件
     const logText = await minioApi.downloadTextFile(logFileInfo)
     currentLogContent.value = logText || '暂无日志信息'
+    currentLogContentHtml.value = processLogContent(logText || '暂无日志信息')
   } catch (error) {
     console.error('加载日志失败:', error)
-    currentLogContent.value = '日志加载失败，请重试或手动下载'
+    const errorText = '日志加载失败，请重试或手动下载'
+    currentLogContent.value = errorText
+    currentLogContentHtml.value = processLogContent(errorText)
     ElMessage.error('加载日志失败')
   } finally {
     loadingLog.value = false
@@ -695,9 +956,10 @@ async function previewLog(row: TaskRun) {
   
   currentRun.value = row
   activeTab.value = 'logs'
+  currentLogContent.value = ''
+  currentLogContentHtml.value = ''
   detailDialogVisible.value = true
   
-  // 立即开始加载日志内容
   loadingLog.value = true
   try {
     // 首先获取 MinIO 文件信息
@@ -706,9 +968,12 @@ async function previewLog(row: TaskRun) {
     // 使用 MinIO API 下载文件
     const logText = await minioApi.downloadTextFile(logFileInfo)
     currentLogContent.value = logText || '暂无日志信息'
+    currentLogContentHtml.value = processLogContent(logText || '暂无日志信息')
   } catch (error) {
     console.error('预览日志失败:', error)
-    currentLogContent.value = '日志加载失败，请重试或手动下载'
+    const errorText = '日志加载失败，请重试或手动下载'
+    currentLogContent.value = errorText
+    currentLogContentHtml.value = processLogContent(errorText)
     ElMessage.error('加载日志失败')
   } finally {
     loadingLog.value = false
@@ -908,6 +1173,11 @@ function getStatusText(status: string): string {
 
 onMounted(() => {
   fetchTaskRuns()
+  addKeyboardListener()
+})
+
+onUnmounted(() => {
+  removeKeyboardListener()
 })
 </script>
 
@@ -976,15 +1246,126 @@ onMounted(() => {
 }
 
 .log-content-wrapper {
-  border: 1px solid #e5e7eb;
+  border: 1px solid #333333;
   border-radius: 6px;
-  background: #f9fafb;
+  background: #000000;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
-.log-content {
-  font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+.log-container {
+  flex: 1;
+  overflow: auto;
+  background-color: #000000;  /* 纯黑色背景 */
+  border-radius: 6px;
+  padding: 16px;
+  border: 1px solid #333333;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);  /* 内部阴影效果 */
+  max-height: 500px;  /* 限制最大高度 */
+}
+
+.log-text {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;  /* 经典终端字体 */
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;  /* 稍微紧凑的行距 */
+  color: #FFFFFF;  /* 白色文字 */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+  background: transparent;
+}
+
+/* 滚动条样式 */
+.log-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.log-container::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+  background: #444444;
+  border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+/* 日志工具栏样式 */
+.log-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 全屏模式样式 */
+.log-container.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background-color: #000000 !important;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  padding: 20px;
+  max-height: none !important;
+}
+
+/* 筛选下拉框样式 */
+.log-level-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  min-width: 200px;
+}
+
+.log-level-filter .el-checkbox {
+  margin-right: 0;
+}
+
+.log-level-filter .el-checkbox__label {
+  color: #e5e7eb;
+}
+
+/* 下拉菜单样式优化 */
+:deep(.el-dropdown-menu) {
+  background-color: #1f2937;
+  border: 1px solid #374151;
+}
+
+:deep(.el-dropdown-menu__item) {
+  color: #e5e7eb;
+  padding: 0;
+}
+
+:deep(.el-dropdown-menu__item:hover) {
+  background-color: #374151;
+}
+
+:deep(.el-checkbox__inner) {
+  background-color: #374151;
+  border-color: #4b5563;
+}
+
+:deep(.el-checkbox__inner:hover) {
+  border-color: #60a5fa;
+}
+
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner::after) {
+  border-color: #ffffff;
 }
 
 .log-loading {

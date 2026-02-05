@@ -94,7 +94,7 @@
             </el-table-column>
             <el-table-column prop="duration" label="耗时" width="100">
               <template #default="{ row }">
-                {{ row.duration }}ms
+                {{ formatDuration(row.duration) }}
               </template>
             </el-table-column>
           </el-table>
@@ -170,7 +170,7 @@
                     :style="{ width: Math.max(item.percentage, 5) + '%' }"
                   ></div>
                 </div>
-                <span class="chart-value">{{ item.percentage }}% ({{ item.count }})</span>
+                <span class="chart-value">{{ item.percentage.toFixed(2) }}% ({{ item.count }})</span>
               </div>
             </div>
           </div>

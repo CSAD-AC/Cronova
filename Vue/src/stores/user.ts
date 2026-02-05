@@ -17,7 +17,7 @@ export const useUserStore = defineStore('user', () => {
       console.log('登录响应:', response)
       if (response) {
         // 兼容后端返回格式：可能是 {token, user} 或直接在response中
-        const tokenValue = response.token || response.data?.token || response
+        const tokenValue = response.token || response.data?.token || (typeof response === 'string' ? response : '')
         const userValue = response.user || response.data?.user || null
         
         token.value = tokenValue

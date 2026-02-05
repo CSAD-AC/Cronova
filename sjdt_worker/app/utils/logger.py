@@ -141,3 +141,4 @@ exception = _default_logger.exception
 
 # 也可直接导出 logger 对象
 logger = _default_logger
+logger_debug = UnifiedLogger(level=logging.DEBUG).logger
