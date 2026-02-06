@@ -114,7 +114,7 @@
             {{ formatDateTime(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button-group>
               <el-tooltip content="查看详情">
@@ -130,6 +130,11 @@
               <el-tooltip content="立即执行">
                 <el-button size="small" type="success" @click="handlePublish(row)">
                   <el-icon><VideoPlay /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip content="健康检查" v-if="row.executeType === 'callback'">
+                <el-button size="small" type="warning" @click="handleHealthCheck(row)">
+                  <el-icon><Monitor /></el-icon>
                 </el-button>
               </el-tooltip>
               <el-tooltip content="删除">
@@ -177,7 +182,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, Search, Refresh, View, Edit, VideoPlay, Delete
+  Plus, Search, Refresh, View, Edit, VideoPlay, Delete, Monitor
 } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { formatDateTime } from '@/utils/date'
@@ -349,6 +354,79 @@ async function handleDelete(row: any) {
     fetchTasks()
   } catch (error) {
     // 用户取消
+  }
+}
+
+/**
+ * 处理HTTP回调任务的健康检查
+ * @param row 任务行数据
+ */
+async function handleHealthCheck(row: any) {
+  try {
+    if (!row.callbackConfig?.id) {
+      ElMessage.warning('该任务没有回调配置，无法进行健康检查')
+      return
+    }
+
+    const result = await taskApi.healthCheck(row.callbackConfig.id)
+
+    if (result.urlResponseCode === 200 && result.urlHealthy) {
+      // 健康检查通过，显示详细信息弹窗
+      const detailMessage = [
+                 `<span style="color: #67C23A; font-size: 16px;">✓ 回调任务健康检查通过</span>`,
+                 '',
+                 `<strong>检查时间：</strong>${result.checkTime}`,
+                 `<strong>回调地址：</strong>${result.callbackUrl}`,
+                 `<strong>响应状态：</strong>${result.urlResponseCode}`,
+                 `<strong>响应时间：</strong>${result.urlResponseTimeMs}ms`
+               ]
+      
+      if (result.endpoint) {
+        detailMessage.push(`<strong>服务名称：</strong>${result.endpoint}`)
+      }
+      
+      if (result.message) {
+        detailMessage.push(`<strong>检查消息：</strong>${result.message}`)
+      }
+      
+      if (result.cronExpr) {
+        detailMessage.push(`<strong>Cron表达式：</strong>${result.cronExpr}`)
+      }
+      
+      if (result.cronDescription) {
+        detailMessage.push(`<strong>Cron描述：</strong>${result.cronDescription}`)
+      }
+      
+      if (result.cronNextExecutionTime) {
+        detailMessage.push(`<strong>下次执行：</strong>${result.cronNextExecutionTime}`)
+      }
+      
+      ElMessageBox.alert(detailMessage.join('<br>'), '健康检查结果', {
+                confirmButtonText: '确定',
+                dangerouslyUseHTMLString: true,
+              })
+    } else {
+         let errorMessage = ''
+         
+         if (result.urlResponseCode !== 200) {
+           errorMessage = `URL服务不可用，请检查回调地址是否正确`
+         } else if (!result.urlHealthy) {
+           errorMessage = `秘钥校验失败: ${result.message || '目标回调地址[秘钥校验]未通过'}`
+         } else {
+           errorMessage = result.message || '健康检查未通过'
+         }
+         
+         ElMessageBox.alert(
+           errorMessage,
+           '健康检查结果',
+           {
+             confirmButtonText: '确定',
+             type: 'error',
+           }
+         )
+       }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '健康检查失败')
   }
 }
 

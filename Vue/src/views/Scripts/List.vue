@@ -183,7 +183,7 @@
               >
                 <div class="flex justify-between items-center w-full">
                   <span>{{ tag.operator || '==' }} {{ tag.version || 'any' }}</span>
-                  <el-tag size="small" type="info" effect="plain">ID: {{ tag.id.slice(0, 4) }}</el-tag>
+                  <el-tag size="small" type="info" effect="plain">ID: {{ String(tag.id).slice(0, 4) }}</el-tag>
                 </div>
               </el-option>
             </el-option-group>
@@ -434,17 +434,15 @@ async function saveTags() {
     const oldTagIds = currentScript.value.tags?.map(t => t.id) || []
     const newSelectedTags = [...selectedTags.value]
     
-    const addTagIds = newSelectedTags.filter(id => !oldTagIds.includes(id))
-    const removeTagIds = oldTagIds.filter(id => !newSelectedTags.includes(id))
+    const addTagIds = newSelectedTags.filter(id => !oldTagIds.includes(id as string))
+    const removeTagIds = oldTagIds.filter(id => !newSelectedTags.includes(id as string))
     
     for (const tagId of removeTagIds) {
       await scriptApi.removeTag(currentScript.value!.id, tagId)
     }
     
     if (addTagIds.length > 0) {
-      // 转换string[]为number[]如果API需要
-      // 这里假设API处理字符串ID
-      await scriptApi.addTags(currentScript.value!.id, addTagIds as any)
+      await scriptApi.addTags(currentScript.value!.id, addTagIds as unknown as number[])
     }
     
     ElMessage.success('保存成功')

@@ -40,7 +40,7 @@ export const scriptApi = {
     })
   },
 
-  removeTag: (scriptId: string, tagId: string) => {
+  removeTag: (scriptId: string, tagId: string | number) => {
     return del(`/api/script/remove?scriptId=${scriptId}&tagId=${tagId}`)
   },
   
