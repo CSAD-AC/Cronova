@@ -285,19 +285,27 @@ docker-compose up -d
 | `/api/tasks` | POST | 创建任务 |
 | `/api/tasks` | GET | 任务列表 |
 | `/api/tasks/{id}` | GET | 任务详情 |
+| `/api/tasks` | PUT | 更新任务 |
+| `/api/tasks/{id}` | DELETE | 删除任务 |
 | `/api/tasks/{id}/enable` | PUT | 启用任务 |
-| `/api/tasks/{id}/publish` | POST | 立即执行 |
+| `/api/tasks/{id}/disable` | PUT | 禁用任务 |
+| `/api/tasks/{id}/publish` | POST | 发布任务 |
+| `/api/tasks/{id}/runs` | GET | 执行历史 |
 
 ### 任务运行
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
+| `/api/task-run/list` | GET | 运行实例列表 |
+| `/api/task-run/task/{taskId}` | GET | 根据任务ID查询实例 |
 | `/api/task-run/{taskRunId}` | GET | 运行详情 |
 | `/api/task-run/{taskRunId}/logs` | GET | 运行日志 |
+| `/api/task-run/{taskRunId}/log/info` | GET | 日志文件信息 |
 | `/api/task-run/{taskRunId}/pause` | POST | 暂停运行 |
 | `/api/task-run/{taskRunId}/resume` | POST | 恢复运行 |
 | `/api/task-run/{taskRunId}/stop` | POST | 停止运行 |
 | `/api/task-run/{taskRunId}/kill` | POST | 强制终止 |
+| `/api/task-run/{taskRunId}` | DELETE | 删除运行实例 |
 
 ### 回调配置管理
 
@@ -315,7 +323,15 @@ docker-compose up -d
 |------|------|------|
 | `/api/worker/register` | POST | Worker注册 |
 | `/api/worker/heartbeat/{workerId}` | POST | 心跳上报 |
+| `/api/worker/status/{workerId}` | POST | 状态报告 |
+| `/api/worker/validate-aksk` | POST | 验证AKSK |
+| `/api/worker/task-result/{workerId}` | POST | 任务结果报告 |
+| `/api/worker/task-status/{taskRunId}` | POST | 任务状态报告 |
+| `/api/worker/task/publish/{taskId}` | POST | 发布任务 |
 | `/api/frontend/worker/list` | GET | Worker列表 |
+| `/api/frontend/worker/{id}` | GET | Worker详情 |
+| `/api/frontend/worker/{id}/host` | PUT | 更新主机名 |
+| `/api/frontend/worker/{id}` | DELETE | 删除Worker |
 
 ---
 
@@ -405,8 +421,8 @@ task-engine bucket/
 
 | Key | 说明 | 过期 |
 |-----|------|------|
-| `scheduler:worker:heartbeat:{id}` | Worker存活状态 | 30s |
-| `scheduler:worker:info:{id}` | Worker负载信息 | 无 |
+| `scheduler:worker:heartbeat:{workerId}` | Worker存活状态 | 30s |
+| `scheduler:worker:info:{workerId}` | Worker负载信息 | 无 |
 | `scheduler:cache:tasks:active` | 活跃任务缓存 | 无 |
 | `scheduler:cache:scripts` | 脚本信息缓存 | 无 |
 

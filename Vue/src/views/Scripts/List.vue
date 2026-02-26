@@ -81,8 +81,8 @@
             </el-table-column>
             <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="handleEdit(row)">
-                  <el-icon class="mr-1"><Edit /></el-icon>编辑
+                <el-button link type="primary" @click="handlePreview(row)">
+                  <el-icon class="mr-1"><View /></el-icon>预览
                 </el-button>
                 <el-button link type="primary" @click="handleDownload(row)">
                   <el-icon class="mr-1"><Download /></el-icon>下载
@@ -129,27 +129,24 @@
       </template>
     </el-dialog>
 
-    <!-- 编辑弹窗 -->
-    <el-dialog v-model="editDialogVisible" title="编辑脚本" width="800px">
-      <el-form :model="editForm" label-width="80px">
+    <!-- 预览弹窗 -->
+    <el-dialog v-model="editDialogVisible" title="预览脚本" width="800px">
+      <el-form label-width="80px">
         <el-form-item label="脚本名称">
-          <el-input v-model="editForm.name" disabled />
+          <el-input :model-value="editForm.name" disabled />
         </el-form-item>
         <el-form-item label="脚本内容">
           <el-input 
-            v-model="editForm.content" 
+            :model-value="editForm.content" 
             type="textarea" 
             :rows="20" 
-            placeholder="请输入脚本内容..."
-            class="font-mono"
+            readonly
+            class="font-mono bg-gray-50"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSaveScript">
-          保存修改
-        </el-button>
+        <el-button @click="editDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
     
@@ -211,14 +208,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, PriceTag, Delete, Folder, Document, Edit, UploadFilled } from '@element-plus/icons-vue'
+import { Upload, Download, PriceTag, Delete, Folder, Document, View, UploadFilled } from '@element-plus/icons-vue'
 import { scriptApi, tagApi } from '@/services'
 import type { ScriptVO, TagVO } from '@/types'
 import { formatDateTime } from '@/utils/date'
 
 const loading = ref(false)
 const uploading = ref(false)
-const saving = ref(false)
 const uploadDialogVisible = ref(false)
 const tagDialogVisible = ref(false)
 const editDialogVisible = ref(false)
@@ -375,14 +371,13 @@ async function handleUpload() {
   }
 }
 
-async function handleEdit(row: ScriptVO) {
+async function handlePreview(row: ScriptVO) {
   editForm.id = row.id
   editForm.name = row.name
   editForm.content = '正在加载内容...'
   editDialogVisible.value = true
   
   try {
-    // 尝试下载内容
     const blob = await scriptApi.download(row.id)
     if (blob.size > 0) {
       editForm.content = await blob.text()
@@ -391,19 +386,6 @@ async function handleEdit(row: ScriptVO) {
     }
   } catch (error) {
     editForm.content = '# 读取失败'
-  }
-}
-
-async function handleSaveScript() {
-  saving.value = true
-  try {
-    await scriptApi.update(editForm.id, editForm.content)
-    ElMessage.success('保存成功')
-    editDialogVisible.value = false
-  } catch (error) {
-    ElMessage.error('保存失败')
-  } finally {
-    saving.value = false
   }
 }
 
