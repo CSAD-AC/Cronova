@@ -183,7 +183,8 @@ class PythonHandler(BaseHandler):
                 text=True,
                 bufsize=1,  # 行缓冲
                 universal_newlines=True,
-                start_new_session=True
+                start_new_session=True,
+                cwd=os.path.dirname(temp_script_path)
             )
             
             logger.info("子进程已启动，PID：%d", process.pid)
@@ -227,34 +228,57 @@ class PythonHandler(BaseHandler):
         try:
             logger.info("启动日志监控线程，taskRunId: %s", task_run_id)
             
-            # 创建本地日志缓存文件
-            import tempfile
-            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
+            import time
+            import os
             
-            log_content = []
-            for line in iter(process.stdout.readline, ''):
-                if line:
-                    log_content.append(line)
-                    # 将日志写入本地缓存
-                    with open(local_log_path, 'a', encoding='utf-8') as f:
-                        f.write(line)
-                    # 每累积5行或遇到换行符时上传日志
-                    if len(log_content) >= 5 or line.endswith('\n'):
-                        self._upload_partial_log_with_retry(log_bucket, log_object, ''.join(log_content), local_log_path)
-                        log_content = []
+            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
+            start_time = time.time()
+            last_upload_time = start_time
+            
+            def get_upload_interval(elapsed):
+                if elapsed < 10:
+                    return 1
+                elif elapsed < 60:
+                    return 3
+                else:
+                    return 5
+            
+            def upload_log_file():
+                try:
+                    if os.path.exists(local_log_path):
+                        with open(local_log_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        if content:
+                            from io import BytesIO
+                            from app.utils.minio_utils import minio_upload_file
+                            log_buffer = BytesIO(content.encode('utf-8'))
+                            minio_upload_file(log_bucket, log_object, log_buffer, len(content))
+                            logger.debug("日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
+                except Exception as e:
+                    logger.error("日志上传失败: %s", str(e))
+            
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
                 
-                # 检查进程是否结束
+                with open(local_log_path, 'a', encoding='utf-8') as f:
+                    f.write(line)
+                
+                current_time = time.time()
+                elapsed = current_time - start_time
+                interval = get_upload_interval(elapsed)
+                
+                if current_time - last_upload_time >= interval:
+                    upload_log_file()
+                    last_upload_time = current_time
+                
                 if process.poll() is not None:
                     break
             
-            # 上传剩余的日志内容
-            if log_content:
-                self._upload_partial_log_with_retry(log_bucket, log_object, ''.join(log_content), local_log_path)
-            
+            upload_log_file()
             logger.info("日志监控完成，taskRunId: %s", task_run_id)
             
-            # 删除本地日志缓存
-            import os
             if os.path.exists(local_log_path):
                 os.remove(local_log_path)
                 logger.info("本地日志缓存已删除，taskRunId: %s", task_run_id)
