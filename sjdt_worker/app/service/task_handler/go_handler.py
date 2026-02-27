@@ -2,6 +2,7 @@ import os
 import tempfile
 import subprocess
 import threading
+import uuid
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from app.model.task import TaskExecuteMessage, TaskResultMessage
@@ -62,19 +63,53 @@ class GoHandler(BaseHandler):
             # 1. 验证环境依赖
             self._validate_dependencies(task, task_run_id)
             
-            # 2. 下载二进制文件到临时目录
+            # 2. 获取脚本路径信息
             script_bucket = Config.MINIO_BUCKET_NAME
             script_object = task.script.path
             
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(delete=False) as f:
-                from app.utils.minio_utils import get_minio_file_object
-                f.write(get_minio_file_object(script_bucket, script_object).read())
-                temp_bin_path = f.name
+            # 获取根目录路径
+            root_path = getattr(task.script, 'root_path', None)
+            is_directory = getattr(task.script, 'is_directory', False)
             
-            # 2. 赋予执行权限
-            os.chmod(temp_bin_path, 0o755)
-            logger.info("二进制文件下载成功并赋予执行权限：%s", temp_bin_path)
+            temp_bin_path = None
+            
+            if root_path and not is_directory:
+                # 有根目录路径：下载整个文件夹
+                from app.utils.minio_utils import download_directory
+                
+                scripts_dir = "/app/app/scripts_tmp"
+                os.makedirs(scripts_dir, exist_ok=True)
+                
+                folder_prefix = root_path
+                if folder_prefix.startswith(f"{script_bucket}/"):
+                    folder_prefix = folder_prefix[len(script_bucket) + 1:]
+                
+                # 使用原始脚本名作为目录名
+                script_name = getattr(task.script, 'name', 'script')
+                temp_dir = os.path.join(scripts_dir, script_name)
+                logger.info("开始下载Go目录，prefix：%s，local_dir：%s", folder_prefix, temp_dir)
+                file_count = download_directory(script_bucket, folder_prefix, temp_dir)
+                logger.info("目录下载完成，共 %d 个文件", file_count)
+                
+                # 根据脚本路径确定具体执行文件
+                script_relative_path = script_object
+                if script_object.startswith(f"{script_bucket}/"):
+                    script_relative_path = script_object[len(script_bucket) + 1:]
+                if script_relative_path.startswith(folder_prefix):
+                    script_relative_path = script_relative_path[len(folder_prefix):]
+                
+                temp_bin_path = os.path.join(temp_dir, script_relative_path)
+                os.chmod(temp_bin_path, 0o755)
+                logger.info("目录下载成功：%s", temp_bin_path)
+            else:
+                # 单文件类型
+                with tempfile.NamedTemporaryFile(delete=False) as f:
+                    from app.utils.minio_utils import get_minio_file_object
+                    f.write(get_minio_file_object(script_bucket, script_object).read())
+                    temp_bin_path = f.name
+                
+                os.chmod(temp_bin_path, 0o755)
+                logger.info("二进制文件下载成功并赋予执行权限：%s", temp_bin_path)
 
             # 3. 准备日志存储
             log_bucket = Config.MINIO_BUCKET_NAME

@@ -21,6 +21,12 @@ export const scriptApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+
+  uploadDirectory: (formData: FormData) => {
+    return post<ScriptVO>('/api/script/upload-directory', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   
   download: (id: string) => {
     return get<Blob>(`/api/script/download/${id}`, {}, { responseType: 'blob' })

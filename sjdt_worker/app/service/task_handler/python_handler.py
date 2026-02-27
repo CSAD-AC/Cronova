@@ -4,6 +4,7 @@ import subprocess
 import threading
 import time
 import uuid
+import shutil
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from app.model.task import TaskExecuteMessage, TaskResultMessage
@@ -76,19 +77,77 @@ class PythonHandler(BaseHandler):
             scripts_dir = "/app/app/scripts_tmp"
             os.makedirs(scripts_dir, exist_ok=True)
             
-            # 生成唯一的脚本文件名
-            unique_filename = f"script_{task_run_id}_{uuid.uuid4().hex[:8]}.py"
-            temp_script_path = os.path.join(scripts_dir, unique_filename)
+            # 判断是否需要下载整个目录
+            root_path = getattr(task.script, 'root_path', None)
+            is_directory = getattr(task.script, 'is_directory', False)
+            parent_id = getattr(task.script, 'parent_id', None)
             
-            # 从MinIO下载脚本内容
-            from app.utils.minio_utils import get_minio_file_object
-            script_content = get_minio_file_object(script_bucket, script_object).read().decode('utf-8')
+            # 日志输出调试信息
+            logger.info("脚本信息: name=%s, path=%s, root_path=%s, is_directory=%s, parent_id=%s",
+                getattr(task.script, 'name', None), script_object, root_path, is_directory, parent_id)
             
-            # 保存到固定目录
-            with open(temp_script_path, 'w', encoding='utf-8') as f:
-                f.write(script_content)
+            # 需要下载目录的情况：
+            # 1. 有root_path且不是目录类型，且root_path不是根目录
+            # 2. 或者是目录类型本身
+            # 3. 或者有parent_id（说明在某个目录下，需要下载整个父目录）
+            need_download_dir = (root_path and root_path != '/' and not is_directory) or is_directory or parent_id
             
-            logger.info("脚本下载成功，保存到：%s，文件大小：%d字节", temp_script_path, len(script_content))
+            temp_script_path = None
+            if need_download_dir:
+                # 有根目录路径：下载整个文件夹
+                from app.utils.minio_utils import download_directory
+                
+                # 确定要下载的目录前缀
+                if is_directory:
+                    # 本身是目录，下载整个目录
+                    folder_prefix = script_object
+                elif root_path:
+                    # 有root_path，使用root_path
+                    folder_prefix = root_path
+                else:
+                    # 没有root_path但有parent_id，从脚本路径中提取父目录
+                    folder_prefix = script_object.rsplit('/', 1)[0] + '/'
+                
+                if folder_prefix.startswith(f"{script_bucket}/"):
+                    folder_prefix = folder_prefix[len(script_bucket) + 1:]
+                
+                # 使用目录名作为本地目录名
+                dir_name = folder_prefix.rstrip('/').split('/')[-1]
+                if not dir_name:
+                    dir_name = 'root'
+                temp_dir = os.path.join(scripts_dir, dir_name)
+                
+                logger.info("开始下载目录，prefix：%s，local_dir：%s", folder_prefix, temp_dir)
+                file_count = download_directory(script_bucket, folder_prefix, temp_dir)
+                logger.info("目录下载完成，共 %d 个文件", file_count)
+                
+                # 根据脚本路径确定具体执行文件
+                script_relative_path = script_object
+                if script_object.startswith(f"{script_bucket}/"):
+                    script_relative_path = script_object[len(script_bucket) + 1:]
+                if script_relative_path.startswith(folder_prefix):
+                    script_relative_path = script_relative_path[len(folder_prefix):]
+                
+                temp_script_path = os.path.join(temp_dir, script_relative_path)
+                logger.info("入口文件路径：%s", temp_script_path)
+            else:
+                # 文件类型：下载单个文件，使用原始脚本名
+                script_name = getattr(task.script, 'name', 'script')
+                # 确保有正确的扩展名
+                if not script_name.endswith('.py'):
+                    script_name = f"{script_name}.py"
+                unique_filename = script_name
+                temp_script_path = os.path.join(scripts_dir, unique_filename)
+                
+                # 从MinIO下载脚本内容
+                from app.utils.minio_utils import get_minio_file_object
+                script_content = get_minio_file_object(script_bucket, script_object).read().decode('utf-8')
+                
+                # 保存到固定目录
+                with open(temp_script_path, 'w', encoding='utf-8') as f:
+                    f.write(script_content)
+                
+                logger.info("脚本下载成功，保存到：%s，文件大小：%d字节", temp_script_path, len(script_content))
 
             # 3. 准备日志存储
             log_bucket = Config.MINIO_BUCKET_NAME
@@ -105,6 +164,17 @@ class PythonHandler(BaseHandler):
             # 5. 启动子进程执行脚本
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
+            
+            # 复制工具类到脚本所在目录
+            utils_dir = "/app/app/scripts_tmp/utils"
+            script_dir = os.path.dirname(temp_script_path)
+            copied_utils_dir = None
+            if os.path.exists(utils_dir):
+                copied_utils_dir = os.path.join(script_dir, "utils")
+                if os.path.exists(copied_utils_dir):
+                    shutil.rmtree(copied_utils_dir)
+                shutil.copytree(utils_dir, copied_utils_dir)
+                logger.info("工具类已复制到: %s", copied_utils_dir)
             
             process = subprocess.Popen(
                 ['python3', temp_script_path],
@@ -142,7 +212,7 @@ class PythonHandler(BaseHandler):
             # 6. 启动状态监控线程
             status_thread = threading.Thread(
                 target=self._monitor_process_status,
-                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path),
+                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path, copied_utils_dir),
                 daemon=True
             )
             status_thread.start()
@@ -241,7 +311,7 @@ class PythonHandler(BaseHandler):
 
     def _monitor_process_status(self, process, task: TaskExecuteMessage, task_run_id: str, 
                              start_time: datetime, log_bucket: str, log_object: str, 
-                             temp_script_path: str):
+                             temp_script_path: str, copied_utils_dir: str = None):
         """监控进程状态变化"""
         try:
             logger.info("启动状态监控线程，taskRunId: %s", task_run_id)
@@ -310,6 +380,11 @@ class PythonHandler(BaseHandler):
             # 清理临时文件
             if os.path.exists(temp_script_path):
                 os.unlink(temp_script_path)
+            
+            # 清理复制的工具类目录
+            if copied_utils_dir and os.path.exists(copied_utils_dir):
+                shutil.rmtree(copied_utils_dir)
+                logger.info("工具类目录已清理: %s", copied_utils_dir)
 
     def _handle_task_error(self, task: TaskExecuteMessage, task_run_id: str, 
                           error_msg: str, start_time: datetime):

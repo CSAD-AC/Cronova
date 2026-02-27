@@ -97,3 +97,51 @@ def get_minio_file_object(bucket_name: str, file_name: str) -> io.BytesIO:
 def get_uuid() -> str:
     """生成UUID字符串"""
     return str(uuid4())
+
+
+def download_directory(bucket_name: str, prefix: str, local_dir: str) -> int:
+    """
+    从MinIO下载整个文件夹到本地
+    :param bucket_name: 存储桶名称
+    :param prefix: MinIO中的文件夹前缀（如 scripts/xxx/）
+    :param local_dir: 本地目标目录
+    :return: 下载的文件数量
+    """
+    minio_client = get_minio_client()
+    file_count = 0
+    
+    try:
+        # 确保本地目录存在
+        os.makedirs(local_dir, exist_ok=True)
+        
+        # 列出所有对象
+        objects = minio_client.list_objects(bucket_name, prefix, recursive=True)
+        
+        for obj in objects:
+            if obj.object_name.endswith('/'):
+                continue
+            
+            # 获取文件对象
+            response = minio_client.get_object(bucket_name, obj.object_name)
+            
+            # 计算本地文件路径（保留相对目录结构）
+            relative_path = obj.object_name[len(prefix):]
+            local_file_path = os.path.join(local_dir, relative_path)
+            
+            # 创建子目录
+            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+            
+            # 写入文件
+            with open(local_file_path, 'wb') as f:
+                for data in response.stream(8192):
+                    f.write(data)
+            
+            response.close()
+            response.release_conn()
+            file_count += 1
+        
+        return file_count
+    except S3Error as e:
+        raise Exception(f"MinIO文件夹下载失败：{str(e)}")
+    except Exception as e:
+        raise Exception(f"文件夹下载异常：{str(e)}")

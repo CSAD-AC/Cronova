@@ -54,8 +54,12 @@ CREATE TABLE `scripts` (
                            `id` VARCHAR(36) PRIMARY KEY COMMENT '主键ID (UUID)',
                            `name` VARCHAR(100) NOT NULL COMMENT '脚本名称',
                            `path` VARCHAR(255) NOT NULL COMMENT '脚本路径',
+                           `is_directory` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为目录类型（1=是，0=否）',
+                           `main_file` VARCHAR(255) COMMENT '目录类型时的主入口文件路径',
+                           `parent_id` VARCHAR(36) COMMENT '父脚本ID，用于构建层级关系',
                            `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                           `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+                           `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                           INDEX idx_parent_id (`parent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '脚本表';
 
 -- 标签表

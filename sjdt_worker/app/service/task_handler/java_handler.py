@@ -72,25 +72,52 @@ class JavaHandler(BaseHandler):
             script_bucket = Config.MINIO_BUCKET_NAME
             script_object = task.script.path
             if script_object.startswith("minio://"):
-                # 如果是完整的 minio://bucket/path 格式，则解析
                 path_parts = script_object[8:].split('/', 1)
                 if len(path_parts) == 2:
                     script_bucket, script_object = path_parts
                 else:
                     script_object = path_parts[0]
 
+            # 获取根目录路径
+            root_path = getattr(task.script, 'root_path', None)
+            is_directory = getattr(task.script, 'is_directory', False)
 
             # 3. 下载Java文件到临时目录
             temp_dir = tempfile.mkdtemp()
-            original_filename = os.path.basename(script_object)
-            file_ext = os.path.splitext(original_filename)[1].lower()
-            temp_file_path = os.path.join(temp_dir, original_filename)
-
-            logger.info("从MinIO下载Java文件，bucket：%s，object：%s", script_bucket, script_object)
-            from app.utils.minio_utils import get_minio_file_object
             
-            with open(temp_file_path, 'wb') as f:
-                f.write(get_minio_file_object(script_bucket, script_object).read())
+            if root_path and not is_directory:
+                # 有根目录路径：下载整个文件夹
+                from app.utils.minio_utils import download_directory
+                
+                folder_prefix = root_path
+                if folder_prefix.startswith(f"{script_bucket}/"):
+                    folder_prefix = folder_prefix[len(script_bucket) + 1:]
+                
+                logger.info("开始下载Java目录，prefix：%s，local_dir：%s", folder_prefix, temp_dir)
+                file_count = download_directory(script_bucket, folder_prefix, temp_dir)
+                logger.info("目录下载完成，共 %d 个文件", file_count)
+                
+                # 根据脚本路径确定具体执行文件
+                script_relative_path = script_object
+                if script_object.startswith(f"{script_bucket}/"):
+                    script_relative_path = script_object[len(script_bucket) + 1:]
+                if script_relative_path.startswith(folder_prefix):
+                    script_relative_path = script_relative_path[len(folder_prefix):]
+                
+                temp_file_path = os.path.join(temp_dir, script_relative_path)
+                original_filename = os.path.basename(temp_file_path)
+                file_ext = os.path.splitext(original_filename)[1].lower()
+            else:
+                # 单文件类型
+                original_filename = os.path.basename(script_object)
+                file_ext = os.path.splitext(original_filename)[1].lower()
+                temp_file_path = os.path.join(temp_dir, original_filename)
+
+                logger.info("从MinIO下载Java文件，bucket：%s，object：%s", script_bucket, script_object)
+                from app.utils.minio_utils import get_minio_file_object
+                
+                with open(temp_file_path, 'wb') as f:
+                    f.write(get_minio_file_object(script_bucket, script_object).read())
 
             # 4. 准备日志存储
             log_bucket = Config.MINIO_BUCKET_NAME

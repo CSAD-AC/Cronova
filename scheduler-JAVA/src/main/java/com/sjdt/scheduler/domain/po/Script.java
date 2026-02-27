@@ -35,6 +35,18 @@ public class Script implements Serializable {
     /** 脚本路径 */
     private String path;
 
+    /** 是否为目录类型（1=是，0=否） */
+    @TableField(value = "is_directory")
+    private Boolean isDirectory;
+
+    /** 目录类型时的主入口文件路径 */
+    @TableField(value = "main_file")
+    private String mainFile;
+
+    /** 父脚本ID，用于构建层级关系 */
+    @TableField(value = "parent_id")
+    private String parentId;
+
     /** 标签 */
     @TableField(exist = false)
     private Set<Tag> tags;

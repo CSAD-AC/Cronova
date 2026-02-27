@@ -31,6 +31,19 @@
         <div class="page-header">
           <div class="header-left">
             <h1 class="page-title">{{ currentFolder }}</h1>
+            <el-breadcrumb v-if="breadcrumb.length > 1" separator="/" class="mt-2">
+              <el-breadcrumb-item 
+                v-for="(item, index) in breadcrumb" 
+                :key="item.id"
+              >
+                <span 
+                  :class="{ 'breadcrumb-clickable': index < breadcrumb.length - 1 }"
+                  @click="index < breadcrumb.length - 1 ? navigateToBreadcrumb(item) : undefined"
+                >
+                  {{ item.name }}
+                </span>
+              </el-breadcrumb-item>
+            </el-breadcrumb>
             <p class="page-subtitle">管理任务执行所需的脚本文件</p>
           </div>
           <div class="header-right">
@@ -47,14 +60,17 @@
             v-loading="loading"
             style="width: 100%"
             stripe
+            row-class-name="table-row"
+            @row-dblclick="handleRowDblClick"
           >
             <el-table-column prop="name" label="脚本名称" min-width="200">
               <template #default="{ row }">
                 <div class="flex items-center">
                   <el-icon class="file-icon mr-2" :size="20">
-                    <component :is="getFileIcon(row.name)" />
+                    <component :is="getFileIcon(row)" />
                   </el-icon>
                   <span>{{ row.name }}</span>
+                  <el-tag v-if="row.isDirectory" size="small" type="warning" style="margin-left: 8px">目录</el-tag>
                 </div>
               </template>
             </el-table-column>
@@ -81,7 +97,10 @@
             </el-table-column>
             <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="handlePreview(row)">
+                <el-button v-if="row.isDirectory" link type="primary" @click="enterDirectory(row.id)">
+                  <el-icon class="mr-1"><FolderOpened /></el-icon>进入
+                </el-button>
+                <el-button v-else link type="primary" @click="handlePreview(row)">
                   <el-icon class="mr-1"><View /></el-icon>预览
                 </el-button>
                 <el-button link type="primary" @click="handleDownload(row)">
@@ -101,26 +120,53 @@
     </el-container>
 
     <!-- 上传弹窗 -->
-    <el-dialog v-model="uploadDialogVisible" title="上传脚本" width="500px">
-      <el-upload
-        ref="uploadRef"
-        action="#"
-        :auto-upload="false"
-        :on-change="handleFileChange"
-        :limit="1"
-        accept=".py,.java,.go"
-        drag
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处或 <em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip text-center">
-            支持 Python(.py)、Java(.java)、Go(.go) 脚本文件
-          </div>
-        </template>
-      </el-upload>
+    <el-dialog v-model="uploadDialogVisible" title="上传脚本" width="600px">
+      <el-tabs v-model="uploadTab">
+        <el-tab-pane label="单文件上传" name="file">
+          <el-upload
+            ref="uploadRef"
+            action="#"
+            :auto-upload="false"
+            :on-change="handleFileChange"
+            :limit="1"
+            accept=".py,.java,.go"
+            drag
+          >
+            <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+            <div class="el-upload__text">
+              拖拽文件到此处或 <em>点击上传</em>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip text-center">
+                支持 Python(.py)、Java(.java)、Go(.go) 脚本文件
+              </div>
+            </template>
+          </el-upload>
+        </el-tab-pane>
+        
+        <el-tab-pane label="文件夹上传" name="directory">
+          <el-upload
+            ref="uploadDirRef"
+            action="#"
+            :auto-upload="false"
+            :on-change="handleDirectoryChange"
+            :limit="1"
+            accept=".zip"
+            drag
+          >
+            <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+            <div class="el-upload__text">
+              拖拽ZIP压缩包到此处或 <em>点击上传</em>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip text-center">
+                上传ZIP压缩包，将自动解压保持目录结构
+              </div>
+            </template>
+          </el-upload>
+        </el-tab-pane>
+      </el-tabs>
+      
       <template #footer>
         <el-button @click="uploadDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="handleUpload">
@@ -208,7 +254,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, PriceTag, Delete, Folder, Document, View, UploadFilled } from '@element-plus/icons-vue'
+import { Upload, Download, PriceTag, Delete, Folder, Document, View, UploadFilled, FolderOpened } from '@element-plus/icons-vue'
 import { scriptApi, tagApi } from '@/services'
 import type { ScriptVO, TagVO } from '@/types'
 import { formatDateTime } from '@/utils/date'
@@ -224,6 +270,8 @@ const allTags = ref<TagVO[]>([])
 const currentScript = ref<ScriptVO | null>(null)
 const selectedTags = ref<string[]>([])
 const uploadFile = ref<any>(null)
+const uploadDirFile = ref<any>(null)
+const uploadTab = ref('file')
 
 const groupedAllTags = computed(() => {
   const groups: Record<string, { name: string; versions: TagVO[] }> = {}
@@ -241,6 +289,47 @@ const groupedAllTags = computed(() => {
 const currentFolder = ref('全部脚本')
 const currentFilter = ref('all')
 
+// 文件管理器模式：当前所在目录ID（null表示根目录）
+const currentDirectoryId = ref<string | null>(null)
+
+// 面包屑路径
+const breadcrumb = computed(() => {
+  if (!currentDirectoryId.value) {
+    return [{ id: null, name: '根目录' }]
+  }
+  
+  const path: { id: string | null, name: string }[] = [{ id: null, name: '根目录' }]
+  let currentId: string | null = currentDirectoryId.value
+  
+  while (currentId) {
+    const folder = scripts.value.find(s => s.id === currentId && s.isDirectory)
+    if (folder) {
+      path.push({ id: folder.id, name: folder.name })
+      currentId = folder.parentId
+    } else {
+      break
+    }
+  }
+  
+  return path
+})
+
+// 进入目录
+function enterDirectory(folderId: string | null) {
+  currentDirectoryId.value = folderId
+  if (folderId === null) {
+    currentFolder.value = '全部脚本'
+  } else {
+    const folder = scripts.value.find(s => s.id === folderId)
+    currentFolder.value = folder?.name || '目录'
+  }
+}
+
+// 点击面包屑导航
+function navigateToBreadcrumb(item: { id: string | null, name: string }) {
+  enterDirectory(item.id)
+}
+
 const editForm = reactive({
   id: '',
   name: '',
@@ -248,17 +337,68 @@ const editForm = reactive({
 })
 
 const folderTree = computed(() => {
+  // 基于 parent_id 构建真实的层级树形结构
+  const allScripts = scripts.value
+  const rootNodes: any[] = []
+  const nodeMap = new Map<string, any>()
+
+  // 第一遍：创建所有节点
+  allScripts.forEach(script => {
+    nodeMap.set(script.id, {
+      id: script.id,
+      label: script.name,
+      isDirectory: script.isDirectory,
+      parentId: script.parentId,
+      children: []
+    })
+  })
+
+  // 第二遍：构建父子关系
+  allScripts.forEach(script => {
+    const node = nodeMap.get(script.id)
+    // 为层级节点生成特殊ID
+    if (script.isDirectory) {
+      node.id = 'dir_' + script.id
+    }
+    if (script.parentId && nodeMap.has(script.parentId)) {
+      // 有父节点，添加到父节点的 children 中
+      const parent = nodeMap.get(script.parentId)
+      parent.children.push(node)
+    } else {
+      // 没有父节点，是根节点
+      rootNodes.push(node)
+    }
+  })
+
+  // 排序：目录在前，文件在后
+  const sortNodes = (nodes: any[]) => {
+    nodes.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) {
+        return a.isDirectory ? -1 : 1
+      }
+      return a.label.localeCompare(b.label)
+    })
+    nodes.forEach(node => {
+      if (node.children.length > 0) {
+        sortNodes(node.children)
+      }
+    })
+  }
+  sortNodes(rootNodes)
+
   const counts = {
-    all: scripts.value.length,
-    py: scripts.value.filter(s => s.name.endsWith('.py')).length,
-    java: scripts.value.filter(s => s.name.endsWith('.java')).length,
-    go: scripts.value.filter(s => s.name.endsWith('.go')).length,
+    all: allScripts.length,
+    py: allScripts.filter(s => s.name.endsWith('.py')).length,
+    java: allScripts.filter(s => s.name.endsWith('.java')).length,
+    go: allScripts.filter(s => s.name.endsWith('.go')).length,
+    directory: allScripts.filter(s => s.isDirectory).length,
     other: 0
   }
   counts.other = counts.all - (counts.py + counts.java + counts.go)
 
+  // 合并真实层级结构和原来的分类
   return [
-    { label: '全部脚本', id: 'all', icon: 'Folder', count: counts.all },
+    { label: '全部脚本', id: 'all', icon: 'Folder', count: counts.all, children: [] },
     { 
       label: '按类型分类', 
       id: 'types',
@@ -269,6 +409,12 @@ const folderTree = computed(() => {
         { label: 'Go', id: 'go', icon: 'Document', count: counts.go },
         { label: '其他', id: 'other', icon: 'Document', count: counts.other },
       ]
+    },
+    {
+      label: '📁 层级目录',
+      id: 'hierarchy',
+      icon: 'Folder',
+      children: rootNodes
     }
   ]
 })
@@ -279,22 +425,41 @@ const defaultProps = {
 }
 
 const filteredScripts = computed(() => {
-  if (currentFilter.value === 'all' || currentFilter.value === 'types') {
-    return scripts.value
+  // 文件管理器模式：根据当前目录ID过滤
+  let result = scripts.value
+  
+  if (currentDirectoryId.value !== null) {
+    // 在目录中：只显示当前目录的直接子文件和子目录
+    result = result.filter(s => s.parentId === currentDirectoryId.value)
+  } else if (currentFilter.value === 'hierarchy') {
+    // 层级目录视图：显示所有根目录
+    result = result.filter(s => s.isDirectory && !s.parentId)
+  } else if (currentFilter.value === 'all' || currentFilter.value === 'types' || currentFilter.value === 'all') {
+    // 根目录视图
+    result = result.filter(s => !s.parentId)
+  } else {
+    // 类型过滤
+    result = result.filter(s => {
+      if (currentFilter.value === 'py') return s.name.endsWith('.py')
+      if (currentFilter.value === 'java') return s.name.endsWith('.java')
+      if (currentFilter.value === 'sh') return s.name.endsWith('.sh')
+      if (currentFilter.value === 'go') return s.name.endsWith('.go')
+      if (currentFilter.value === 'other') {
+        return !s.name.endsWith('.py') && 
+               !s.name.endsWith('.java') && 
+               !s.name.endsWith('.sh') && 
+               !s.name.endsWith('.go')
+      }
+      return true
+    })
   }
   
-  return scripts.value.filter(s => {
-    if (currentFilter.value === 'py') return s.name.endsWith('.py')
-    if (currentFilter.value === 'java') return s.name.endsWith('.java')
-    if (currentFilter.value === 'sh') return s.name.endsWith('.sh')
-    if (currentFilter.value === 'go') return s.name.endsWith('.go')
-    if (currentFilter.value === 'other') {
-      return !s.name.endsWith('.py') && 
-             !s.name.endsWith('.java') && 
-             !s.name.endsWith('.sh') && 
-             !s.name.endsWith('.go')
+  // 目录在前，文件在后排序
+  return result.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) {
+      return a.isDirectory ? -1 : 1
     }
-    return true
+    return a.name.localeCompare(b.name)
   })
 })
 
@@ -330,44 +495,96 @@ async function fetchTags() {
 }
 
 function handleNodeClick(data: any) {
+  // 处理层级目录中的真实目录节点
+  if (data.isDirectory) {
+    // 提取真实目录ID（去除 dir_ 前缀）
+    const folderId = data.id.toString().startsWith('dir_') 
+      ? data.id.toString().replace('dir_', '') 
+      : data.id
+    enterDirectory(folderId)
+    return
+  }
+  
+  // 处理分类节点（全部脚本、按类型分类）
   if (data.children) return
+  
+  // 处理类型过滤节点（Python、Java、Go等）
   currentFolder.value = data.label
   currentFilter.value = data.id
+  // 切换到根目录视图
+  currentDirectoryId.value = null
 }
 
-function getFileIcon(filename: string) {
-  if (filename.endsWith('.py')) return 'Document' // Ideally python icon
-  if (filename.endsWith('.java')) return 'Document' // Ideally java icon
+function handleRowDblClick(row: ScriptVO) {
+  if (row.isDirectory) {
+    enterDirectory(row.id)
+  } else {
+    handlePreview(row)
+  }
+}
+
+function getFileIcon(row: ScriptVO) {
+  if (row.isDirectory) return 'Folder'
+  if (row.name?.endsWith('.py')) return 'Document'
+  if (row.name?.endsWith('.java')) return 'Document'
   return 'Document'
 }
 
 function showUploadDialog() {
   uploadDialogVisible.value = true
   uploadFile.value = null
+  uploadDirFile.value = null
+  uploadTab.value = 'file'
 }
 
 function handleFileChange(file: any) {
   uploadFile.value = file
 }
 
+function handleDirectoryChange(file: any) {
+  uploadDirFile.value = file
+}
+
 async function handleUpload() {
-  if (!uploadFile.value) {
-    ElMessage.warning('请选择文件')
-    return
-  }
-  
-  uploading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', uploadFile.value.raw)
-    await scriptApi.upload(formData)
-    ElMessage.success('上传成功')
-    uploadDialogVisible.value = false
-    fetchScripts()
-  } catch (error) {
-    ElMessage.error('上传失败')
-  } finally {
-    uploading.value = false
+  if (uploadTab.value === 'file') {
+    if (!uploadFile.value) {
+      ElMessage.warning('请选择文件')
+      return
+    }
+    
+    uploading.value = true
+    try {
+      const formData = new FormData()
+      formData.append('file', uploadFile.value.raw)
+      await scriptApi.upload(formData)
+      ElMessage.success('上传成功')
+      uploadDialogVisible.value = false
+      fetchScripts()
+    } catch (error) {
+      ElMessage.error('上传失败')
+    } finally {
+      uploading.value = false
+    }
+  } else {
+    // 文件夹上传
+    if (!uploadDirFile.value) {
+      ElMessage.warning('请选择ZIP文件')
+      return
+    }
+    
+    uploading.value = true
+    try {
+      const formData = new FormData()
+      formData.append('file', uploadDirFile.value.raw)
+      await scriptApi.uploadDirectory(formData)
+      ElMessage.success('上传成功')
+      uploadDialogVisible.value = false
+      fetchScripts()
+    } catch (error) {
+      ElMessage.error('上传失败')
+    } finally {
+      uploading.value = false
+    }
   }
 }
 
@@ -527,7 +744,7 @@ onMounted(() => {
   font-size: 24px;
   font-weight: 700;
   color: #1e293b;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
 }
 
 .page-subtitle {
@@ -536,9 +753,22 @@ onMounted(() => {
   margin: 0;
 }
 
+.breadcrumb-clickable {
+  cursor: pointer;
+  color: #409eff;
+}
+
+.breadcrumb-clickable:hover {
+  text-decoration: underline;
+}
+
 .table-card {
   border-radius: 8px;
   border: 1px solid #e2e8f0;
+}
+
+.table-row {
+  cursor: pointer;
 }
 
 .file-icon {
@@ -629,5 +859,11 @@ onMounted(() => {
 
 .font-mono {
   font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
 }
 </style>

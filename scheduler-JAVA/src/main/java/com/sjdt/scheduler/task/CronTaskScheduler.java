@@ -19,6 +19,7 @@ import com.sjdt.scheduler.mapper.CallbackJobConfigMapper;
 import com.sjdt.scheduler.mapper.ScriptMapper;
 import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
+import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.TaskProducerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +63,9 @@ public class CronTaskScheduler {
 
     @Autowired
     private ScriptMapper scriptMapper;
+
+    @Autowired
+    private IScriptService scriptService;
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
@@ -245,6 +249,10 @@ public class CronTaskScheduler {
                 .id(script != null ? script.getId() : null)
                 .name(script != null ? script.getName() : null)
                 .path(script != null ? script.getPath() : null)
+                .isDirectory(script != null ? script.getIsDirectory() : null)
+                .mainFile(script != null ? script.getMainFile() : null)
+                .parentId(script != null ? script.getParentId() : null)
+                .rootPath(getRootPath(script))
                 .build();
 
             TaskExecuteMessage message = TaskExecuteMessage.builder()
@@ -389,5 +397,38 @@ public class CronTaskScheduler {
     public void clearCache() {
         executionTimeCache.clear();
         log.info("已清理Cron表达式缓存");
+    }
+
+    /**
+     * 获取脚本的根目录路径
+     * 如果脚本有父目录，则返回父目录的路径；否则返回脚本所在的目录路径
+     */
+    private String getRootPath(Script script) {
+        if (script == null) {
+            return null;
+        }
+        
+        // 如果是目录类型，根目录就是自己的路径
+        if (Boolean.TRUE.equals(script.getIsDirectory())) {
+            return script.getPath();
+        }
+        
+        // 如果有父目录ID，需要查询父目录的路径
+        if (script.getParentId() != null) {
+            Script parentScript = scriptService.getById(script.getParentId());
+            if (parentScript != null) {
+                return parentScript.getPath();
+            }
+        }
+        
+        // 否则返回脚本所在的目录路径（去掉文件名部分）
+        String scriptPath = script.getPath();
+        int lastSlash = scriptPath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            return scriptPath.substring(0, lastSlash);
+        }
+        
+        // 没有目录，返回根路径
+        return "/";
     }
 }

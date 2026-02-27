@@ -16,6 +16,7 @@ import com.sjdt.scheduler.mapper.TagMapper;
 import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.service.IScriptService;
 import io.minio.*;
+import io.minio.messages.Item;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -25,14 +26,14 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * 脚本服务实现类
@@ -179,11 +180,129 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
                     .id(script.getId())
                     .path(script.getPath())
                     .name(script.getName())
+                    .isDirectory(false)
+                    .parentId(script.getParentId())
                     .tags(java.util.Set.of()) // 空标签集合
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("上传脚本文件失败: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public ScriptVO uploadDirectory(MultipartFile file) {
+        try {
+            // 检查MinIO中是否存在bucket，不存在则创建
+            boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(BUCKET_NAME).build());
+            if (!found) {
+                minioClient.makeBucket(MakeBucketArgs.builder().bucket(BUCKET_NAME).build());
+            }
+
+            // 生成唯一文件夹ID
+            String folderId = UUID.randomUUID().toString();
+            String folderPath = SCRIPT_FOLDER + folderId + "/";
+            String fullPath = BUCKET_NAME + "/" + folderPath;
+
+            // 1. 先创建父目录Script记录
+            String folderName = file.getOriginalFilename();
+            if (folderName != null && folderName.toLowerCase().endsWith(".zip")) {
+                folderName = folderName.substring(0, folderName.length() - 4);
+            }
+            Script parentScript = Script.builder()
+                    .name(folderName)
+                    .path(fullPath)
+                    .isDirectory(true)
+                    .parentId(null)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
+                    .build();
+            save(parentScript);
+            log.info("创建父目录Script记录: ID={}, name={}", parentScript.getId(), folderName);
+
+            // 2. 解压ZIP文件并为每个文件创建Script记录
+            int fileCount = 0;
+            try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.isDirectory()) {
+                        String entryName = entry.getName();
+                        
+                        // 解析相对路径（去除ZIP中的根目录名）
+                        String relativePath = entryName;
+                        if (entryName.contains("/")) {
+                            int firstSlash = entryName.indexOf('/');
+                            relativePath = entryName.substring(firstSlash + 1);
+                        }
+                        if (relativePath.isEmpty()) continue;
+
+                        // 上传文件到MinIO
+                        String objectName = folderPath + relativePath;
+                        byte[] content = zis.readAllBytes();
+                        minioClient.putObject(
+                                PutObjectArgs.builder()
+                                        .bucket(BUCKET_NAME)
+                                        .object(objectName)
+                                        .stream(new ByteArrayInputStream(content), content.length, -1)
+                                        .contentType(getContentType(relativePath))
+                                        .build()
+                        );
+
+                        // 为每个文件创建独立的Script记录
+                        String fileName = relativePath;
+                        if (relativePath.contains("/")) {
+                            fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+                        }
+                        
+                        Script fileScript = Script.builder()
+                                .name(fileName)
+                                .path(fullPath + relativePath)
+                                .isDirectory(false)
+                                .parentId(parentScript.getId())
+                                .createTime(LocalDateTime.now())
+                                .updateTime(LocalDateTime.now())
+                                .build();
+                        save(fileScript);
+                        
+                        fileCount++;
+                        log.debug("创建文件Script记录: ID={}, name={}, parentId={}", 
+                                fileScript.getId(), fileName, parentScript.getId());
+                    }
+                    zis.closeEntry();
+                }
+            }
+
+            log.info("文件夹上传完成，共 {} 个文件，父目录ID: {}", fileCount, parentScript.getId());
+
+            // 返回父目录信息
+            return ScriptVO.builder()
+                    .id(parentScript.getId())
+                    .path(parentScript.getPath())
+                    .name(parentScript.getName())
+                    .isDirectory(true)
+                    .parentId(parentScript.getParentId())
+                    .tags(java.util.Set.of())
+                    .build();
+        } catch (Exception e) {
+            throw new RuntimeException("上传文件夹失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 根据文件扩展名获取Content-Type
+     */
+    private String getContentType(String filename) {
+        if (filename == null) return "application/octet-stream";
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".py")) return "text/x-python";
+        if (lower.endsWith(".java")) return "text/x-java-source";
+        if (lower.endsWith(".go")) return "text/x-go-source";
+        if (lower.endsWith(".js")) return "application/javascript";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".xml")) return "application/xml";
+        if (lower.endsWith(".txt")) return "text/plain";
+        if (lower.endsWith(".html")) return "text/html";
+        if (lower.endsWith(".css")) return "text/css";
+        return "application/octet-stream";
     }
 
     @Override
@@ -236,7 +355,7 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
             return false;
         }
 
-        // 1. 检查是否有非删除状态的任务正在使用该脚本
+        // 1. 检查是否有非删除状态的任务正在使用该脚本或该脚本的父目录
         LambdaQueryWrapper<Task> queryWrapper = new LambdaQueryWrapper<Task>()
                 .eq(Task::getScriptId, id)
                 .ne(Task::getStatus, TaskStatus.deleted);
@@ -246,25 +365,81 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
             throw new BizException(400, "脚本正在被任务使用，无法删除");
         }
 
-        // 2. 从数据库删除
+        // 2. 如果是目录类型，先删除所有子文件记录
+        if (Boolean.TRUE.equals(script.getIsDirectory())) {
+            LambdaQueryWrapper<Script> childQuery = new LambdaQueryWrapper<Script>()
+                    .eq(Script::getParentId, id);
+            List<Script> childScripts = list(childQuery);
+            if (!childScripts.isEmpty()) {
+                List<String> childIds = childScripts.stream().map(Script::getId).toList();
+                // 检查子文件是否有被任务使用
+                for (String childId : childIds) {
+                    LambdaQueryWrapper<Task> childTaskQuery = new LambdaQueryWrapper<Task>()
+                            .eq(Task::getScriptId, childId)
+                            .ne(Task::getStatus, TaskStatus.deleted);
+                    Long childTaskCount = taskMapper.selectCount(childTaskQuery);
+                    if (childTaskCount > 0) {
+                        log.warn("脚本的子文件正在被任务使用，无法删除 | ScriptID: {}, ChildID: {}", id, childId);
+                        throw new BizException(400, "脚本的子文件正在被任务使用，无法删除");
+                    }
+                }
+                // 删除所有子文件记录
+                removeByIds(childIds);
+                log.info("删除子文件记录 {} 个", childIds.size());
+            }
+        } else if (script.getParentId() != null) {
+            // 如果是文件类型且有父目录，检查父目录是否还有其他子文件被使用
+            // （这里简化处理，允许删除子文件）
+        }
+
+        // 3. 从数据库删除当前记录
         removeById(id);
 
-        // 3. 从MinIO删除文件
+        // 3. 从MinIO删除文件或文件夹
         try {
             String path = script.getPath();
             String objectName = path;
             if (path.startsWith(BUCKET_NAME + "/")) {
                 objectName = path.substring(BUCKET_NAME.length() + 1);
             }
-            minioClient.removeObject(
-                    RemoveObjectArgs.builder()
-                            .bucket(BUCKET_NAME)
-                            .object(objectName)
-                            .build()
-            );
-            log.info("从MinIO删除脚本文件成功 | Object: {}", objectName);
+
+            if (Boolean.TRUE.equals(script.getIsDirectory())) {
+                // 目录类型：列出并删除所有对象
+                Iterable<Result<Item>> objects = minioClient.listObjects(
+                        ListObjectsArgs.builder()
+                                .bucket(BUCKET_NAME)
+                                .prefix(objectName)
+                                .recursive(true)
+                                .build()
+                );
+                int deletedCount = 0;
+                for (Result<Item> result : objects) {
+                    try {
+                        String objName = result.get().objectName();
+                        minioClient.removeObject(
+                                RemoveObjectArgs.builder()
+                                        .bucket(BUCKET_NAME)
+                                        .object(objName)
+                                        .build()
+                        );
+                        deletedCount++;
+                    } catch (Exception e) {
+                        log.warn("删除MinIO对象失败: {}", e.getMessage());
+                    }
+                }
+                log.info("从MinIO删除文件夹成功，共 {} 个对象 | Path: {}", deletedCount, objectName);
+            } else {
+                // 文件类型：删除单个文件
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(BUCKET_NAME)
+                                .object(objectName)
+                                .build()
+                );
+                log.info("从MinIO删除脚本文件成功 | Object: {}", objectName);
+            }
         } catch (Exception e) {
-            log.error("从MinIO删除脚本文件失败 | ScriptID: {}, Path: {}", id, script.getPath(), e);
+            log.error("从MinIO删除脚本失败 | ScriptID: {}, Path: {}", id, script.getPath(), e);
             // 数据库已经删除了，MinIO删除失败仅记录日志
         }
 

@@ -13,6 +13,10 @@ class ScriptInfo(BaseModel):
     id: str
     name: str
     path: str
+    is_directory: Optional[bool] = False
+    main_file: Optional[str] = None
+    parent_id: Optional[str] = None
+    root_path: Optional[str] = None
     tags: Optional[List[ScriptTag]] = None
 
     @classmethod

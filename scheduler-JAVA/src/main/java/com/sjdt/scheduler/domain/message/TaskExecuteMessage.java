@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.domain.message;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.sjdt.scheduler.domain.po.Script;
 import com.sjdt.scheduler.domain.po.Tag;
 import lombok.AllArgsConstructor;
@@ -67,15 +68,35 @@ public class TaskExecuteMessage implements Serializable {
         private static final long serialVersionUID = 1L;
 
         /** 脚本ID */
+        @JsonProperty("id")
         private String id;
 
         /** 脚本名称 */
+        @JsonProperty("name")
         private String name;
 
         /** 脚本路径 */
+        @JsonProperty("path")
         private String path;
 
+        /** 是否为目录类型 */
+        @JsonProperty("is_directory")
+        private Boolean isDirectory;
+
+        /** 目录类型时的主入口文件路径 */
+        @JsonProperty("main_file")
+        private String mainFile;
+
+        /** 父脚本ID，用于构建层级关系 */
+        @JsonProperty("parent_id")
+        private String parentId;
+
+        /** 根目录路径，用于下载整个目录 */
+        @JsonProperty("root_path")
+        private String rootPath;
+
         /** 脚本标签 */
+        @JsonProperty("tags")
         private Set<Tag> tags;
     }
 }

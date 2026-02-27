@@ -374,10 +374,19 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         String taskRunId = taskRun.getId();
         log.info("运行实例已插入， 开始时间为{} id为{}", taskRun.getStartTime(), taskRunId);
 
+        // 调试日志：输出脚本信息
+        String rootPath = getRootPath(script);
+        log.info("脚本信息 - ID: {}, name: {}, path: {}, isDirectory: {}, parentId: {}, rootPath: {}",
+                script.getId(), script.getName(), script.getPath(), script.getIsDirectory(), script.getParentId(), rootPath);
+
         TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
                 .id(script.getId())
                 .name(script.getName())
                 .path(script.getPath())
+                .isDirectory(script.getIsDirectory())
+                .mainFile(script.getMainFile())
+                .parentId(script.getParentId())
+                .rootPath(rootPath)
                 .tags(script.getTags())
                 .build();
 
@@ -517,6 +526,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                     .id(script.getId())
                     .name(script.getName())
                     .path(script.getPath())
+                    .isDirectory(script.getIsDirectory())
+                    .mainFile(script.getMainFile())
+                    .parentId(script.getParentId())
+                    .rootPath(getRootPath(script))
                     .tags(script.getTags())
                     .build();
 
@@ -561,5 +574,34 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             taskCallbackExecutor.executeCallbackJob(message);
             log.info("回调任务已重新发布(超时重试)，TaskRunID: {}", taskRunId);
         }
+    }
+
+    /**
+     * 获取脚本的根目录路径
+     * 如果脚本有父目录，则返回父目录的路径；否则返回脚本所在的目录路径
+     */
+    private String getRootPath(Script script) {
+        // 如果是目录类型，根目录就是自己的路径
+        if (Boolean.TRUE.equals(script.getIsDirectory())) {
+            return script.getPath();
+        }
+        
+        // 如果有父目录ID，需要查询父目录的路径
+        if (script.getParentId() != null) {
+            Script parentScript = scriptService.getById(script.getParentId());
+            if (parentScript != null) {
+                return parentScript.getPath();
+            }
+        }
+        
+        // 否则返回脚本所在的目录路径（去掉文件名部分）
+        String scriptPath = script.getPath();
+        int lastSlash = scriptPath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            return scriptPath.substring(0, lastSlash);
+        }
+        
+        // 没有目录，返回根路径
+        return "/";
     }
 }

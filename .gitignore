@@ -1,12 +1,16 @@
 ### 本地测试使用文件 ###
 minio.exe
 frpc/
+优化目标文档.md
+test1/
+*.zip
 **/node_modules/
 **/.vscode/
 **/dist/
 *.rar
 test-flask.py
 test.py
+docs/
 **/__pycache__/
 *.tar
 sjdt-task-engine/

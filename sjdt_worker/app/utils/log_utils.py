@@ -26,10 +26,7 @@ def get_logger(name=None):
     Returns:
         logging.Logger: 日志器对象
     """
-    if name is None:
-        return unified_logger
-    else:
-        return logging.getLogger(name)
+    return unified_logger
 
 
 # 导出统一日志方法到模块级别，方便直接导入使用

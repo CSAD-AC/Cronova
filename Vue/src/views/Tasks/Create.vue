@@ -72,13 +72,18 @@
           </el-row>
           
           <el-form-item label="脚本文件" prop="scriptId">
-            <el-select v-model="formData.scriptId" placeholder="选择已有脚本" clearable style="width: 100%; margin-bottom: 10px;">
+            <el-select v-model="formData.scriptId" placeholder="选择已有脚本" clearable filterable style="width: 100%; margin-bottom: 10px;">
               <el-option 
-                v-for="script in scripts" 
+                v-for="script in executableScripts" 
                 :key="script.id" 
-                :label="script.name" 
+                :label="getScriptLabel(script)" 
                 :value="script.id" 
-              />
+              >
+                <div class="flex items-center justify-between">
+                  <span>{{ getScriptLabel(script) }}</span>
+                  <el-tag size="small" :type="getScriptTypeTag(script)">{{ getScriptType(script) }}</el-tag>
+                </div>
+              </el-option>
             </el-select>
             <el-upload
               action="#"
@@ -184,7 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
@@ -224,6 +229,42 @@ const fetchScripts = async () => {
   } catch (error) {
     console.error('获取脚本列表失败:', error)
   }
+}
+
+// 过滤出可执行的脚本（非目录类型）
+const executableScripts = computed(() => {
+  return scripts.value.filter(s => !s.isDirectory)
+})
+
+// 获取脚本显示名称（含层级路径）
+const getScriptLabel = (script: ScriptVO) => {
+  // 如果有父目录，显示完整路径
+  if (script.parentId) {
+    const parent = scripts.value.find(s => s.id === script.parentId)
+    if (parent) {
+      return `${parent.name}/${script.name}`
+    }
+  }
+  return script.name
+}
+
+// 获取脚本类型
+const getScriptType = (script: ScriptVO) => {
+  const ext = script.name?.toLowerCase()
+  if (ext?.endsWith('.py')) return 'Python'
+  if (ext?.endsWith('.java')) return 'Java'
+  if (ext?.endsWith('.jar')) return 'Java'
+  if (ext?.endsWith('.go')) return 'Go'
+  return '未知'
+}
+
+// 获取脚本类型标签
+const getScriptTypeTag = (script: ScriptVO) => {
+  const ext = script.name?.toLowerCase()
+  if (ext?.endsWith('.py')) return 'success'
+  if (ext?.endsWith('.java') || ext?.endsWith('.jar')) return 'warning'
+  if (ext?.endsWith('.go')) return 'info'
+  return 'info'
 }
 
 onMounted(() => {

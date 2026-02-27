@@ -30,6 +30,14 @@ public interface IScriptService extends IService<Script> {
     ScriptVO uploadScript(MultipartFile file);
 
     /**
+     * 上传文件夹（ZIP压缩包）到MinIO
+     * @param file ZIP压缩包文件
+     * @param mainFile 主入口文件相对路径（如 src/main.py）
+     * @return 脚本信息
+     */
+    ScriptVO uploadDirectory(MultipartFile file);
+
+    /**
      * 下载脚本文件
      * @param id 脚本ID
      * @param response 响应对象

@@ -58,6 +58,9 @@ public class ScriptController {
                         .id(script.getId())
                         .name(script.getName())
                         .path(script.getPath())
+                        .isDirectory(script.getIsDirectory())
+                        .mainFile(script.getMainFile())
+                        .parentId(script.getParentId())
                         .tags(script.getTags())
                         .build())
                 .toList();
@@ -73,6 +76,17 @@ public class ScriptController {
     @Operation(summary = "上传脚本文件", description = "上传脚本文件到MinIO")
     public Result<ScriptVO> uploadScript(@RequestPart("file") MultipartFile file) {
         return Result.success(scriptService.uploadScript(file));
+    }
+
+    /**
+     * 上传文件夹（ZIP压缩包）
+     * @param file ZIP压缩包文件
+     * @return 上传结果
+     */
+    @PostMapping(value = "/upload-directory", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "上传文件夹", description = "上传ZIP压缩包到MinIO，解压后保持目录结构")
+    public Result<ScriptVO> uploadDirectory(@RequestPart("file") MultipartFile file) {
+        return Result.success(scriptService.uploadDirectory(file));
     }
 
     /**
