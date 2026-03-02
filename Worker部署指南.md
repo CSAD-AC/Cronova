@@ -9,8 +9,10 @@ sjdt-task-engine/                      # 项目根目录（Docker 构建上下�
 ├── sjdt_worker/                       # Worker 项目目录
 │   ├── app/
 │   │   ├── scripts_tmp/              # 脚本临时目录
-│   │   │   └── utils/               # 工具类目录（需手动放置）
-│   │   │       └── logger.py         # 工具类文件示例
+│   │   │   ├── sjdt_utils/          # 工具类包（Docker 构建时安装为全局依赖）
+│   │   │   │   ├── __init__.py      # 包导出定义
+│   │   │   │   └── logger.py        # 工具类文件示例
+│   │   │   └── pyproject.toml       # 工具类包配置
 │   │   └── ...
 │   ├── docker/
 │   │   ├── .env                      # 环境变量配置
@@ -24,12 +26,18 @@ sjdt-task-engine/                      # 项目根目录（Docker 构建上下�
 ## 关键目录说明
 
 ### 1. 工具类目录
-- **路径**: `sjdt_worker\app\scripts_tmp\utils`
-- **用途**: 放置工具类文件，执行脚本时可自动复制到脚本同目录下
-- **使用方式**:
-  - 将工具类文件放入此目录
-  - 执行脚本时会自动复制到 `{脚本所在目录}/utils/`
-  - 执行完成后自动清理
+- **路径**: `sjdt_worker\app\scripts_tmp\sjdt_utils`
+- **用途**: 放置工具类文件，在 Docker 构建时通过 pip 安装为全局依赖
+- **结构说明**:
+  - `sjdt_utils/__init__.py` - 包导出定义，需在此文件中添加新模块的导入
+  - `sjdt_utils/logger.py` - 工具类文件示例
+  - `pyproject.toml` - 工具类包的配置文件
+- **添加新工具类的步骤**:
+  1. 在 `sjdt_utils/` 目录下创建新的工具类文件（如 `helper.py`）
+  2. 在 `sjdt_utils/__init__.py` 中添加导出语句
+  3. 在 `pyproject.toml` 中无需修改（已配置自动发现）
+  4. 重新构建 Docker 镜像
+- **使用方式**: 在任意 Python 脚本中直接导入 `from sjdt_utils import xxx`
 
 ### 2. 依赖管理
 - **路径**: `sjdt_worker\requirements.txt`
@@ -82,10 +90,12 @@ docker-compose down -v
 - Docker 构建必须在项目根目录（`sjdt-task-engine`）执行
 - 不能在 `sjdt_worker` 目录执行，否则无法正确复制文件
 
-### 2. 工具类放置
-- 工具类必须放在 `sjdt_worker/app/scripts_tmp/utils/` 目录
-- 如果该目录不存在，需手动创建
-- 工具类会被自动复制到执行脚本的同目录下的 `utils/` 文件夹
+### 2. 工具类管理
+- 工具类包位于 `sjdt_worker/app/scripts_tmp/sjdt`
+- 添加新工具类需要修改_utils/以下文件：
+  - `sjdt_utils/__init__.py` - 添加新的导入和导出
+  - `sjdt_utils/` 目录下创建新的模块文件
+- 修改后需要重新构建 Docker 镜像才能生效
 
 ### 3. 依赖更新
 - 修改 `requirements.txt` 后必须重新构建镜像

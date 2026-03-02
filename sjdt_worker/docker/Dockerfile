@@ -56,6 +56,10 @@ RUN apt-get purge -y --auto-remove \
 # -------------- 创建运行时目录（确保在COPY之前） --------------
 RUN mkdir -p scripts_tmp
 
+# -------------- 复制并安装本地工具类 --------------
+COPY app/scripts_tmp/ ./scripts_tmp/
+RUN pip install --no-cache-dir ./scripts_tmp -i https://pypi.tuna.tsinghua.edu.cn/simple
+
 # -------------- 复制项目代码 --------------
 COPY . .
 # -------------- 默认启动命令 --------------

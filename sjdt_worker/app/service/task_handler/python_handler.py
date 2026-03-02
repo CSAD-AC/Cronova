@@ -73,10 +73,6 @@ class PythonHandler(BaseHandler):
             
             logger.info("从MinIO下载脚本，bucket：%s，object：%s", script_bucket, script_object)
             
-            # 确保scripts_tmp目录存在
-            scripts_dir = "/app/app/scripts_tmp"
-            os.makedirs(scripts_dir, exist_ok=True)
-            
             # 判断是否需要下载整个目录
             root_path = getattr(task.script, 'root_path', None)
             is_directory = getattr(task.script, 'is_directory', False)
@@ -93,6 +89,11 @@ class PythonHandler(BaseHandler):
             need_download_dir = (root_path and root_path != '/' and not is_directory) or is_directory or parent_id
             
             temp_script_path = None
+            
+            # 确保scripts_tmp目录存在
+            scripts_dir = "/app/app/scripts_tmp"
+            os.makedirs(scripts_dir, exist_ok=True)
+            
             if need_download_dir:
                 # 有根目录路径：下载整个文件夹
                 from app.utils.minio_utils import download_directory
@@ -161,20 +162,9 @@ class PythonHandler(BaseHandler):
                                              log_object=log_object)
             logger.info("任务状态已更新为运行中，taskRunId：%s", task_run_id)
 
-            # 5. 启动子进程执行脚本
+            # 启动子进程执行脚本
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
-            
-            # 复制工具类到脚本所在目录
-            utils_dir = "/app/app/scripts_tmp/utils"
-            script_dir = os.path.dirname(temp_script_path)
-            copied_utils_dir = None
-            if os.path.exists(utils_dir):
-                copied_utils_dir = os.path.join(script_dir, "utils")
-                if os.path.exists(copied_utils_dir):
-                    shutil.rmtree(copied_utils_dir)
-                shutil.copytree(utils_dir, copied_utils_dir)
-                logger.info("工具类已复制到: %s", copied_utils_dir)
             
             process = subprocess.Popen(
                 ['python3', temp_script_path],
@@ -210,10 +200,10 @@ class PythonHandler(BaseHandler):
             log_thread.start()
             logger.info("日志监控线程已启动，threadName：%s", log_thread.name)
             
-            # 6. 启动状态监控线程
+            # 启动状态监控线程
             status_thread = threading.Thread(
                 target=self._monitor_process_status,
-                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path, copied_utils_dir),
+                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path),
                 daemon=True
             )
             status_thread.start()
@@ -335,7 +325,7 @@ class PythonHandler(BaseHandler):
 
     def _monitor_process_status(self, process, task: TaskExecuteMessage, task_run_id: str, 
                              start_time: datetime, log_bucket: str, log_object: str, 
-                             temp_script_path: str, copied_utils_dir: str = None):
+                             temp_script_path: str):
         """监控进程状态变化"""
         try:
             logger.info("启动状态监控线程，taskRunId: %s", task_run_id)
@@ -404,11 +394,6 @@ class PythonHandler(BaseHandler):
             # 清理临时文件
             if os.path.exists(temp_script_path):
                 os.unlink(temp_script_path)
-            
-            # 清理复制的工具类目录
-            if copied_utils_dir and os.path.exists(copied_utils_dir):
-                shutil.rmtree(copied_utils_dir)
-                logger.info("工具类目录已清理: %s", copied_utils_dir)
 
     def _handle_task_error(self, task: TaskExecuteMessage, task_run_id: str, 
                           error_msg: str, start_time: datetime):
