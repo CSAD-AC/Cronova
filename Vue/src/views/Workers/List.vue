@@ -131,20 +131,19 @@
             {{ formatDateTime(row.lastHeartbeat) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
-            <el-button-group>
-              <el-tooltip content="查看详情">
-                <el-button size="small" @click="$router.push(`/workers/${row.id}`)">
-                  <el-icon><View /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="删除">
-                <el-button size="small" type="danger" @click="handleDelete(row)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </el-tooltip>
-            </el-button-group>
+            <div class="action-buttons">
+              <el-button type="primary" size="default" @click="$router.push(`/workers/${row.id}`)">
+                <el-icon class="mr-1"><View /></el-icon>详情
+              </el-button>
+              <el-button type="primary" size="default" @click="showTagDialog(row)">
+                <el-icon class="mr-1"><PriceTag /></el-icon>标签
+              </el-button>
+              <el-button type="danger" size="default" @click="handleDelete(row)">
+                <el-icon class="mr-1"><Delete /></el-icon>删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -161,6 +160,53 @@
         />
       </div>
     </el-card>
+
+    <!-- 标签管理弹窗 -->
+    <el-dialog v-model="tagDialogVisible" title="编辑标签" width="500px">
+      <div class="tag-dialog-content">
+        <div class="worker-info-header">
+          <h4>{{ currentWorker?.host }}</h4>
+          <span class="worker-ip">{{ currentWorker?.ip }}</span>
+        </div>
+        
+        <div class="tag-selection">
+          <h5 class="mb-2">选择标签</h5>
+          <el-select
+            v-model="selectedTags"
+            multiple
+            filterable
+            placeholder="搜索并选择标签"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="tag in allTags"
+              :key="tag.id"
+              :label="tag.name"
+              :value="tag.id"
+            >
+              <div class="flex justify-between items-center w-full">
+                <span>{{ tag.name }}</span>
+                <el-tag v-if="tag.description" size="small" type="info" effect="plain">{{ tag.description }}</el-tag>
+              </div>
+            </el-option>
+          </el-select>
+          
+          <div v-if="!allTags.length" class="no-tags-hint">
+            <el-empty description="暂无标签" :image-size="60" />
+          </div>
+        </div>
+      </div>
+      
+      <template #footer>
+        <div class="dialog-footer">
+          <span class="selected-count">已选择 {{ selectedTags.length }} 个标签</span>
+          <div>
+            <el-button @click="tagDialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="saveTags">保存</el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -168,12 +214,19 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  CircleCheck, CircleClose, Cpu, Search, Refresh, View, Delete
+  CircleCheck, CircleClose, Cpu, Search, Refresh, View, Delete, PriceTag
 } from '@element-plus/icons-vue'
 import { useWorkerStore } from '@/stores/worker'
+import { tagApi } from '@/services/tag'
 import { formatDateTime } from '@/utils/date'
+import type { WorkerVO, TagVO } from '@/types'
 
 const workerStore = useWorkerStore()
+
+const tagDialogVisible = ref(false)
+const allTags = ref<TagVO[]>([])
+const currentWorker = ref<WorkerVO | null>(null)
+const selectedTags = ref<string[]>([])
 
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -238,8 +291,58 @@ async function handleDelete(row: any) {
   }
 }
 
+async function fetchTags() {
+  try {
+    const response = await tagApi.list({ size: 100 })
+    if (Array.isArray(response)) {
+      allTags.value = response
+    } else {
+      allTags.value = response.records || []
+    }
+  } catch (error) {
+    console.error('获取标签失败:', error)
+    allTags.value = []
+  }
+}
+
+function showTagDialog(row: WorkerVO) {
+  currentWorker.value = row
+  selectedTags.value = row.tags?.map(t => t.id) || []
+  tagDialogVisible.value = true
+}
+
+async function saveTags() {
+  if (!currentWorker.value) return
+  
+  try {
+    const oldTagIds = currentWorker.value.tags?.map(t => t.id) || []
+    const newSelectedTags = [...selectedTags.value]
+    
+    const addTagIds = newSelectedTags.filter(id => !oldTagIds.includes(id as string))
+    const removeTagIds = oldTagIds.filter(id => !newSelectedTags.includes(id as string))
+    
+    for (const tagId of removeTagIds) {
+      await tagApi.unbindWorker(tagId as number, currentWorker.value!.id)
+    }
+    
+    if (addTagIds.length > 0) {
+      for (const tagId of addTagIds) {
+        await tagApi.bindWorker(tagId as number, currentWorker.value!.id)
+      }
+    }
+    
+    ElMessage.success('保存成功')
+    tagDialogVisible.value = false
+    fetchWorkers()
+  } catch (error) {
+    console.error('保存标签失败:', error)
+    ElMessage.error('保存失败')
+  }
+}
+
 onMounted(() => {
   fetchWorkers()
+  fetchTags()
 })
 </script>
 
@@ -341,5 +444,79 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 20px;
+}
+
+/* 标签弹窗样式 */
+.tag-dialog-content {
+  padding: 16px 0;
+}
+
+.worker-info-header {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.worker-info-header h4 {
+  margin: 0 0 4px;
+  color: #1e293b;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.worker-info-header .worker-ip {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tag-selection h5 {
+  margin: 0 0 16px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.no-tags-hint {
+  text-align: center;
+  padding: 40px 0;
+  color: #9ca3af;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.selected-count {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-buttons .el-button {
+  flex: 1;
+  font-weight: 500;
+  min-width: 90px;
+}
+
+:deep(.el-table) {
+  font-size: 14px;
+}
+
+:deep(.el-table .cell) {
+  font-size: 14px;
+}
+
+:deep(.el-tag) {
+  font-size: 13px;
+}
+
+:deep(.el-link) {
+  font-size: 14px;
 }
 </style>

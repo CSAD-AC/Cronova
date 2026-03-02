@@ -5,6 +5,7 @@ from app.mq_consumer import MQConsumer
 from app.service.auth_service import AuthService
 from app.service.register_service import RegisterService
 from app.service.report_service import ReportService
+from app.service.tag_report_service import TagReportService
 from app.service.task_status_service import task_status_service
 from app.utils.log_utils import get_logger
 
@@ -44,7 +45,8 @@ def main():
     scheduler = BackgroundScheduler()
     scheduler.add_job(ReportService.send_heartbeat, "interval", seconds=Config.HEARTBEAT_INTERVAL)
     scheduler.add_job(ReportService.report_status, "interval", seconds=Config.STATUS_REPORT_INTERVAL)
-    scheduler.add_job(task_status_service.report_task_status, "interval", seconds=5)  # 每5秒报告一次任务状态
+    scheduler.add_job(task_status_service.report_task_status, "interval", seconds=5)
+    scheduler.add_job(TagReportService.check_and_report_tags, "interval", seconds=60)  # 每60秒检测标签变化
     scheduler.start()
     logger.info("程序启动成功，开始运行...")
 

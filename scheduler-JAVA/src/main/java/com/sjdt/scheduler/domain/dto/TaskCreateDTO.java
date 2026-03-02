@@ -12,6 +12,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+import java.util.Set;
+
 
 /**
  * 任务创建请求DTO
@@ -73,6 +75,10 @@ public class TaskCreateDTO {
     /** 指定Worker ID（为空表示自动调度，仅script类型有效） */
     @Schema(description = "指定Worker ID（为空表示自动调度，仅script类型有效）")
     private String targetWorker;
+
+    /** 任务需要的标签（用于自动匹配Worker） */
+    @Schema(description = "任务需要的标签（用于自动匹配Worker），如: [\"V1\", \"FastAPI\"]")
+    private Set<String> requiredTags;
 
     /** 回调配置（callback类型必填） */
     @Schema(description = "回调配置（callback类型必填）")

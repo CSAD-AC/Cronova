@@ -1,6 +1,8 @@
 import json
 import os
+from typing import List
 from app.utils.env_utils import EnvUtils
+
 
 class Config:
     # 认证配置
@@ -38,11 +40,70 @@ class Config:
     SECRET_KEY = None  # 注册后由调度器返回
     HOST = None  # 本机主机名
     IP = None  # 本机IP
-    # 使用所有已安装的包作为标签（不局限于TARGET_PACKAGES）
-    TAGS = EnvUtils.get_all_installed_packages()
+
+    # Worker标签配置（支持多种来源）
+    # 1. 环境变量 WORKER_TAGS（最高优先级）
+    # 2. .env 文件 WORKER_TAGS
+    # 3. 配置文件 local_config.json
+    # 4. 默认值（空列表）
+    WORKER_TAGS = []
 
     WORKER_HEARTBEAT_URL = None
     WORKER_STATUS_REPORT_URL = None
+
+    @classmethod
+    def load_worker_tags(cls) -> List[str]:
+        """加载 Worker 标签，支持多种来源（优先级：环境变量 > .env文件 > 配置文件 > 默认值）"""
+        tags = []
+
+        # 1. 优先从环境变量读取
+        env_tags = os.getenv("WORKER_TAGS")
+        if env_tags:
+            tags = [t.strip() for t in env_tags.split(",") if t.strip()]
+            if tags:
+                print(f"[Config] 从环境变量加载标签: {tags}")
+                return tags
+
+        # 2. 尝试从 .env 文件读取（如果存在）
+        # .env 文件可能位于 app 目录或 docker 目录
+        possible_env_paths = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docker", ".env"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+        ]
+        
+        for env_path in possible_env_paths:
+            env_path = os.path.normpath(env_path)
+            if os.path.exists(env_path):
+                try:
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("WORKER_TAGS=") and not line.startswith("#"):
+                                env_file_tags = line.split("=", 1)[1].strip()
+                                if env_file_tags:
+                                    tags = [t.strip() for t in env_file_tags.split(",") if t.strip()]
+                                    if tags:
+                                        print(f"[Config] 从 .env 文件加载标签: {tags}")
+                                        return tags
+                except Exception as e:
+                    print(f"[Config] 读取 .env 文件标签失败: {e}")
+
+        # 3. 尝试从 local_config.json 读取
+        if os.path.exists(cls.LOCAL_CONFIG_PATH):
+            try:
+                with open(cls.LOCAL_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    worker_tags = config.get("worker_tags", [])
+                    if worker_tags:
+                        print(f"[Config] 从配置文件加载标签: {worker_tags}")
+                        return worker_tags
+            except Exception as e:
+                print(f"[Config] 读取配置文件标签失败: {e}")
+
+        # 4. 默认空列表
+        print("[Config] 未配置 Worker 标签，将使用空标签（不限制任务匹配）")
+        return []
 
     @classmethod
     def load_local_config(cls):
@@ -71,7 +132,8 @@ class Config:
         local_config = {
             "worker_id": cls.WORKER_ID,
             "access_key": cls.ACCESS_KEY,
-            "secret_key": cls.SECRET_KEY
+            "secret_key": cls.SECRET_KEY,
+            "worker_tags": cls.WORKER_TAGS
         }
         try:
             with open(cls.LOCAL_CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -81,3 +143,7 @@ class Config:
         except Exception as e:
             print(f"保存本地配置失败：{str(e)}")
             return False
+
+
+# 初始化时加载标签
+Config.WORKER_TAGS = Config.load_worker_tags()

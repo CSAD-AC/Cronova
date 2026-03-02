@@ -10,6 +10,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
+import java.util.Set;
+
 /**
  * 任务更新请求DTO
  */
@@ -74,6 +76,10 @@ public class TaskUpdateDTO {
     /** 指定Worker ID（为空表示自动调度，仅script类型有效） */
     @Schema(description = "指定Worker ID（为空表示自动调度，仅script类型有效）", example = "worker-001")
     private String targetWorker;
+
+    /** 任务需要的标签（用于自动匹配Worker） */
+    @Schema(description = "任务需要的标签（用于自动匹配Worker），如: [\"V1\", \"FastAPI\"]")
+    private Set<String> requiredTags;
 
     /** 任务状态 */
     @Schema(description = "任务状态", example = "active")

@@ -114,35 +114,26 @@
             {{ formatDateTime(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button-group>
-              <el-tooltip content="查看详情">
-                <el-button size="small" @click="$router.push(`/tasks/${row.id}`)">
-                  <el-icon><View /></el-icon>
+            <div class="action-buttons">
+              <div class="button-row">
+                <el-button type="primary" size="default" @click="$router.push(`/tasks/${row.id}`)">
+                  <el-icon class="mr-1"><View /></el-icon>详情
                 </el-button>
-              </el-tooltip>
-              <el-tooltip content="编辑">
-                <el-button size="small" @click="$router.push(`/tasks/${row.id}/edit`)">
-                  <el-icon><Edit /></el-icon>
+                <el-button type="primary" size="default" @click="$router.push(`/tasks/${row.id}/edit`)">
+                  <el-icon class="mr-1"><Edit /></el-icon>编辑
                 </el-button>
-              </el-tooltip>
-              <el-tooltip content="立即执行">
-                <el-button size="small" type="success" @click="handlePublish(row)">
-                  <el-icon><VideoPlay /></el-icon>
+              </div>
+              <div class="button-row">
+                <el-button type="success" size="default" @click="handlePublish(row)">
+                  <el-icon class="mr-1"><VideoPlay /></el-icon>执行
                 </el-button>
-              </el-tooltip>
-              <el-tooltip content="健康检查" v-if="row.executeType === 'callback'">
-                <el-button size="small" type="warning" @click="handleHealthCheck(row)">
-                  <el-icon><Monitor /></el-icon>
+                <el-button type="danger" size="default" @click="handleDelete(row)">
+                  <el-icon class="mr-1"><Delete /></el-icon>删除
                 </el-button>
-              </el-tooltip>
-              <el-tooltip content="删除">
-                <el-button size="small" type="danger" @click="handleDelete(row)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </el-tooltip>
-            </el-button-group>
+              </div>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -449,7 +440,7 @@ onMounted(() => {
 }
 
 .page-title {
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 700;
   color: #1e293b;
   margin: 0 0 8px;
@@ -474,5 +465,55 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 20px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+.button-row .el-button {
+  flex: 1;
+  font-weight: 500;
+  min-width: 90px;
+}
+
+:deep(.el-table) {
+  font-size: 14px;
+}
+
+:deep(.el-table .cell) {
+  font-size: 14px;
+}
+
+:deep(.el-tag) {
+  font-size: 13px;
+}
+
+:deep(.el-link) {
+  font-size: 14px;
+}
+
+.button-row .el-button {
+  font-size: 13px;
+  padding: 6px 10px;
+  height: 34px;
+  line-height: 20px;
+}
+
+:deep(.el-button) {
+  font-size: 13px;
+  padding: 6px 10px;
+  height: 34px;
+}
+
+.cron-desc {
+  font-size: 13px;
 }
 </style>

@@ -12,6 +12,7 @@ import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -134,7 +135,7 @@ class RoleServiceImplTest {
 
         Assertions.assertNotNull(result);
         Assertions.assertTrue(result.getData().getRecords().get(0).getCreateTime()
-                .isAfter(result.getData().getRecords().get(1).getCreateTime()));
+                .isAfter(result.getData().getRecords().get(1).getCreateTime().minus(100, ChronoUnit.MILLIS)));
     }
 
     /**

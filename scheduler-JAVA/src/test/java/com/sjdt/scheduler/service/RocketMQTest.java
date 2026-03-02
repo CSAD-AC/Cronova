@@ -157,9 +157,8 @@ class RocketMQTest {
                 .tags(Set.of(
                         Tag.builder()
                                 .id(1)
-                                .name("java")
-                                .operator("==")
-                                .version("17")
+                                .name("Java17")
+                                .description("Java 17运行环境")
                                 .build()
                 ))
                 .build();

@@ -3,18 +3,26 @@ package com.sjdt.scheduler.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.AKSK;
+import com.sjdt.scheduler.domain.po.Tag;
 import com.sjdt.scheduler.domain.po.Worker;
+import com.sjdt.scheduler.domain.po.WorkerTag;
+import com.sjdt.scheduler.mapper.TagMapper;
+import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.mapper.WorkerMapper;
+import com.sjdt.scheduler.mapper.WorkerTagMapper;
 import com.sjdt.scheduler.service.IAKSKService;
 import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.service.IWorkerService;
 import com.sjdt.scheduler.service.IWorkerTagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Worker Service 实现类
@@ -28,10 +36,16 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
     private IAKSKService akskService;
 
     @Autowired
-    private ITaskService taskService;
+    private IWorkerTagService workerTagService;
 
     @Autowired
-    private IWorkerTagService workerTagService;
+    private TagMapper tagMapper;
+
+    @Autowired
+    private WorkerTagMapper workerTagMapper;
+
+    @Autowired
+    private TaskMapper taskMapper;
 
     /**
      * 根据主机名或 IP 查询 Worker
@@ -140,7 +154,7 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
 
         // 3. 更新关联的任务记录，将 target_worker 设置为 null
         log.info("开始更新关联的任务记录，将target_worker设置为null，WorkerID: {}", id);
-        taskService.updateTargetWorkerToNullByWorkerId(id);
+        taskMapper.clearTargetWorkerByWorkerId(id);
         log.info("关联的任务记录更新成功，WorkerID: {}", id);
 
         // 4. 删除 Worker 记录
@@ -155,6 +169,66 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Worker>()
                         .eq(Worker::getStatus, WorkerStatus.online)
         );
+    }
+
+    @Override
+    public List<Worker> findOnlineWorkersByTags(Set<String> requiredTags) {
+        if (requiredTags == null || requiredTags.isEmpty()) {
+            log.info("任务未指定标签要求，查询所有在线Worker");
+            return this.list(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Worker>()
+                            .eq(Worker::getStatus, WorkerStatus.online)
+            );
+        }
+
+        log.info("查询符合条件的在线Worker， requiredTags: {}", requiredTags);
+
+        List<Tag> tags = tagMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Tag>()
+                        .in(Tag::getName, requiredTags)
+        );
+
+        if (tags.isEmpty()) {
+            log.warn("未找到匹配的标签， requiredTags: {}", requiredTags);
+            return Collections.emptyList();
+        }
+
+        Set<Integer> tagIds = tags.stream()
+                .map(Tag::getId)
+                .collect(Collectors.toSet());
+
+        List<String> workerIds = workerTagMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WorkerTag>()
+                        .in(WorkerTag::getTagId, tagIds)
+        ).stream()
+                .map(WorkerTag::getWorkerId)
+                .collect(Collectors.toList());
+
+        if (workerIds.isEmpty()) {
+            log.warn("未找到拥有指定标签的Worker");
+            return Collections.emptyList();
+        }
+
+        Map<String, Long> workerIdCount = workerIds.stream()
+                .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
+
+        Set<String> matchedWorkerIds = workerIdCount.entrySet().stream()
+                .filter(entry -> entry.getValue() == tagIds.size())
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+
+        if (matchedWorkerIds.isEmpty()) {
+            log.warn("没有Worker同时拥有所有要求的标签");
+            return Collections.emptyList();
+        }
+
+        List<Worker> matchedWorkers = this.listByIds(matchedWorkerIds);
+        List<Worker> onlineWorkers = matchedWorkers.stream()
+                .filter(w -> w.getStatus() == WorkerStatus.online)
+                .collect(Collectors.toList());
+
+        log.info("找到 {} 个符合条件的在线Worker", onlineWorkers.size());
+        return onlineWorkers;
     }
 
 }

@@ -7,6 +7,7 @@ import com.sjdt.scheduler.domain.enums.TaskType;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 /**
  * 任务视图对象（返回给前端）
@@ -51,6 +52,9 @@ public class TaskVO {
 
     /** 指定Worker ID */
     private String targetWorker;
+
+    /** 任务需要的标签（用于自动匹配Worker） */
+    private Set<String> requiredTags;
 
     /** 任务状态 */
     private TaskStatus status;

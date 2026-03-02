@@ -1448,4 +1448,20 @@ onUnmounted(() => {
   background: #f9fafb;
   border-radius: 8px;
 }
+
+:deep(.el-table) {
+  font-size: 14px;
+}
+
+:deep(.el-table .cell) {
+  font-size: 14px;
+}
+
+:deep(.el-tag) {
+  font-size: 13px;
+}
+
+:deep(.el-link) {
+  font-size: 14px;
+}
 </style>

@@ -6,20 +6,38 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sjdt.scheduler.common.ErrorCodeEnum;
 import com.sjdt.scheduler.common.Result;
+import com.sjdt.scheduler.domain.po.Script;
+import com.sjdt.scheduler.domain.po.ScriptTag;
 import com.sjdt.scheduler.domain.po.Tag;
+import com.sjdt.scheduler.domain.po.Worker;
+import com.sjdt.scheduler.domain.po.WorkerTag;
+import com.sjdt.scheduler.mapper.ScriptTagMapper;
 import com.sjdt.scheduler.mapper.TagMapper;
+import com.sjdt.scheduler.mapper.WorkerTagMapper;
 import com.sjdt.scheduler.service.ITagService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 标签服务实现类
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagService {
+
+    @Lazy
+    private final ScriptTagMapper scriptTagMapper;
+
+    @Lazy
+    private final WorkerTagMapper workerTagMapper;
     
     @Override
     public Result<IPage<Tag>> getTagList(int page, int size, String name) {
@@ -33,6 +51,18 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
         
         // 分页查询
         IPage<Tag> tagPage = this.page(new Page<>(page, size), queryWrapper);
+        
+        // 填充关联数量
+        tagPage.getRecords().forEach(tag -> {
+            Long scriptCount = scriptTagMapper.selectCount(
+                    new LambdaQueryWrapper<ScriptTag>().eq(ScriptTag::getTagId, tag.getId())
+            );
+            Long workerCount = workerTagMapper.selectCount(
+                    new LambdaQueryWrapper<WorkerTag>().eq(WorkerTag::getTagId, tag.getId())
+            );
+            tag.setScriptCount(scriptCount.intValue());
+            tag.setWorkerCount(workerCount.intValue());
+        });
         
         return Result.success(tagPage);
     }
@@ -69,8 +99,7 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
         
         // 更新标签信息
         existingTag.setName(tag.getName());
-        existingTag.setOperator(tag.getOperator());
-        existingTag.setVersion(tag.getVersion());
+        existingTag.setDescription(tag.getDescription());
         
         // 保存更新
         this.updateById(existingTag);
@@ -89,6 +118,112 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
         // 删除标签
         this.removeById(id);
         
+        return Result.success();
+    }
+
+    @Override
+    public Result<List<Script>> getTagScripts(Integer tagId) {
+        Tag tag = this.getById(tagId);
+        if (tag == null) {
+            return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
+        }
+
+        List<Script> scripts = scriptTagMapper.selectScriptsByTagId(tagId);
+        return Result.success(scripts);
+    }
+
+    @Override
+    public Result<List<Worker>> getTagWorkers(Integer tagId) {
+        Tag tag = this.getById(tagId);
+        if (tag == null) {
+            return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
+        }
+
+        List<Worker> workers = workerTagMapper.selectWorkersByTagId(tagId);
+        return Result.success(workers);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Void> bindScript(Integer tagId, String scriptId) {
+        Tag tag = this.getById(tagId);
+        if (tag == null) {
+            return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
+        }
+
+        // 检查是否已关联
+        Long count = scriptTagMapper.selectCount(
+                new LambdaQueryWrapper<ScriptTag>()
+                        .eq(ScriptTag::getTagId, tagId)
+                        .eq(ScriptTag::getScriptId, scriptId)
+        );
+
+        if (count > 0) {
+            return Result.success();
+        }
+
+        ScriptTag scriptTag = new ScriptTag();
+        scriptTag.setTagId(tagId);
+        scriptTag.setScriptId(scriptId);
+        scriptTag.setCreateTime(LocalDateTime.now());
+        scriptTagMapper.insert(scriptTag);
+
+        log.info("关联脚本成功，tagId: {}, scriptId: {}", tagId, scriptId);
+        return Result.success();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Void> unbindScript(Integer tagId, String scriptId) {
+        scriptTagMapper.delete(
+                new LambdaQueryWrapper<ScriptTag>()
+                        .eq(ScriptTag::getTagId, tagId)
+                        .eq(ScriptTag::getScriptId, scriptId)
+        );
+
+        log.info("取消关联脚本成功，tagId: {}, scriptId: {}", tagId, scriptId);
+        return Result.success();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Void> bindWorker(Integer tagId, String workerId) {
+        Tag tag = this.getById(tagId);
+        if (tag == null) {
+            return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
+        }
+
+        // 检查是否已关联
+        Long count = workerTagMapper.selectCount(
+                new LambdaQueryWrapper<WorkerTag>()
+                        .eq(WorkerTag::getTagId, tagId)
+                        .eq(WorkerTag::getWorkerId, workerId)
+        );
+
+        if (count > 0) {
+            return Result.success();
+        }
+
+        WorkerTag workerTag = new WorkerTag();
+        workerTag.setTagId(tagId);
+        workerTag.setWorkerId(workerId);
+        workerTag.setCreateTime(LocalDateTime.now());
+        workerTagMapper.insert(workerTag);
+
+        log.info("关联执行器成功，tagId: {}, workerId: {}", tagId, workerId);
+        return Result.success();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Void> unbindWorker(Integer tagId, String workerId) {
+        workerTagMapper.delete(
+                new LambdaQueryWrapper<WorkerTag>()
+                        .eq(WorkerTag::getTagId, tagId)
+                        .eq(WorkerTag::getWorkerId, workerId)
+        );
+
+        log.info("取消关联执行器成功，tagId: {}, workerId: {}", tagId, workerId);
         return Result.success();
     }
 }

@@ -86,6 +86,10 @@ public class Task implements Serializable {
     @TableField(value = "target_worker")
     private String targetWorker;
 
+    /** 任务需要的标签（JSON格式，如: ["V1","FastAPI"]），用于自动匹配Worker */
+    @TableField(value = "required_tags")
+    private String requiredTags;
+
     /** 任务状态：active / paused / deleted */
     @TableField(value = "status")
     private TaskStatus status;

@@ -16,11 +16,11 @@ CREATE TABLE `users` (
 
 INSERT INTO users(`id`, `nickname`, `username`, `password`) VALUE
     (
-    '0f810981d4a65db463520f23a2730566',
-    '测试用户',
-    'username',
-    '$2a$10$stHRjNSmiK4qV9mNQtgHiuobO4wmaVeHzzDv/2G7Fy04kmovqRUcC'
-);
+     '0f810981d4a65db463520f23a2730566',
+     '测试用户',
+     'username',
+     '$2a$10$stHRjNSmiK4qV9mNQtgHiuobO4wmaVeHzzDv/2G7Fy04kmovqRUcC'
+        );
 
 -- 角色表
 DROP TABLE IF EXISTS roles;
@@ -62,16 +62,19 @@ CREATE TABLE `scripts` (
                            INDEX idx_parent_id (`parent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '脚本表';
 
--- 标签表
+INSERT INTO scripts(`id`, `name`, `path`, `is_directory`, `main_file`, `parent_id`) VALUES
+    ('26b60f9bf737a189804e0e7284276b9f', 'test1', 'task-engine/scripts/76d49f5f-e2b0-4a3a-8938-e9c1e4247101/', 1, NULL, NULL),
+    ('005d3c6684c957078e66748b5001afeb', 'main.py', 'task-engine/scripts/76d49f5f-e2b0-4a3a-8938-e9c1e4247101/main.py', 0, NULL, '26b60f9bf737a189804e0e7284276b9f'),
+    ('c4a37fd513081b2f97cd504eba4a70ea', 'test.py', 'task-engine/scripts/76d49f5f-e2b0-4a3a-8938-e9c1e4247101/test.py', 0, NULL, '26b60f9bf737a189804e0e7284276b9f');
+
+-- 标签表（用于 Docker 镜像标签和任务匹配）
 DROP TABLE IF EXISTS tags;
 CREATE TABLE tags (
                       id              INTEGER AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
-                      name            VARCHAR(100) NOT NULL COMMENT '依赖包名称, 如: requests',
-                      operator        VARCHAR(10) COMMENT '比较操作符: >, >=, ==, <, <=',
-                      version         VARCHAR(50) COMMENT '版本号: 1.5.7',
-                      create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                      UNIQUE KEY unique_tag (name, operator, version)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标签表（用于记录Python依赖包信息）';
+                      name            VARCHAR(100) NOT NULL UNIQUE COMMENT '标签名称，如: V1, V2, FastAPI,',
+                      description     VARCHAR(255) COMMENT '标签描述',
+                      create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标签表（用于Docker镜像标签和任务匹配）';
 
 -- 执行器节点表
 DROP TABLE IF EXISTS workers;
@@ -139,6 +142,7 @@ CREATE TABLE tasks (
                        retry_count     INT DEFAULT 3 COMMENT '重试次数',
                        retry_interval_seconds INT DEFAULT 60 COMMENT '重试间隔时间',
                        target_worker   VARCHAR(64) COMMENT '指定 Worker（为空表示自动调度）',
+                       required_tags   VARCHAR(512) COMMENT '任务需要的标签（JSON格式，如: ["V1","FastAPI"]），用于自动匹配Worker',
                        status          VARCHAR(16) NOT NULL COMMENT '任务状态: active/paused/deleted',
                        created_by      VARCHAR(64) COMMENT '创建人',
                        create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -146,6 +150,9 @@ CREATE TABLE tasks (
                        INDEX idx_execute_type (execute_type),
                        INDEX idx_task_type (task_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务定义表（支持脚本执行和HTTP回调）';
+
+INSERT INTO tasks(`id`, `name`, `description`, `execute_type`, `script_type`, `script_id`, `task_type`, `cron_expr`, `timeout_seconds`, `retry_count`, `retry_interval_seconds`, `target_worker`, `required_tags`, `status`, `created_by`) VALUES
+    ('d83d5ba5716a8282d439883132a37bc3', '测试', '测试任务', 'script', 'python', '005d3c6684c957078e66748b5001afeb', 'once', NULL, 180, 3, 60, NULL, NULL, 'active', 'system');
 
 -- 任务运行实例表
 DROP TABLE IF EXISTS task_run;
@@ -181,76 +188,76 @@ CREATE TABLE task_log (
 -- HTTP回调任务配置表
 DROP TABLE IF EXISTS callback_job_configs;
 CREATE TABLE callback_job_configs (
-    id                      VARCHAR(36) PRIMARY KEY COMMENT '配置ID（UUID）',
-    task_id                 VARCHAR(36) NOT NULL COMMENT '关联tasks.id',
+                                      id                      VARCHAR(36) PRIMARY KEY COMMENT '配置ID（UUID）',
+                                      task_id                 VARCHAR(36) NOT NULL COMMENT '关联tasks.id',
 
     -- 回调配置
-    callback_url            VARCHAR(512) NOT NULL COMMENT '回调URL',
-    callback_method         VARCHAR(8) DEFAULT 'POST' COMMENT '回调方法：GET/POST/PUT/DELETE',
+                                      callback_url            VARCHAR(512) NOT NULL COMMENT '回调URL',
+                                      callback_method         VARCHAR(8) DEFAULT 'POST' COMMENT '回调方法：GET/POST/PUT/DELETE',
 
     -- 认证配置（请求头 X-Secret）
-    secret_key              VARCHAR(64) NOT NULL COMMENT '认证秘钥，用于 X-Secret 请求头',
+                                      secret_key              VARCHAR(64) NOT NULL COMMENT '认证秘钥，用于 X-Secret 请求头',
 
     -- 状态统计
-    last_callback_time     DATETIME COMMENT '上次回调时间',
-    last_callback_status   VARCHAR(16) COMMENT '上次回调状态：success/failed/timeout',
-    total_callback_count   INT DEFAULT 0 COMMENT '总回调次数',
-    success_count          INT DEFAULT 0 COMMENT '成功次数',
-    failed_count           INT DEFAULT 0 COMMENT '失败次数',
+                                      last_callback_time     DATETIME COMMENT '上次回调时间',
+                                      last_callback_status   VARCHAR(16) COMMENT '上次回调状态：success/failed/timeout',
+                                      total_callback_count   INT DEFAULT 0 COMMENT '总回调次数',
+                                      success_count          INT DEFAULT 0 COMMENT '成功次数',
+                                      failed_count           INT DEFAULT 0 COMMENT '失败次数',
 
     -- 审计字段
-    created_by              VARCHAR(64) COMMENT '创建人',
-    create_time             DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time             DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                      created_by              VARCHAR(64) COMMENT '创建人',
+                                      create_time             DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                      update_time             DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-    INDEX idx_task_id (task_id),
-    INDEX idx_callback_url (callback_url)
+                                      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                                      INDEX idx_task_id (task_id),
+                                      INDEX idx_callback_url (callback_url)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HTTP回调任务配置表';
 
 -- HTTP回调执行记录表
 DROP TABLE IF EXISTS callback_job_runs;
 CREATE TABLE callback_job_runs (
-    id                      VARCHAR(36) PRIMARY KEY COMMENT '执行记录ID（UUID）',
-    task_id                 VARCHAR(36) NOT NULL COMMENT '关联tasks.id',
-    config_id               VARCHAR(36) NOT NULL COMMENT '关联callback_job_configs.id',
-    task_run_id             VARCHAR(36) COMMENT '关联task_run.id',
-    request_id              VARCHAR(64) DEFAULT (UUID()) COMMENT '请求ID（X-Request-Id），用于请求追踪，数据库自动生成',
+                                   id                      VARCHAR(36) PRIMARY KEY COMMENT '执行记录ID（UUID）',
+                                   task_id                 VARCHAR(36) NOT NULL COMMENT '关联tasks.id',
+                                   config_id               VARCHAR(36) NOT NULL COMMENT '关联callback_job_configs.id',
+                                   task_run_id             VARCHAR(36) COMMENT '关联task_run.id',
+                                   request_id              VARCHAR(64) DEFAULT (UUID()) COMMENT '请求ID（X-Request-Id），用于请求追踪，数据库自动生成',
 
     -- 执行状态
-    status                  VARCHAR(16) NOT NULL COMMENT '执行状态：pending/running/success/failed/timeout',
+                                   status                  VARCHAR(16) NOT NULL COMMENT '执行状态：pending/running/success/failed/timeout',
 
     -- 请求元数据（存储在数据库）
-    request_url             VARCHAR(512) COMMENT '实际请求URL',
-    request_method          VARCHAR(8) COMMENT '实际请求方法',
+                                   request_url             VARCHAR(512) COMMENT '实际请求URL',
+                                   request_method          VARCHAR(8) COMMENT '实际请求方法',
 
     -- 完整请求/响应数据（存储在MinIO）
-    request_path            VARCHAR(256) COMMENT '请求数据MinIO路径（包含headers和body）',
-    response_path           VARCHAR(256) COMMENT '响应数据MinIO路径（包含statusCode、headers和body）',
+                                   request_path            VARCHAR(256) COMMENT '请求数据MinIO路径（包含headers和body）',
+                                   response_path           VARCHAR(256) COMMENT '响应数据MinIO路径（包含statusCode、headers和body）',
 
     -- 响应元数据（存储在数据库）
-    response_status_code    INT COMMENT '响应状态码',
-    response_time_ms        INT COMMENT '响应时间（毫秒）',
+                                   response_status_code    INT COMMENT '响应状态码',
+                                   response_time_ms        INT COMMENT '响应时间（毫秒）',
 
     -- 执行信息
-    retry_index             INT DEFAULT 0 COMMENT '重试次数索引（0表示首次执行）',
-    start_time              DATETIME COMMENT '开始时间',
-    end_time                DATETIME COMMENT '结束时间',
-    duration_ms             INT COMMENT '执行耗时（毫秒）',
-    error_message           TEXT COMMENT '错误信息',
+                                   retry_index             INT DEFAULT 0 COMMENT '重试次数索引（0表示首次执行）',
+                                   start_time              DATETIME COMMENT '开始时间',
+                                   end_time                DATETIME COMMENT '结束时间',
+                                   duration_ms             INT COMMENT '执行耗时（毫秒）',
+                                   error_message           TEXT COMMENT '错误信息',
 
     -- 审计字段
-    create_time             DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                   create_time             DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
 
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-    FOREIGN KEY (config_id) REFERENCES callback_job_configs(id) ON DELETE CASCADE,
-    FOREIGN KEY (task_run_id) REFERENCES task_run(id) ON DELETE SET NULL,
+                                   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                                   FOREIGN KEY (config_id) REFERENCES callback_job_configs(id) ON DELETE CASCADE,
+                                   FOREIGN KEY (task_run_id) REFERENCES task_run(id) ON DELETE SET NULL,
 
-    INDEX idx_task_id (task_id),
-    INDEX idx_config_id (config_id),
-    INDEX idx_status (status),
-    INDEX idx_start_time (start_time),
-    INDEX idx_request_id (request_id)
+                                   INDEX idx_task_id (task_id),
+                                   INDEX idx_config_id (config_id),
+                                   INDEX idx_status (status),
+                                   INDEX idx_start_time (start_time),
+                                   INDEX idx_request_id (request_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='HTTP回调执行记录表';
 
 

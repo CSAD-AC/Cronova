@@ -62,8 +62,7 @@ export interface Role {
 export interface Tag {
   id: string
   name: string
-  operator?: string
-  version?: string
+  description?: string
   createTime?: string
   updateTime?: string
 }
@@ -71,8 +70,7 @@ export interface Tag {
 export interface TagVO {
   id: string
   name: string
-  operator?: string
-  version?: string
+  description?: string
   createTime?: string
   updateTime?: string
   scriptCount?: number

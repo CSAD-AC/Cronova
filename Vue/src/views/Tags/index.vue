@@ -3,7 +3,7 @@
     <div class="page-header">
       <div class="header-left">
         <h1 class="page-title">标签管理</h1>
-        <p class="page-subtitle">管理脚本和执行器的依赖标签</p>
+        <p class="page-subtitle">管理执行器镜像标签，用于任务匹配</p>
       </div>
       <div class="header-right">
         <el-input
@@ -47,7 +47,7 @@
             </div>
             <div class="stat-info">
               <div class="stat-value">{{ totalScriptCount }}</div>
-              <div class="stat-label">关联脚本总数</div>
+              <div class="stat-label">关联脚本数</div>
             </div>
           </div>
         </el-card>
@@ -60,7 +60,7 @@
             </div>
             <div class="stat-info">
               <div class="stat-value">{{ totalWorkerCount }}</div>
-              <div class="stat-label">关联执行器总数</div>
+              <div class="stat-label">关联执行器数</div>
             </div>
           </div>
         </el-card>
@@ -69,28 +69,42 @@
 
     <el-card class="table-card" shadow="never">
       <el-table 
-        :data="tags" 
+        :data="filteredTags" 
         v-loading="loading"
         style="width: 100%"
         stripe
       >
-        <el-table-column prop="name" label="标签名称" min-width="150" />
-        <el-table-column label="版本约束" min-width="150">
+        <el-table-column prop="name" label="标签名称" min-width="150">
           <template #default="{ row }">
-            <span v-if="row.operator && row.version">
-              {{ row.operator }} {{ row.version }}
-            </span>
-            <span v-else class="no-version">无约束</span>
+            <el-tag type="primary" effect="plain">{{ row.name }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="scriptCount" label="关联脚本" width="100" align="center" />
-        <el-table-column prop="workerCount" label="关联执行器" width="100" align="center" />
+        <el-table-column prop="description" label="描述" min-width="200">
+          <template #default="{ row }">
+            <span v-if="row.description" class="description-text">{{ row.description }}</span>
+            <span v-else class="no-description">暂无描述</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="关联脚本" width="120" align="center">
+          <template #default="{ row }">
+            <el-button link type="success" @click="showDetailDialog(row, 'script')">
+              {{ row.scriptCount || 0 }} 个
+            </el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="关联执行器" width="120" align="center">
+          <template #default="{ row }">
+            <el-button link type="warning" @click="showDetailDialog(row, 'worker')">
+              {{ row.workerCount || 0 }} 个
+            </el-button>
+          </template>
+        </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="180">
           <template #default="{ row }">
             {{ formatDateTime(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="showEditDialog(row)">
               <el-icon class="mr-1"><Edit /></el-icon>编辑
@@ -115,6 +129,7 @@
       </div>
     </el-card>
     
+    <!-- 创建/编辑标签弹窗 -->
     <el-dialog 
       v-model="dialogVisible" 
       :title="isEdit ? '编辑标签' : '创建标签'"
@@ -127,20 +142,10 @@
         label-width="100px"
       >
         <el-form-item label="标签名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入标签名称" />
+          <el-input v-model="formData.name" placeholder="如: V1, FastAPI, Python3.11" />
         </el-form-item>
-        <el-form-item label="操作符">
-          <el-select v-model="formData.operator" placeholder="选择操作符" style="width: 100%">
-            <el-option label="无约束" value="" />
-            <el-option label=">=" value=">=" />
-            <el-option label=">" value=">" />
-            <el-option label="==" value="==" />
-            <el-option label="<=" value="<=" />
-            <el-option label="<" value="<" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="版本号" v-if="formData.operator" prop="version">
-          <el-input v-model="formData.version" placeholder="例如: 2.28.0" />
+        <el-form-item label="描述" prop="description">
+          <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="标签描述，用于说明标签用途" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -150,6 +155,74 @@
         </el-button>
       </template>
     </el-dialog>
+    
+    <!-- 详情弹窗 -->
+    <el-dialog 
+      v-model="detailDialogVisible" 
+      :title="detailType === 'script' ? `标签「${currentTag?.name}」关联的脚本` : `标签「${currentTag?.name}」关联的执行器`"
+      width="600px"
+    >
+      <div class="detail-content">
+        <div class="detail-header">
+          <el-button type="primary" @click="showBindDialog">
+            <el-icon class="mr-1"><Plus /></el-icon>
+            {{ detailType === 'script' ? '关联脚本' : '关联执行器' }}
+          </el-button>
+        </div>
+        
+        <el-table :data="detailList" v-loading="detailLoading" style="width: 100%; margin-top: 16px;">
+          <el-table-column v-if="detailType === 'script'" prop="name" label="脚本名称" min-width="150" />
+          <el-table-column v-if="detailType === 'script'" prop="path" label="脚本路径" min-width="200" show-overflow-tooltip />
+          <el-table-column v-if="detailType === 'worker'" prop="host" label="主机名" min-width="120" />
+          <el-table-column v-if="detailType === 'worker'" prop="ip" label="IP地址" min-width="140" />
+          <el-table-column v-if="detailType === 'worker'" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button type="danger" plain size="small" @click="handleUnbind(row)">
+                取消关联
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        
+        <el-empty v-if="!detailLoading && detailList.length === 0" description="暂无关联" />
+      </div>
+    </el-dialog>
+    
+    <!-- 关联弹窗 -->
+    <el-dialog 
+      v-model="bindDialogVisible" 
+      :title="detailType === 'script' ? '关联脚本' : '关联执行器'"
+      width="600px"
+    >
+      <el-table :data="availableList" v-loading="bindLoading" style="width: 100%">
+        <el-table-column v-if="detailType === 'script'" prop="name" label="脚本名称" min-width="150" />
+        <el-table-column v-if="detailType === 'script'" prop="path" label="脚本路径" min-width="200" show-overflow-tooltip />
+        <el-table-column v-if="detailType === 'worker'" prop="host" label="主机名" min-width="120" />
+        <el-table-column v-if="detailType === 'worker'" prop="ip" label="IP地址" min-width="140" />
+        <el-table-column v-if="detailType === 'worker'" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
+              {{ row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" plain size="small" @click="handleBind(row)">
+              关联
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!bindLoading && availableList.length === 0" description="没有可关联的资源" />
+    </el-dialog>
   </div>
 </template>
 
@@ -158,7 +231,9 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Search, PriceTag, Document, Cpu } from '@element-plus/icons-vue'
 import { tagApi } from '@/services'
-import type { TagVO } from '@/types'
+import { scriptApi } from '@/services'
+import { workerApi } from '@/services'
+import type { TagVO, ScriptVO, WorkerVO } from '@/types'
 import type { FormInstance, FormRules } from 'element-plus'
 import { formatDateTime } from '@/utils/date'
 
@@ -166,9 +241,16 @@ const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
+const detailDialogVisible = ref(false)
+const bindDialogVisible = ref(false)
+const detailType = ref<'script' | 'worker'>('script')
+const detailLoading = ref(false)
+const bindLoading = ref(false)
 
 const tags = ref<TagVO[]>([])
 const currentTag = ref<TagVO | null>(null)
+const detailList = ref<(ScriptVO | WorkerVO)[]>([])
+const availableList = ref<(ScriptVO | WorkerVO)[]>([])
 
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -178,12 +260,19 @@ const searchKeyword = ref('')
 const totalScriptCount = computed(() => tags.value.reduce((sum, tag) => sum + (tag.scriptCount || 0), 0))
 const totalWorkerCount = computed(() => tags.value.reduce((sum, tag) => sum + (tag.workerCount || 0), 0))
 
+const filteredTags = computed(() => {
+  if (!searchKeyword.value) return tags.value
+  return tags.value.filter(tag => 
+    tag.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
+    (tag.description && tag.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
+  )
+})
+
 const formRef = ref<FormInstance>()
 const formData = reactive({
-  id: '',
+  id: 0,
   name: '',
-  operator: '',
-  version: '',
+  description: '',
 })
 
 const rules: FormRules = {
@@ -191,18 +280,6 @@ const rules: FormRules = {
     { required: true, message: '请输入标签名称', trigger: 'blur' },
     { min: 1, max: 50, message: '标签名称长度在1-50个字符', trigger: 'blur' },
   ],
-  version: [
-    {
-      validator: (_rule, value, callback) => {
-        if (formData.operator && !value) {
-          callback(new Error('选择操作符后必须填写版本号'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur'
-    }
-  ]
 }
 
 async function fetchTags() {
@@ -218,20 +295,18 @@ async function fetchTags() {
 
 function showCreateDialog() {
   isEdit.value = false
-  formData.id = ''
+  formData.id = 0
   formData.name = ''
-  formData.operator = ''
-  formData.version = ''
+  formData.description = ''
   dialogVisible.value = true
 }
 
 function showEditDialog(row: TagVO) {
   isEdit.value = true
   currentTag.value = row
-  formData.id = row.id
+  formData.id = row.id as number
   formData.name = row.name
-  formData.operator = row.operator || ''
-  formData.version = row.version || ''
+  formData.description = row.description || ''
   dialogVisible.value = true
 }
 
@@ -247,15 +322,13 @@ async function handleSubmit() {
         await tagApi.update({
           id: formData.id,
           name: formData.name,
-          operator: formData.operator || undefined,
-          version: formData.version || undefined,
+          description: formData.description || undefined,
         })
         ElMessage.success('更新成功')
       } else {
         await tagApi.create({
           name: formData.name,
-          operator: formData.operator || undefined,
-          version: formData.version || undefined,
+          description: formData.description || undefined,
         })
         ElMessage.success('创建成功')
       }
@@ -271,22 +344,123 @@ async function handleSubmit() {
 
 async function handleDelete(row: TagVO) {
   try {
-    await ElMessageBox.confirm(`确定要删除标签"${row.name}"吗？`, '警告', {
+    await ElMessageBox.confirm(`确定要删除标签「${row.name}」吗？`, '警告', {
       confirmButtonText: '确定删除',
       cancelButtonText: '取消',
       type: 'warning',
     })
     await tagApi.delete(row.id)
     ElMessage.success('删除成功')
-    // 如果当前页只有一条数据且不是第一页，则跳转到上一页
     if (tags.value.length === 1 && currentPage.value > 1) {
       currentPage.value--
     }
     await fetchTags()
   } catch (error) {
-    // 用户取消或操作失败
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
+    }
+  }
+}
+
+async function showDetailDialog(row: TagVO, type: 'script' | 'worker') {
+  currentTag.value = row
+  detailType.value = type
+  detailDialogVisible.value = true
+  detailLoading.value = true
+  detailList.value = []
+  
+  try {
+    if (type === 'script') {
+      const res = await tagApi.getScripts(row.id as number)
+      detailList.value = Array.isArray(res) ? res : []
+    } else {
+      const res = await tagApi.getWorkers(row.id as number)
+      detailList.value = Array.isArray(res) ? res : []
+    }
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function showBindDialog() {
+  if (!currentTag.value) return
+  bindDialogVisible.value = true
+  bindLoading.value = true
+  availableList.value = []
+  
+  try {
+    if (detailType.value === 'script') {
+      const [allScriptsRes, boundScriptsRes] = await Promise.all([
+        scriptApi.list({ pageNum: 1, pageSize: 1000 }),
+        tagApi.getScripts(currentTag.value.id as number)
+      ])
+      // scriptApi.list 返回的是数组
+      const allScripts = Array.isArray(allScriptsRes) ? allScriptsRes : []
+      // 过滤掉文件夹，只保留文件
+      const fileScripts = allScripts.filter((s: ScriptVO) => !s.isDirectory)
+      // getScripts 返回数组
+      const boundScripts = boundScriptsRes || []
+      const boundIds = new Set(boundScripts.map((s: ScriptVO) => s.id))
+      availableList.value = fileScripts.filter((s: ScriptVO) => !boundIds.has(s.id))
+    } else {
+      const [allWorkersRes, boundWorkersRes] = await Promise.all([
+        workerApi.list({ pageNum: 1, pageSize: 1000 }),
+        tagApi.getWorkers(currentTag.value.id as number)
+      ])
+      // workerApi.list 返回的是数组（不是分页对象）
+      const allWorkers = Array.isArray(allWorkersRes) ? allWorkersRes : (allWorkersRes?.records || [])
+      // getWorkers 返回数组
+      const boundWorkers = boundWorkersRes || []
+      const boundIds = new Set(boundWorkers.map((w: WorkerVO) => w.id))
+      availableList.value = allWorkers.filter((w: WorkerVO) => !boundIds.has(w.id))
+    }
+  } finally {
+    bindLoading.value = false
+  }
+}
+
+async function handleBind(row: ScriptVO | WorkerVO) {
+  if (!currentTag.value) return
+  
+  try {
+    if (detailType.value === 'script') {
+      await tagApi.bindScript(currentTag.value.id as number, row.id)
+      ElMessage.success('关联成功')
+    } else {
+      await tagApi.bindWorker(currentTag.value.id as number, row.id)
+      ElMessage.success('关联成功')
+    }
+    bindDialogVisible.value = false
+    await showDetailDialog(currentTag.value, detailType.value)
+    fetchTags()
+  } catch (error) {
+    ElMessage.error('关联失败')
+  }
+}
+
+async function handleUnbind(row: ScriptVO | WorkerVO) {
+  if (!currentTag.value) return
+  
+  try {
+    await ElMessageBox.confirm('确定要取消关联吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    
+    if (detailType.value === 'script') {
+      await tagApi.unbindScript(currentTag.value.id as number, row.id)
+      ElMessage.success('取消关联成功')
+    } else {
+      await tagApi.unbindWorker(currentTag.value.id as number, row.id)
+      ElMessage.success('取消关联成功')
+    }
+    
+    await showDetailDialog(currentTag.value, detailType.value)
+    fetchTags()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('取消关联失败')
     }
   }
 }
@@ -298,7 +472,7 @@ onMounted(() => {
 
 <style scoped>
 .tag-list-container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -326,8 +500,13 @@ onMounted(() => {
   border-radius: 12px;
 }
 
-.no-version {
+.no-description {
   color: #94a3b8;
+  font-size: 13px;
+}
+
+.description-text {
+  color: #475569;
   font-size: 13px;
 }
 
@@ -381,4 +560,8 @@ onMounted(() => {
 .text-green-600 { color: #16a34a; }
 .bg-purple-100 { background-color: #f3e8ff; }
 .text-purple-600 { color: #9333ea; }
+
+.detail-header {
+  margin-bottom: 16px;
+}
 </style>

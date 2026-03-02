@@ -15,12 +15,11 @@
           class="folder-tree"
         >
           <template #default="{ node, data }">
-            <span class="custom-tree-node">
+            <span class="custom-tree-node" :class="{ 'is-directory': data.isDirectory, 'is-file': !data.isDirectory }">
               <el-icon class="mr-2">
-                <component :is="data.icon || 'Folder'" />
+                <component :is="data.isDirectory ? 'Folder' : 'Document'" />
               </el-icon>
               <span>{{ node.label }}</span>
-              <span v-if="data.count" class="count-badge">{{ data.count }}</span>
             </span>
           </template>
         </el-tree>
@@ -209,27 +208,20 @@
             v-model="selectedTags"
             multiple
             filterable
-            placeholder="搜索并选择标签 (如 pandas)"
+            placeholder="搜索并选择标签"
             style="width: 100%"
-            tag-type="primary"
           >
-            <el-option-group
-              v-for="group in groupedAllTags"
-              :key="group.name"
-              :label="group.name"
+            <el-option
+              v-for="tag in allTags"
+              :key="tag.id"
+              :label="tag.name"
+              :value="tag.id"
             >
-              <el-option
-                v-for="tag in group.versions"
-                :key="tag.id"
-                :label="`${tag.name} ${tag.operator || ''} ${tag.version || ''}`"
-                :value="tag.id"
-              >
-                <div class="flex justify-between items-center w-full">
-                  <span>{{ tag.operator || '==' }} {{ tag.version || 'any' }}</span>
-                  <el-tag size="small" type="info" effect="plain">ID: {{ String(tag.id).slice(0, 4) }}</el-tag>
-                </div>
-              </el-option>
-            </el-option-group>
+              <div class="flex justify-between items-center w-full">
+                <span>{{ tag.name }}</span>
+                <el-tag v-if="tag.description" size="small" type="info" effect="plain">{{ tag.description }}</el-tag>
+              </div>
+            </el-option>
           </el-select>
           
           <div v-if="!allTags.length" class="no-tags-hint">
@@ -273,21 +265,7 @@ const uploadFile = ref<any>(null)
 const uploadDirFile = ref<any>(null)
 const uploadTab = ref('file')
 
-const groupedAllTags = computed(() => {
-  const groups: Record<string, { name: string; versions: TagVO[] }> = {}
-  allTags.value.forEach(tag => {
-    if (tag.name) {
-      if (!groups[tag.name]) {
-        groups[tag.name] = { name: tag.name, versions: [] }
-      }
-      groups[tag.name]!.versions.push(tag)
-    }
-  })
-  return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name))
-})
-
-const currentFolder = ref('全部脚本')
-const currentFilter = ref('all')
+const currentFolder = ref('根目录')
 
 // 文件管理器模式：当前所在目录ID（null表示根目录）
 const currentDirectoryId = ref<string | null>(null)
@@ -318,7 +296,7 @@ const breadcrumb = computed(() => {
 function enterDirectory(folderId: string | null) {
   currentDirectoryId.value = folderId
   if (folderId === null) {
-    currentFolder.value = '全部脚本'
+    currentFolder.value = '根目录'
   } else {
     const folder = scripts.value.find(s => s.id === folderId)
     currentFolder.value = folder?.name || '目录'
@@ -386,37 +364,8 @@ const folderTree = computed(() => {
   }
   sortNodes(rootNodes)
 
-  const counts = {
-    all: allScripts.length,
-    py: allScripts.filter(s => s.name.endsWith('.py')).length,
-    java: allScripts.filter(s => s.name.endsWith('.java')).length,
-    go: allScripts.filter(s => s.name.endsWith('.go')).length,
-    directory: allScripts.filter(s => s.isDirectory).length,
-    other: 0
-  }
-  counts.other = counts.all - (counts.py + counts.java + counts.go)
-
-  // 合并真实层级结构和原来的分类
-  return [
-    { label: '全部脚本', id: 'all', icon: 'Folder', count: counts.all, children: [] },
-    { 
-      label: '按类型分类', 
-      id: 'types',
-      icon: 'Folder', 
-      children: [
-        { label: 'Python', id: 'py', icon: 'Document', count: counts.py },
-        { label: 'Java', id: 'java', icon: 'Document', count: counts.java },
-        { label: 'Go', id: 'go', icon: 'Document', count: counts.go },
-        { label: '其他', id: 'other', icon: 'Document', count: counts.other },
-      ]
-    },
-    {
-      label: '📁 层级目录',
-      id: 'hierarchy',
-      icon: 'Folder',
-      children: rootNodes
-    }
-  ]
+  // 直接返回根目录的树形结构
+  return rootNodes
 })
 
 const defaultProps = {
@@ -431,27 +380,9 @@ const filteredScripts = computed(() => {
   if (currentDirectoryId.value !== null) {
     // 在目录中：只显示当前目录的直接子文件和子目录
     result = result.filter(s => s.parentId === currentDirectoryId.value)
-  } else if (currentFilter.value === 'hierarchy') {
-    // 层级目录视图：显示所有根目录
-    result = result.filter(s => s.isDirectory && !s.parentId)
-  } else if (currentFilter.value === 'all' || currentFilter.value === 'types' || currentFilter.value === 'all') {
-    // 根目录视图
-    result = result.filter(s => !s.parentId)
   } else {
-    // 类型过滤
-    result = result.filter(s => {
-      if (currentFilter.value === 'py') return s.name.endsWith('.py')
-      if (currentFilter.value === 'java') return s.name.endsWith('.java')
-      if (currentFilter.value === 'sh') return s.name.endsWith('.sh')
-      if (currentFilter.value === 'go') return s.name.endsWith('.go')
-      if (currentFilter.value === 'other') {
-        return !s.name.endsWith('.py') && 
-               !s.name.endsWith('.java') && 
-               !s.name.endsWith('.sh') && 
-               !s.name.endsWith('.go')
-      }
-      return true
-    })
+    // 根目录视图：显示所有根目录下的直接子文件和子目录
+    result = result.filter(s => !s.parentId)
   }
   
   // 目录在前，文件在后排序
@@ -505,14 +436,14 @@ function handleNodeClick(data: any) {
     return
   }
   
-  // 处理分类节点（全部脚本、按类型分类）
-  if (data.children) return
-  
-  // 处理类型过滤节点（Python、Java、Go等）
-  currentFolder.value = data.label
-  currentFilter.value = data.id
-  // 切换到根目录视图
-  currentDirectoryId.value = null
+  // 处理层级目录中的文件节点 - 跳转到文件所在目录
+  const allScripts = scripts.value
+  const fileNode = allScripts.find(s => s.id === data.id || s.id === data.id.toString().replace('dir_', ''))
+  if (fileNode && !fileNode.isDirectory) {
+    // 跳转到文件的父目录
+    enterDirectory(fileNode.parentId)
+    return
+  }
 }
 
 function handleRowDblClick(row: ScriptVO) {
@@ -694,6 +625,7 @@ onMounted(() => {
   border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar-header {
@@ -709,6 +641,8 @@ onMounted(() => {
 .folder-tree {
   padding: 12px;
   background: transparent;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .custom-tree-node {
@@ -716,6 +650,15 @@ onMounted(() => {
   align-items: center;
   width: 100%;
   font-size: 14px;
+}
+
+.custom-tree-node.is-directory {
+  color: #eab308;
+  font-weight: 500;
+}
+
+.custom-tree-node.is-file {
+  color: #64748b;
 }
 
 .count-badge {

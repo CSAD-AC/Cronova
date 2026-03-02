@@ -1,6 +1,9 @@
 package com.sjdt.scheduler.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.dto.CallbackJobConfigCreateDTO;
 import com.sjdt.scheduler.domain.dto.CallbackJobConfigUpdateDTO;
@@ -24,6 +27,7 @@ import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.ICallbackJobConfigService;
 import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.service.IWorkerService;
 import com.sjdt.scheduler.service.TaskProducerService;
 import com.sjdt.scheduler.task.TaskCallbackExecutor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -69,6 +74,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    private final ObjectMapper objectMapper;
+
+    private final IWorkerService workerService;
+
     @Autowired
     public TaskServiceImpl(TaskProducerService taskProducerService,
                           IScriptService scriptService,
@@ -77,7 +86,9 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                           CallbackJobConfigMapper callbackJobConfigMapper,
                           ICallbackJobConfigService callbackJobConfigService,
                           TaskCallbackExecutor taskCallbackExecutor,
-                          RedisTemplate<String, Object> redisTemplate) {
+                          RedisTemplate<String, Object> redisTemplate,
+                          ObjectMapper objectMapper,
+                          IWorkerService workerService) {
         this.taskProducerService = taskProducerService;
         this.scriptService = scriptService;
         this.scriptMapper = scriptMapper;
@@ -86,6 +97,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         this.callbackJobConfigService = callbackJobConfigService;
         this.taskCallbackExecutor = taskCallbackExecutor;
         this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+        this.workerService = workerService;
     }
 
     /**
@@ -158,8 +171,18 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             throw new IllegalArgumentException("任务不存在，ID: " + taskUpdateDTO.getId());
         }
 
+        // 处理 requiredTags 转换
+        if (taskUpdateDTO.getRequiredTags() != null) {
+            try {
+                String requiredTagsJson = objectMapper.writeValueAsString(taskUpdateDTO.getRequiredTags());
+                task.setRequiredTags(requiredTagsJson);
+            } catch (JsonProcessingException e) {
+                log.error("序列化requiredTags失败", e);
+            }
+        }
+
         // 更新基本信息（排除createdBy和createTime，不排除status以允许状态更新）
-        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "createdBy", "createTime");
+        BeanUtils.copyProperties(taskUpdateDTO, task, "id", "createdBy", "createTime", "requiredTags");
         
         // 如果请求中包含状态更新，则更新状态
         if (taskUpdateDTO.getStatus() != null) {
@@ -241,6 +264,14 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         TaskVO taskVO = new TaskVO();
         BeanUtils.copyProperties(task, taskVO);
 
+        if (task.getRequiredTags() != null && !task.getRequiredTags().isEmpty()) {
+            try {
+                taskVO.setRequiredTags(objectMapper.readValue(task.getRequiredTags(), new TypeReference<java.util.Set<String>>() {}));
+            } catch (JsonProcessingException e) {
+                log.error("反序列化requiredTags失败，JSON: {}", task.getRequiredTags(), e);
+            }
+        }
+
         if (task.getExecuteType() == ExecuteType.callback) {
             CallbackJobConfig config = callbackJobConfigMapper.selectOne(
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallbackJobConfig>()
@@ -275,6 +306,15 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @return Task实体
      */
     private Task buildTaskFromDTO(TaskCreateDTO dto) {
+        String requiredTagsJson = null;
+        if (dto.getRequiredTags() != null && !dto.getRequiredTags().isEmpty()) {
+            try {
+                requiredTagsJson = objectMapper.writeValueAsString(dto.getRequiredTags());
+            } catch (JsonProcessingException e) {
+                log.error("序列化requiredTags失败", e);
+            }
+        }
+
         return Task.builder()
                 .name(dto.getName())
                 .description(dto.getDescription())
@@ -287,6 +327,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .retryCount(dto.getRetryCount() != null ? dto.getRetryCount() : 0)
                 .retryIntervalSeconds(dto.getRetryIntervalSeconds() != null ? dto.getRetryIntervalSeconds() : 60)
                 .targetWorker(dto.getTargetWorker())
+                .requiredTags(requiredTagsJson)
                 .status(TaskStatus.active)
                 .createdBy("system")
                 .createTime(LocalDateTime.now())
@@ -379,6 +420,25 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         log.info("脚本信息 - ID: {}, name: {}, path: {}, isDirectory: {}, parentId: {}, rootPath: {}",
                 script.getId(), script.getName(), script.getPath(), script.getIsDirectory(), script.getParentId(), rootPath);
 
+        // 处理标签匹配：如果未指定 targetWorker，则根据 requiredTags 匹配 Worker
+        String targetWorkerId = task.getTargetWorker();
+        Set<String> requiredTags = parseRequiredTags(task.getRequiredTags());
+        
+        if (targetWorkerId == null && requiredTags != null && !requiredTags.isEmpty()) {
+            log.info("任务未指定Worker，尝试根据标签匹配，requiredTags: {}", requiredTags);
+            List<com.sjdt.scheduler.domain.po.Worker> matchedWorkers = workerService.findOnlineWorkersByTags(requiredTags);
+            
+            if (!matchedWorkers.isEmpty()) {
+                // 简单策略：随机选择一个匹配的 Worker
+                // TODO: 可以优化为选择负载最低的 Worker
+                com.sjdt.scheduler.domain.po.Worker selectedWorker = matchedWorkers.get(0);
+                targetWorkerId = selectedWorker.getId();
+                log.info("根据标签匹配到Worker: {}, 标签: {}", targetWorkerId, requiredTags);
+            } else {
+                log.warn("没有找到符合标签要求的在线Worker，任务将无法执行，requiredTags: {}", requiredTags);
+            }
+        }
+
         TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
                 .id(script.getId())
                 .name(script.getName())
@@ -399,7 +459,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .script(scriptInfo)
                 .taskType(task.getTaskType().name())
                 .cronExpr(task.getCronExpr())
-                .targetWorkerId(task.getTargetWorker())
+                .targetWorkerId(targetWorkerId)
                 .timeoutSeconds(task.getTimeoutSeconds())
                 .build();
 
@@ -411,6 +471,23 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         } else {
             taskProducerService.sendTask(message);
             log.info("脚本任务已发布，任务ID: {}, 运行ID: {}, 重试次数: {}", task.getId(), taskRunId, retryNum);
+        }
+    }
+
+    /**
+     * 解析任务 requiredTags 字段
+     * @param requiredTagsJson JSON 格式的标签字符串
+     * @return 标签集合
+     */
+    private Set<String> parseRequiredTags(String requiredTagsJson) {
+        if (requiredTagsJson == null || requiredTagsJson.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(requiredTagsJson, new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {});
+        } catch (Exception e) {
+            log.error("解析 requiredTags 失败: {}", requiredTagsJson, e);
+            return null;
         }
     }
 

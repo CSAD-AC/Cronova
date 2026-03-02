@@ -523,7 +523,7 @@ async function handleSubmit() {
 }
 
 .page-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
 }
 
@@ -533,6 +533,14 @@ async function handleSubmit() {
 
 .task-form {
   padding: 20px 0;
+}
+
+/* 缩小表单区域的按钮，使与列表页一致 */
+:deep(.task-create-container) :deep(.el-button),
+:deep(.task-create-container) .el-button {
+  font-size: 13px;
+  padding: 6px 10px;
+  height: 34px;
 }
 
 .form-tip {

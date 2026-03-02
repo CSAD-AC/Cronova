@@ -2,6 +2,7 @@ from app.config import Config
 from app.http_client import HttpClient
 from app.model.worker import WorkerRegisterRequest
 from app.utils.ip_utils import IPUtils
+from app.service.tag_report_service import TagReportService
 
 
 class RegisterService:
@@ -16,9 +17,9 @@ class RegisterService:
         register_req = WorkerRegisterRequest(
             host=Config.HOST,
             ip=Config.IP,
-            tags=Config.TAGS
+            tags=Config.WORKER_TAGS
         )
-        print(register_req)
+        print(f"[Register] 注册请求: host={Config.HOST}, ip={Config.IP}, tags={Config.WORKER_TAGS}")
         # 3. 发送注册请求
         response = HttpClient.post(Config.WORKER_REGISTER_URL, json_data=register_req.dict())
         if not response:
@@ -42,6 +43,9 @@ class RegisterService:
 
             # 6. 保存到本地配置文件
             Config.save_local_config()
+
+            # 7. 初始化标签上报服务
+            TagReportService.init_reported_tags(Config.WORKER_TAGS)
 
             print(f"Worker注册成功，ID：{Config.WORKER_ID}，AK：{Config.ACCESS_KEY}")
             return True

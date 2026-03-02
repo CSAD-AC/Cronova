@@ -2,8 +2,10 @@ package com.sjdt.scheduler.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sjdt.scheduler.domain.po.Worker;
 import com.sjdt.scheduler.domain.po.WorkerTag;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,6 +43,16 @@ public interface WorkerTagMapper extends BaseMapper<WorkerTag> {
                 .map(obj -> (String) obj)
                 .toList();
     }
+
+    /**
+     * 根据标签ID查询关联的执行器列表
+     * @param tagId 标签ID
+     * @return 执行器列表
+     */
+    @Select("SELECT w.* FROM workers w " +
+            "INNER JOIN worker_tags wt ON w.id = wt.worker_id " +
+            "WHERE wt.tag_id = #{tagId}")
+    List<Worker> selectWorkersByTagId(Integer tagId);
     
     /**
      * 为Worker添加标签

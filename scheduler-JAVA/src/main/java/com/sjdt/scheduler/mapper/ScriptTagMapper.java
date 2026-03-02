@@ -2,8 +2,10 @@ package com.sjdt.scheduler.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sjdt.scheduler.domain.po.Script;
 import com.sjdt.scheduler.domain.po.ScriptTag;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,6 +43,16 @@ public interface ScriptTagMapper extends BaseMapper<ScriptTag> {
                 .map(obj -> (String) obj)
                 .toList();
     }
+
+    /**
+     * 根据标签ID查询关联的脚本列表
+     * @param tagId 标签ID
+     * @return 脚本列表
+     */
+    @Select("SELECT s.* FROM scripts s " +
+            "INNER JOIN script_tags st ON s.id = st.script_id " +
+            "WHERE st.tag_id = #{tagId}")
+    List<Script> selectScriptsByTagId(Integer tagId);
     
     /**
      * 为Script添加标签

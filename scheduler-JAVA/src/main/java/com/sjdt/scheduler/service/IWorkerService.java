@@ -3,6 +3,9 @@ package com.sjdt.scheduler.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.sjdt.scheduler.domain.po.Worker;
 
+import java.util.List;
+import java.util.Set;
+
 /**
  * Worker Service 接口
  * 提供 Worker 执行器的管理和操作
@@ -48,5 +51,13 @@ public interface IWorkerService extends IService<Worker> {
      * @return 在线 Worker 数量
      */
     long countOnlineWorkers();
+
+    /**
+     * 根据标签列表查找在线 Worker
+     * 匹配规则：Worker 必须拥有所有要求的标签
+     * @param requiredTags 任务需要的标签列表
+     * @return 符合条件的在线 Worker 列表
+     */
+    List<Worker> findOnlineWorkersByTags(Set<String> requiredTags);
 
 }

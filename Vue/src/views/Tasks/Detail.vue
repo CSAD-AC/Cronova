@@ -939,7 +939,7 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
 }
 
@@ -966,6 +966,14 @@ onUnmounted(() => {
 
 .action-list .el-button {
   width: 100%;
+}
+
+/* 缩小侧栏操作按钮样式，保持与列表/表单一致 */
+.action-list .el-button,
+:deep(.task-detail-container) :deep(.el-button) {
+  font-size: 13px;
+  padding: 6px 10px;
+  height: 34px;
 }
 
 .stats-list {
@@ -1150,9 +1158,9 @@ onUnmounted(() => {
 }
 
 .cron-desc {
-  font-size: 12px;
+  font-size: 13px;
   color: #909399;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 /* 健康检查结果弹窗样式 */

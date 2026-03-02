@@ -1,8 +1,10 @@
 package com.sjdt.scheduler.controller;
 
 import cn.hutool.core.util.IdUtil;
+import com.sjdt.scheduler.common.ErrorCodeEnum;
 import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.message.WorkerRegisterDTO;
+import com.sjdt.scheduler.domain.message.UpdateTagsRequest;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.AKSK;
 import com.sjdt.scheduler.domain.po.Tag;
@@ -137,24 +139,21 @@ public class WorkerController {
 
         if (registerDTO.getTags() != null && !registerDTO.getTags().isEmpty()) {
             log.info("为新Worker处理标签，WorkerID: {}, 标签数量: {}", newWorker.getId(), registerDTO.getTags().size());
-            for (Tag tagDto : registerDTO.getTags()) {
+            for (String tagName : registerDTO.getTags()) {
                 Tag tag = tagMapper.selectOne(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Tag>()
-                                .eq(Tag::getName, tagDto.getName())
-                                .eq(Tag::getOperator, "==")
-                                .eq(Tag::getVersion, tagDto.getVersion())
+                                .eq(Tag::getName, tagName)
                 );
-                
+
                 if (tag == null) {
                     tag = new Tag();
-                    tag.setName(tagDto.getName());
-                    tag.setOperator("==");
-                    tag.setVersion(tagDto.getVersion());
+                    tag.setName(tagName);
+                    tag.setDescription("Worker注册时自动创建");
                     tag.setCreateTime(LocalDateTime.now());
                     tagMapper.insert(tag);
-                    log.info("创建新标签，名称: {}, 操作符: {}, 版本: {}, ID: {}", tag.getName(), tag.getOperator(), tag.getVersion(), tag.getId());
+                    log.info("创建新标签，名称: {}, ID: {}", tag.getName(), tag.getId());
                 }
-                
+
                 WorkerTag workerTag = new WorkerTag();
                 workerTag.setWorkerId(newWorker.getId());
                 workerTag.setTagId(tag.getId());
@@ -229,6 +228,64 @@ public class WorkerController {
         // 同时刷新心跳存活时间
         redisTemplate.opsForValue().set(RedisKey.getWorkerHeartbeatKey(workerId), "online", 30, TimeUnit.SECONDS);
         
+        return Result.success();
+    }
+
+    /**
+     * Worker标签更新接口
+     * Worker动态更新标签时调用此接口
+     */
+    @PostMapping("/tags/{workerId}")
+    @Operation(summary = "更新Worker标签", description = "Worker执行器动态更新自身标签，用于任务匹配")
+    public Result<Void> updateWorkerTags(@PathVariable String workerId, @RequestBody UpdateTagsRequest request) {
+        log.info("收到Worker标签更新请求 | WorkerID: {}, 新标签: {}", workerId, request.getTags());
+
+        Worker worker = workerMapper.selectById(workerId);
+        if (worker == null) {
+            log.warn("Worker不存在，无法更新标签 | WorkerID: {}", workerId);
+            return Result.error(ErrorCodeEnum.WORKER_NOT_FOUND);
+        }
+
+        List<String> newTags = request.getTags();
+        if (newTags == null || newTags.isEmpty()) {
+            log.info("Worker标签为空，清空所有标签 | WorkerID: {}", workerId);
+            workerTagMapper.delete(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WorkerTag>()
+                            .eq(WorkerTag::getWorkerId, workerId)
+            );
+            return Result.success();
+        }
+
+        // 1. 删除旧的标签关联
+        workerTagMapper.delete(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WorkerTag>()
+                        .eq(WorkerTag::getWorkerId, workerId)
+        );
+
+        // 2. 添加新的标签关联
+        for (String tagName : newTags) {
+            Tag tag = tagMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Tag>()
+                            .eq(Tag::getName, tagName)
+            );
+
+            if (tag == null) {
+                tag = new Tag();
+                tag.setName(tagName);
+                tag.setDescription("Worker动态更新时创建");
+                tag.setCreateTime(LocalDateTime.now());
+                tagMapper.insert(tag);
+                log.info("创建新标签，名称: {}, ID: {}", tag.getName(), tag.getId());
+            }
+
+            WorkerTag workerTag = new WorkerTag();
+            workerTag.setWorkerId(workerId);
+            workerTag.setTagId(tag.getId());
+            workerTag.setCreateTime(LocalDateTime.now());
+            workerTagMapper.insert(workerTag);
+        }
+
+        log.info("Worker标签更新成功 | WorkerID: {}, 标签: {}", workerId, newTags);
         return Result.success();
     }
 
