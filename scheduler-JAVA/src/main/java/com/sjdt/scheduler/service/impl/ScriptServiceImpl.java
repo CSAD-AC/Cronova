@@ -26,12 +26,22 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -192,23 +202,20 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
     @Override
     public ScriptVO uploadDirectory(MultipartFile file) {
         try {
-            // 检查MinIO中是否存在bucket，不存在则创建
             boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(BUCKET_NAME).build());
             if (!found) {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(BUCKET_NAME).build());
             }
 
-            // 生成唯一文件夹ID
             String folderId = UUID.randomUUID().toString();
             String folderPath = SCRIPT_FOLDER + folderId + "/";
             String fullPath = BUCKET_NAME + "/" + folderPath;
 
-            // 1. 先创建父目录Script记录
             String folderName = file.getOriginalFilename();
             if (folderName != null && folderName.toLowerCase().endsWith(".zip")) {
                 folderName = folderName.substring(0, folderName.length() - 4);
             }
-            Script parentScript = Script.builder()
+            Script rootDir = Script.builder()
                     .name(folderName)
                     .path(fullPath)
                     .isDirectory(true)
@@ -216,75 +223,134 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
                     .createTime(LocalDateTime.now())
                     .updateTime(LocalDateTime.now())
                     .build();
-            save(parentScript);
-            log.info("创建父目录Script记录: ID={}, name={}", parentScript.getId(), folderName);
+            save(rootDir);
+            log.info("创建根目录Script记录: ID={}, name={}", rootDir.getId(), folderName);
 
-            // 2. 解压ZIP文件并为每个文件创建Script记录
-            int fileCount = 0;
+            Map<String, Script> dirScriptMap = new HashMap<>();
+            dirScriptMap.put("", rootDir);
+
+            List<ZipEntry> allEntries = new ArrayList<>();
             try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
                 ZipEntry entry;
                 while ((entry = zis.getNextEntry()) != null) {
-                    if (!entry.isDirectory()) {
-                        String entryName = entry.getName();
-                        
-                        // 解析相对路径（去除ZIP中的根目录名）
-                        String relativePath = entryName;
-                        if (entryName.contains("/")) {
-                            int firstSlash = entryName.indexOf('/');
-                            relativePath = entryName.substring(firstSlash + 1);
-                        }
-                        if (relativePath.isEmpty()) continue;
-
-                        // 上传文件到MinIO
-                        String objectName = folderPath + relativePath;
-                        byte[] content = zis.readAllBytes();
-                        minioClient.putObject(
-                                PutObjectArgs.builder()
-                                        .bucket(BUCKET_NAME)
-                                        .object(objectName)
-                                        .stream(new ByteArrayInputStream(content), content.length, -1)
-                                        .contentType(getContentType(relativePath))
-                                        .build()
-                        );
-
-                        // 为每个文件创建独立的Script记录
-                        String fileName = relativePath;
-                        if (relativePath.contains("/")) {
-                            fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
-                        }
-                        
-                        Script fileScript = Script.builder()
-                                .name(fileName)
-                                .path(fullPath + relativePath)
-                                .isDirectory(false)
-                                .parentId(parentScript.getId())
-                                .createTime(LocalDateTime.now())
-                                .updateTime(LocalDateTime.now())
-                                .build();
-                        save(fileScript);
-                        
-                        fileCount++;
-                        log.debug("创建文件Script记录: ID={}, name={}, parentId={}", 
-                                fileScript.getId(), fileName, parentScript.getId());
-                    }
-                    zis.closeEntry();
+                    allEntries.add(entry);
                 }
             }
 
-            log.info("文件夹上传完成，共 {} 个文件，父目录ID: {}", fileCount, parentScript.getId());
+            for (ZipEntry entry : allEntries) {
+                if (entry.isDirectory()) {
+                    String entryName = entry.getName();
+                    if (entryName.endsWith("/")) {
+                        entryName = entryName.substring(0, entryName.length() - 1);
+                    }
+                    if (entryName.contains("/")) {
+                        String relativeDir = entryName.substring(entryName.indexOf('/') + 1);
+                        getOrCreateParentDir(relativeDir, rootDir, folderPath, fullPath, dirScriptMap);
+                    }
+                } else {
+                    String entryName = entry.getName();
+                    String relativePath = entryName;
+                    if (entryName.contains("/")) {
+                        relativePath = entryName.substring(entryName.indexOf('/') + 1);
+                    }
+                    if (relativePath.isEmpty()) continue;
 
-            // 返回父目录信息
+                    String parentDirPath = "";
+                    if (relativePath.contains("/")) {
+                        parentDirPath = relativePath.substring(0, relativePath.lastIndexOf('/'));
+                    }
+
+                    Script parentDir = getOrCreateParentDir(parentDirPath, rootDir, folderPath, fullPath, dirScriptMap);
+
+                    String objectName = folderPath + relativePath;
+                    byte[] content;
+                    try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
+                        ZipEntry fileEntry;
+                        while ((fileEntry = zis.getNextEntry()) != null) {
+                            if (fileEntry.getName().equals(entryName)) {
+                                content = zis.readAllBytes();
+                                minioClient.putObject(
+                                        PutObjectArgs.builder()
+                                                .bucket(BUCKET_NAME)
+                                                .object(objectName)
+                                                .stream(new ByteArrayInputStream(content), content.length, -1)
+                                                .contentType(getContentType(relativePath))
+                                                .build()
+                                );
+                                break;
+                            }
+                        }
+                    }
+
+                    String fileName = relativePath.contains("/") 
+                            ? relativePath.substring(relativePath.lastIndexOf('/') + 1) 
+                            : relativePath;
+
+                    Script fileScript = Script.builder()
+                            .name(fileName)
+                            .path(fullPath + relativePath)
+                            .isDirectory(false)
+                            .parentId(parentDir.getId())
+                            .createTime(LocalDateTime.now())
+                            .updateTime(LocalDateTime.now())
+                            .build();
+                    save(fileScript);
+
+                    log.debug("创建文件Script记录: ID={}, name={}, parentId={}",
+                            fileScript.getId(), fileName, parentDir.getId());
+                }
+            }
+
+            log.info("文件夹上传完成，根目录ID: {}", rootDir.getId());
+
             return ScriptVO.builder()
-                    .id(parentScript.getId())
-                    .path(parentScript.getPath())
-                    .name(parentScript.getName())
+                    .id(rootDir.getId())
+                    .path(rootDir.getPath())
+                    .name(rootDir.getName())
                     .isDirectory(true)
-                    .parentId(parentScript.getParentId())
+                    .parentId(rootDir.getParentId())
                     .tags(java.util.Set.of())
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("上传文件夹失败: " + e.getMessage(), e);
         }
+    }
+
+    private Script getOrCreateParentDir(String dirPath, Script rootDir, 
+                                       String folderPath, String fullPath,
+                                       Map<String, Script> dirScriptMap) {
+        if (dirPath == null || dirPath.isEmpty()) {
+            return rootDir;
+        }
+
+        if (dirScriptMap.containsKey(dirPath)) {
+            return dirScriptMap.get(dirPath);
+        }
+
+        String parentPath = "";
+        String dirName = dirPath;
+        int lastSlash = dirPath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            parentPath = dirPath.substring(0, lastSlash);
+            dirName = dirPath.substring(lastSlash + 1);
+        }
+
+        Script parentScript = getOrCreateParentDir(parentPath, rootDir, folderPath, fullPath, dirScriptMap);
+
+        Script dirScript = Script.builder()
+                .name(dirName)
+                .path(fullPath + dirPath + "/")
+                .isDirectory(true)
+                .parentId(parentScript.getId())
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now())
+                .build();
+        save(dirScript);
+        log.debug("创建目录Script记录: ID={}, name={}, parentId={}", 
+                dirScript.getId(), dirName, parentScript.getId());
+
+        dirScriptMap.put(dirPath, dirScript);
+        return dirScript;
     }
 
     /**

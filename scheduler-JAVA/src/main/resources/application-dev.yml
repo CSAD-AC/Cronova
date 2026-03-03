@@ -1,5 +1,7 @@
 server:
   port: 8085 # 应用监听端口
+  tomcat:
+    max-swallow-size: -1  # 不限制请求体大小
 
 # 数据库配置 (连接开发数据库)
 spring:

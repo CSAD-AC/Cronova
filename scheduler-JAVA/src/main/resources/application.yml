@@ -4,6 +4,12 @@ spring:
     active: dev
   application:
     name: scheduler
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB      # 单个文件最大100MB
+      max-request-size: 200MB   # 请求最大200MB
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
