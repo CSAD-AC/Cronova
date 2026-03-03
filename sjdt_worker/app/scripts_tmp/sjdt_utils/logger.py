@@ -129,7 +129,7 @@ class UnifiedLogger:
 
 # 全局便捷实例（推荐使用方式）
 _default_logger = UnifiedLogger(level=logging.INFO).logger
-
+_debug_logger = UnifiedLogger(level=logging.DEBUG).logger
 # 导出常用方法，使用体验像 loguru
 debug = _default_logger.debug
 info = _default_logger.info
@@ -140,3 +140,4 @@ exception = _default_logger.exception
 
 # 也可直接导出 logger 对象
 logger = _default_logger
+logger_debug = _debug_logger

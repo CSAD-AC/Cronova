@@ -115,6 +115,7 @@ docker-compose down -v
 | 变量名 | 说明 | 示例值 |
 |--------|------|--------|
 | SCHEDULER_BASE_URL | 调度器地址 | http://host.docker.internal:8085 |
+| WORKER_TAGS | Worker 标签（逗号分隔，用于任务匹配） | V1,Python3.11 |
 | HEARTBEAT_INTERVAL | 心跳间隔（秒） | 2 |
 | STATUS_REPORT_INTERVAL | 状态上报间隔（秒） | 10 |
 | MQ_NAMESRV_ADDR | RocketMQ 地址 | 127.0.0.1:9876 |
