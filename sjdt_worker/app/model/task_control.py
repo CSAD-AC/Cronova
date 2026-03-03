@@ -92,3 +92,24 @@ class TaskStopMessage(BaseModel):
             raise ValueError(f"MQ消息体JSON解析失败：{str(e)}")
         except Exception as e:
             raise ValueError(f"转换为TaskStopMessage失败：{str(e)}")
+
+
+class WorkerTagUpdateMessage(BaseModel):
+    """执行器标签更新消息模型"""
+    workerId: str  # 目标执行器ID
+    tags: list  # 新的标签列表
+
+    class Config:
+        extra = "ignore"
+
+    @classmethod
+    def from_mq_message(cls, msg_body: str) -> "WorkerTagUpdateMessage":
+        """从MQ消息体解析为WorkerTagUpdateMessage对象"""
+        import json
+        try:
+            msg_dict = json.loads(msg_body)
+            return cls(**msg_dict)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"MQ消息体JSON解析失败：{str(e)}")
+        except Exception as e:
+            raise ValueError(f"转换为WorkerTagUpdateMessage失败：{str(e)}")

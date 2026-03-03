@@ -315,10 +315,10 @@ class GoHandler(BaseHandler):
         
         logger.info("开始验证任务 %s 的依赖要求，任务RunId: %s", task.taskId, task_run_id)
         
-        worker_packages = {pkg['name'].lower(): pkg['version'] for pkg in Config.TAGS}
+        # 获取Worker的已安装包列表
+        worker_packages = {pkg.lower(): "" for pkg in Config.TAGS}
         
         missing_deps = []
-        version_mismatch = []
         
         for tag in script_tags:
             if not tag.name:
@@ -330,30 +330,12 @@ class GoHandler(BaseHandler):
                 missing_deps.append(tag)
                 logger.warning("缺少必需依赖：%s", tag.name)
                 continue
-            
-            if tag.version and tag.operator:
-                is_valid, actual_version = EnvUtils.check_package_version(
-                    tag.name, tag.version, tag.operator
-                )
-                if not is_valid:
-                    version_mismatch.append({
-                        'name': tag.name,
-                        'required': f"{tag.operator} {tag.version}",
-                        'actual': actual_version
-                    })
-                    logger.warning("版本不匹配：%s", tag.name)
         
         error_messages = []
         
         if missing_deps:
-            deps_str = ", ".join([f"{t.name} {t.operator or '>='} {t.version or 'any'}" 
-                                  for t in missing_deps])
+            deps_str = ", ".join([t.name for t in missing_deps])
             error_messages.append(f"缺少必需依赖：{deps_str}")
-        
-        if version_mismatch:
-            versions_str = ", ".join([f"{v['name']}（要求：{v['required']}，实际：{v['actual']}）" 
-                                     for v in version_mismatch])
-            error_messages.append(f"版本不满足：{versions_str}")
         
         if error_messages:
             error_msg = "; ".join(error_messages)

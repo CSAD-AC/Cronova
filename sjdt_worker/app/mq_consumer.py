@@ -2,6 +2,7 @@ import time
 from rocketmq.client import PushConsumer, MessageModel
 from app.config import Config
 from app.model.task import TaskExecuteMessage, TaskStopMessage, TaskPauseMessage, TaskResumeMessage, TaskDeleteMessage
+from app.model.task_control import WorkerTagUpdateMessage
 from app.service.task_service import TaskService
 from app.utils.log_utils import get_logger
 
@@ -147,9 +148,28 @@ class MQConsumer:
                 control_message = TaskResumeMessage.from_mq_message(control_body)
             elif msg_tag in ["DELETE_TASK"]:
                 control_message = TaskDeleteMessage.from_mq_message(control_body)
+            elif msg_tag in ["UPDATE_TAGS"]:
+                control_message = WorkerTagUpdateMessage.from_mq_message(control_body)
             else:
                 logger.error("未知的任务控制类型：%s", msg_tag)
                 return True
+            
+            if msg_tag == "UPDATE_TAGS":
+                logger.info("处理标签更新请求：workerId=%s, tags=%s", control_message.workerId, control_message.tags)
+                success = True
+                try:
+                    if control_message.workerId and control_message.workerId != Config.WORKER_ID:
+                        logger.info("标签更新请求定向到Worker %s，当前Worker为%s，跳过处理", 
+                                   control_message.workerId, Config.WORKER_ID)
+                    else:
+                        old_tags = Config.WORKER_TAGS
+                        Config.WORKER_TAGS = control_message.tags
+                        Config.TAGS = Config._parse_tags(control_message.tags)
+                        logger.info("标签更新成功，旧标签: %s, 新标签: %s", old_tags, control_message.tags)
+                except Exception as e:
+                    logger.error("标签更新处理失败：%s", str(e))
+                    success = False
+                return success
             
             if control_message.targetWorkerId and control_message.targetWorkerId != Config.WORKER_ID:
                 logger.debug("任务控制请求定向到Worker %s，当前Worker为%s，跳过处理", 

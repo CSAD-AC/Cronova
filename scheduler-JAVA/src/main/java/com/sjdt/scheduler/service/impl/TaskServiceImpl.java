@@ -420,23 +420,43 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         log.info("脚本信息 - ID: {}, name: {}, path: {}, isDirectory: {}, parentId: {}, rootPath: {}",
                 script.getId(), script.getName(), script.getPath(), script.getIsDirectory(), script.getParentId(), rootPath);
 
-        // 处理标签匹配：如果未指定 targetWorker，则根据 requiredTags 匹配 Worker
+        // 处理标签匹配：优先根据 requiredTags 匹配 Worker
         String targetWorkerId = task.getTargetWorker();
         Set<String> requiredTags = parseRequiredTags(task.getRequiredTags());
         
-        if (targetWorkerId == null && requiredTags != null && !requiredTags.isEmpty()) {
-            log.info("任务未指定Worker，尝试根据标签匹配，requiredTags: {}", requiredTags);
+        // 优先使用标签匹配（即使指定了 targetWorker，也优先检查标签）
+        if (requiredTags != null && !requiredTags.isEmpty()) {
+            log.info("任务指定标签要求，尝试根据标签匹配，requiredTags: {}", requiredTags);
             List<com.sjdt.scheduler.domain.po.Worker> matchedWorkers = workerService.findOnlineWorkersByTags(requiredTags);
             
             if (!matchedWorkers.isEmpty()) {
-                // 简单策略：随机选择一个匹配的 Worker
-                // TODO: 可以优化为选择负载最低的 Worker
-                com.sjdt.scheduler.domain.po.Worker selectedWorker = matchedWorkers.get(0);
-                targetWorkerId = selectedWorker.getId();
-                log.info("根据标签匹配到Worker: {}, 标签: {}", targetWorkerId, requiredTags);
+                // 如果指定了 targetWorker，检查该 Worker 是否在匹配列表中
+                if (targetWorkerId != null) {
+                    String finalTargetWorkerId = targetWorkerId;
+                    boolean targetWorkerMatched = matchedWorkers.stream()
+                            .anyMatch(w -> w.getId().equals(finalTargetWorkerId));
+                    if (targetWorkerMatched) {
+                        log.info("指定的Worker {} 符合标签要求，任务将定向发送", targetWorkerId);
+                    } else {
+                        // 指定的 Worker 不符合标签要求，选择一个符合的
+                        com.sjdt.scheduler.domain.po.Worker selectedWorker = matchedWorkers.get(0);
+                        targetWorkerId = selectedWorker.getId();
+                        log.warn("指定的Worker {} 不符合标签要求，选择符合的Worker: {}", 
+                                task.getTargetWorker(), targetWorkerId);
+                    }
+                } else {
+                    // 未指定 Worker，选择一个匹配的
+                    // 简单策略：随机选择一个匹配的 Worker
+                    com.sjdt.scheduler.domain.po.Worker selectedWorker = matchedWorkers.get(0);
+                    targetWorkerId = selectedWorker.getId();
+                    log.info("根据标签匹配到Worker: {}, 标签: {}", targetWorkerId, requiredTags);
+                }
             } else {
                 log.warn("没有找到符合标签要求的在线Worker，任务将无法执行，requiredTags: {}", requiredTags);
             }
+        } else if (targetWorkerId == null) {
+            // 没有指定标签也没有指定 Worker，不做处理（广播模式）
+            log.info("任务未指定Worker和标签要求，将使用广播模式");
         }
 
         TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()

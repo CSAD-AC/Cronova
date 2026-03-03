@@ -11,10 +11,12 @@ import com.sjdt.scheduler.domain.po.ScriptTag;
 import com.sjdt.scheduler.domain.po.Tag;
 import com.sjdt.scheduler.domain.po.Worker;
 import com.sjdt.scheduler.domain.po.WorkerTag;
+import com.sjdt.scheduler.domain.message.UpdateTagsRequest;
 import com.sjdt.scheduler.mapper.ScriptTagMapper;
 import com.sjdt.scheduler.mapper.TagMapper;
 import com.sjdt.scheduler.mapper.WorkerTagMapper;
 import com.sjdt.scheduler.service.ITagService;
+import com.sjdt.scheduler.service.TaskControlProducerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -38,6 +40,9 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
 
     @Lazy
     private final WorkerTagMapper workerTagMapper;
+
+    @Lazy
+    private final TaskControlProducerService taskControlProducerService;
     
     @Override
     public Result<IPage<Tag>> getTagList(int page, int size, String name) {
@@ -211,6 +216,10 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
         workerTagMapper.insert(workerTag);
 
         log.info("关联执行器成功，tagId: {}, workerId: {}", tagId, workerId);
+        
+        // 发送标签更新消息到Worker
+        sendTagUpdateMessage(workerId);
+        
         return Result.success();
     }
 
@@ -224,6 +233,41 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
         );
 
         log.info("取消关联执行器成功，tagId: {}, workerId: {}", tagId, workerId);
+        
+        // 发送标签更新消息到Worker
+        sendTagUpdateMessage(workerId);
+        
         return Result.success();
+    }
+    
+    /**
+     * 发送标签更新消息到Worker
+     */
+    private void sendTagUpdateMessage(String workerId) {
+        try {
+            // 获取Worker的所有标签
+            List<WorkerTag> workerTags = workerTagMapper.selectList(
+                new LambdaQueryWrapper<WorkerTag>()
+                    .eq(WorkerTag::getWorkerId, workerId)
+            );
+            
+            List<String> tagNames = workerTags.stream()
+                .map(wt -> {
+                    Tag t = this.getById(wt.getTagId());
+                    return t != null ? t.getName() : null;
+                })
+                .filter(name -> name != null)
+                .collect(Collectors.toList());
+            
+            // 发送MQ消息
+            UpdateTagsRequest request = new UpdateTagsRequest();
+            request.setWorkerId(workerId);
+            request.setTags(tagNames);
+            taskControlProducerService.sendUpdateTags(request);
+            
+            log.info("已发送标签更新消息到Worker | workerId: {}, tags: {}", workerId, tagNames);
+        } catch (Exception e) {
+            log.error("发送标签更新消息失败 | workerId: {}, error: {}", workerId, e.getMessage());
+        }
     }
 }

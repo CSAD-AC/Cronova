@@ -468,7 +468,7 @@ class PythonHandler(BaseHandler):
         logger.info("开始验证任务 %s 的依赖要求，任务RunId: %s", task.taskId, task_run_id)
         
         # 获取Worker的已安装包列表
-        worker_packages = {pkg['name'].lower(): pkg['version'] for pkg in Config.TAGS}
+        worker_packages = {pkg.lower(): "" for pkg in Config.TAGS}
         
         missing_deps = []
         version_mismatch = []
@@ -482,8 +482,7 @@ class PythonHandler(BaseHandler):
             # 检查包是否已安装
             if pkg_name not in worker_packages:
                 missing_deps.append(tag)
-                logger.warning("缺少必需依赖：%s（要求：%s %s %s）", 
-                              tag.name, tag.operator or '>=', tag.version or 'any', '')
+                logger.warning("缺少必需依赖：%s", tag.name)
                 continue
             
             # 检查版本约束
@@ -505,14 +504,8 @@ class PythonHandler(BaseHandler):
         error_messages = []
         
         if missing_deps:
-            deps_str = ", ".join([f"{t.name} {t.operator or '>='} {t.version or 'any'}" 
-                                  for t in missing_deps])
+            deps_str = ", ".join([t.name for t in missing_deps])
             error_messages.append(f"缺少必需依赖：{deps_str}")
-        
-        if version_mismatch:
-            versions_str = ", ".join([f"{v['name']}（要求：{v['required']}，实际：{v['actual']}）" 
-                                     for v in version_mismatch])
-            error_messages.append(f"版本不满足：{versions_str}")
         
         if error_messages:
             error_msg = "; ".join(error_messages)

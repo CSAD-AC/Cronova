@@ -114,38 +114,25 @@
             {{ formatDateTime(row.startTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="viewDetail(row)">
-              <el-icon class="mr-1"><View /></el-icon>详情
-            </el-button>
-            <el-button 
-              v-if="isScriptTask(row.taskId)" 
-              link 
-              type="primary" 
-              @click="previewLog(row)"
-            >
-              <el-icon class="mr-1"><Document /></el-icon>日志
-            </el-button>
-            <el-button 
-              v-if="canPause(row)" 
-              link 
-              type="warning" 
-              @click="handlePause(row)"
-            >
-              <el-icon class="mr-1"><VideoPause /></el-icon>暂停
-            </el-button>
-            <el-button 
-              v-if="canResume(row)" 
-              link 
-              type="success" 
-              @click="handleResume(row)"
-            >
-              <el-icon class="mr-1"><VideoPlay /></el-icon>恢复
-            </el-button>
-            <el-button link type="danger" @click="handleDelete(row)">
-              <el-icon class="mr-1"><Delete /></el-icon>删除
-            </el-button>
+            <div class="action-buttons">
+              <el-button type="primary" size="default" @click="viewDetail(row)">
+                <el-icon class="mr-1"><View /></el-icon>详情
+              </el-button>
+              <el-button v-if="isScriptTask(row.taskId)" type="primary" size="default" @click="previewLog(row)">
+                <el-icon class="mr-1"><Document /></el-icon>日志
+              </el-button>
+              <el-button v-if="canPause(row)" type="warning" size="default" @click="handlePause(row)">
+                <el-icon class="mr-1"><VideoPause /></el-icon>暂停
+              </el-button>
+              <el-button v-if="canResume(row)" type="success" size="default" @click="handleResume(row)">
+                <el-icon class="mr-1"><VideoPlay /></el-icon>恢复
+              </el-button>
+              <el-button type="danger" size="default" @click="handleDelete(row)">
+                <el-icon class="mr-1"><Delete /></el-icon>删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -1463,5 +1450,15 @@ onUnmounted(() => {
 
 :deep(.el-link) {
   font-size: 14px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-buttons .el-button {
+  font-weight: 500;
 }
 </style>

@@ -6,6 +6,7 @@ import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.dto.WorkerUpdateDTO;
 import com.sjdt.scheduler.domain.enums.WorkerStatus;
 import com.sjdt.scheduler.domain.po.Worker;
+import com.sjdt.scheduler.domain.po.WorkerTag;
 import com.sjdt.scheduler.domain.vo.WorkerVO;
 import com.sjdt.scheduler.service.IWorkerService;
 import com.sjdt.scheduler.service.IWorkerTagService;
@@ -55,6 +56,10 @@ public class WorkerFrontController {
     @Operation(summary = "获取Worker列表", description = "获取所有Worker的详细信息，实时从Redis合并最新状态")
     public Result<List<WorkerVO>> getWorkerList() {
         log.info("开始查询所有Worker列表，并同步实时状态");
+        
+        // 获取所有Worker标签映射
+        Map<String, Set<Tag>> workerTagsMap = getAllWorkerTagsMap();
+        
         List<WorkerVO> workerVOs = workerService.list()
                 .stream()
                 .map(worker -> {
@@ -90,6 +95,9 @@ public class WorkerFrontController {
                             }
                         }
                     }
+                    
+                    // 3. 设置标签信息
+                    workerVO.setTags(workerTagsMap.get(worker.getId()));
                     
                     return workerVO;
                 })
@@ -202,6 +210,47 @@ public class WorkerFrontController {
         
         log.info("查询Worker详情完成，WorkerID: {}, 状态: {}", id, workerVO.getStatus());
         return Result.success(workerVO);
+    }
+    
+    /**
+     * 获取所有Worker的标签映射
+     * @return Map<WorkerId, Set<Tag>>
+     */
+    private Map<String, Set<Tag>> getAllWorkerTagsMap() {
+        try {
+            // 获取所有Worker标签关联
+            List<WorkerTag> workerTags = workerTagService.list();
+            if (workerTags == null || workerTags.isEmpty()) {
+                return Map.of();
+            }
+            
+            // 获取所有标签ID
+            Set<Integer> tagIds = workerTags.stream()
+                    .map(WorkerTag::getTagId)
+                    .collect(Collectors.toSet());
+            
+            // 批量获取标签信息
+            Map<Integer, Tag> tagMap = tagService.listByIds(tagIds).stream()
+                    .collect(Collectors.toMap(Tag::getId, t -> t));
+            
+            // 构建WorkerID到标签的映射
+            Map<String, Set<Tag>> workerTagsMap = workerTags.stream()
+                    .collect(Collectors.groupingBy(
+                            WorkerTag::getWorkerId,
+                            Collectors.mapping(
+                                    wt -> tagMap.get(wt.getTagId()),
+                                    Collectors.toSet()
+                            )
+                    ));
+            
+            // 移除null值
+            workerTagsMap.values().forEach(tags -> tags.removeIf(t -> t == null));
+            
+            return workerTagsMap;
+        } catch (Exception e) {
+            log.warn("获取所有Worker标签映射失败，错误: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
 }

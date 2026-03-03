@@ -61,6 +61,7 @@ class TagReportService:
             if tags:
                 logger.debug(f"从环境变量重新加载标签: {tags}")
                 Config.WORKER_TAGS = tags
+                Config.TAGS = Config._parse_tags(tags)
                 return tags
 
         # 尝试从 .env 文件读取
@@ -84,6 +85,7 @@ class TagReportService:
                                     if tags:
                                         logger.debug(f"从 .env 文件重新加载标签: {tags}")
                                         Config.WORKER_TAGS = tags
+                                        Config.TAGS = Config._parse_tags(tags)
                                         return tags
                 except Exception as e:
                     logger.warning(f"读取 .env 文件标签失败: {e}")
@@ -97,6 +99,7 @@ class TagReportService:
                     if worker_tags:
                         logger.debug(f"从配置文件重新加载标签: {worker_tags}")
                         Config.WORKER_TAGS = worker_tags
+                        Config.TAGS = Config._parse_tags(worker_tags)
                         return worker_tags
             except Exception as e:
                 logger.warning(f"读取配置文件标签失败: {e}")

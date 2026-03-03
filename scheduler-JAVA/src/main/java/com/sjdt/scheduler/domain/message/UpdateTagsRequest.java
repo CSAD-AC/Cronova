@@ -12,6 +12,9 @@ import java.util.List;
 @Schema(description = "Worker标签更新请求DTO")
 public class UpdateTagsRequest {
 
+    @Schema(description = "Worker ID", example = "worker-001")
+    private String workerId;
+
     @Schema(description = "标签列表", example = "[\"V1\", \"FastAPI\"]")
     private List<String> tags;
 

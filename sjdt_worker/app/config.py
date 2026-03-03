@@ -46,10 +46,28 @@ class Config:
     # 2. .env 文件 WORKER_TAGS
     # 3. 配置文件 local_config.json
     # 4. 默认值（空列表）
-    WORKER_TAGS = []
+    # 格式: ["python:3.9", "java:11"]
+    WORKER_TAGS: List[str] = []
+
+    # Worker标签解析（只需要 name，用于任务依赖匹配）
+    # 格式: ["python", "java"]
+    TAGS: List[str] = []
 
     WORKER_HEARTBEAT_URL = None
     WORKER_STATUS_REPORT_URL = None
+
+    @classmethod
+    def _parse_tags(cls, tags: List[str]) -> List[str]:
+        """将带版本的标签解析为名称列表"""
+        parsed = []
+        for tag in tags:
+            if ":" in tag:
+                name = tag.split(":", 1)[0].strip()
+            else:
+                name = tag.strip()
+            if name:
+                parsed.append(name.lower())
+        return parsed
 
     @classmethod
     def load_worker_tags(cls) -> List[str]:
@@ -62,6 +80,7 @@ class Config:
             tags = [t.strip() for t in env_tags.split(",") if t.strip()]
             if tags:
                 print(f"[Config] 从环境变量加载标签: {tags}")
+                cls.TAGS = cls._parse_tags(tags)
                 return tags
 
         # 2. 尝试从 .env 文件读取（如果存在）
@@ -85,6 +104,7 @@ class Config:
                                     tags = [t.strip() for t in env_file_tags.split(",") if t.strip()]
                                     if tags:
                                         print(f"[Config] 从 .env 文件加载标签: {tags}")
+                                        cls.TAGS = cls._parse_tags(tags)
                                         return tags
                 except Exception as e:
                     print(f"[Config] 读取 .env 文件标签失败: {e}")
@@ -97,12 +117,14 @@ class Config:
                     worker_tags = config.get("worker_tags", [])
                     if worker_tags:
                         print(f"[Config] 从配置文件加载标签: {worker_tags}")
+                        cls.TAGS = cls._parse_tags(worker_tags)
                         return worker_tags
             except Exception as e:
                 print(f"[Config] 读取配置文件标签失败: {e}")
 
         # 4. 默认空列表
         print("[Config] 未配置 Worker 标签，将使用空标签（不限制任务匹配）")
+        cls.TAGS = []
         return []
 
     @classmethod

@@ -87,14 +87,14 @@
         </el-table-column>
         <el-table-column label="关联脚本" width="120" align="center">
           <template #default="{ row }">
-            <el-button link type="success" @click="showDetailDialog(row, 'script')">
+            <el-button type="success" size="small" @click="showDetailDialog(row, 'script')">
               {{ row.scriptCount || 0 }} 个
             </el-button>
           </template>
         </el-table-column>
         <el-table-column label="关联执行器" width="120" align="center">
           <template #default="{ row }">
-            <el-button link type="warning" @click="showDetailDialog(row, 'worker')">
+            <el-button type="warning" size="small" @click="showDetailDialog(row, 'worker')">
               {{ row.workerCount || 0 }} 个
             </el-button>
           </template>
@@ -104,14 +104,16 @@
             {{ formatDateTime(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="showEditDialog(row)">
-              <el-icon class="mr-1"><Edit /></el-icon>编辑
-            </el-button>
-            <el-button link type="danger" @click="handleDelete(row)">
-              <el-icon class="mr-1"><Delete /></el-icon>删除
-            </el-button>
+            <div class="action-buttons">
+              <el-button type="primary" size="default" @click="showEditDialog(row)">
+                <el-icon class="mr-1"><Edit /></el-icon>编辑
+              </el-button>
+              <el-button type="danger" size="default" @click="handleDelete(row)">
+                <el-icon class="mr-1"><Delete /></el-icon>删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -563,5 +565,30 @@ onMounted(() => {
 
 .detail-header {
   margin-bottom: 16px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-buttons .el-button {
+  font-weight: 500;
+}
+
+:deep(.el-table) {
+  font-size: 14px;
+}
+
+:deep(.el-table .cell) {
+  font-size: 14px;
+}
+
+:deep(.el-tag) {
+  font-size: 13px;
+}
+
+:deep(.el-button link) {
+  font-size: 14px;
 }
 </style>

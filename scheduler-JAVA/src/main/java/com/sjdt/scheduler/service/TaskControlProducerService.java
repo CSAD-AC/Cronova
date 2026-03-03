@@ -4,6 +4,8 @@ import com.sjdt.scheduler.domain.message.TaskPauseMessage;
 import com.sjdt.scheduler.domain.message.TaskResumeMessage;
 import com.sjdt.scheduler.domain.message.TaskStopMessage;
 import com.sjdt.scheduler.domain.message.TaskDeleteMessage;
+import com.sjdt.scheduler.domain.message.UpdateTagsRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.support.MessageBuilder;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
  * 任务控制消息生产者服务
  * 负责向Worker发送任务控制消息（暂停、恢复、停止、删除、强制终止）
  */
+@Slf4j
 @Service
 public class TaskControlProducerService {
 
@@ -28,6 +31,7 @@ public class TaskControlProducerService {
     private static final String TAG_RESUME_TASK = "RESUME_TASK";
     private static final String TAG_DELETE_TASK = "DELETE_TASK";
     private static final String TAG_KILL_TASK = "KILL_TASK";
+    private static final String TAG_UPDATE_TAGS = "UPDATE_TAGS";
 
     @Autowired
     public TaskControlProducerService(RocketMQTemplate rocketMQTemplate) {
@@ -82,5 +86,16 @@ public class TaskControlProducerService {
     public void sendKillTask(TaskStopMessage message) {
         String destination = String.format("%s:%s", TOPIC_TASK_CONTROL, TAG_KILL_TASK);
         rocketMQTemplate.send(destination, MessageBuilder.withPayload(message).build());
+    }
+
+    /**
+     * 发送Worker标签更新消息
+     *
+     * @param message 标签更新消息，包含workerId和tags
+     */
+    public void sendUpdateTags(UpdateTagsRequest message) {
+        String destination = String.format("%s:%s", TOPIC_TASK_CONTROL, TAG_UPDATE_TAGS);
+        rocketMQTemplate.send(destination, MessageBuilder.withPayload(message).build());
+        log.info("发送标签更新消息成功 | workerId: {}, tags: {}", message.getWorkerId(), message.getTags());
     }
 }

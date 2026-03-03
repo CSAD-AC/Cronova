@@ -60,7 +60,7 @@ export interface Role {
 }
 
 export interface Tag {
-  id: string
+  id: number | string
   name: string
   description?: string
   createTime?: string
@@ -68,7 +68,7 @@ export interface Tag {
 }
 
 export interface TagVO {
-  id: string
+  id: number | string
   name: string
   description?: string
   createTime?: string

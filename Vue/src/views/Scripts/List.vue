@@ -94,23 +94,29 @@
                 {{ formatDateTime(row.createTime) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="250" fixed="right">
+            <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
-                <el-button v-if="row.isDirectory" link type="primary" @click="enterDirectory(row.id)">
-                  <el-icon class="mr-1"><FolderOpened /></el-icon>进入
-                </el-button>
-                <el-button v-else link type="primary" @click="handlePreview(row)">
-                  <el-icon class="mr-1"><View /></el-icon>预览
-                </el-button>
-                <el-button link type="primary" @click="handleDownload(row)">
-                  <el-icon class="mr-1"><Download /></el-icon>下载
-                </el-button>
-                <el-button link type="primary" @click="showTagDialog(row)">
-                  <el-icon class="mr-1"><PriceTag /></el-icon>标签
-                </el-button>
-                <el-button link type="danger" @click="handleDelete(row)">
-                  <el-icon class="mr-1"><Delete /></el-icon>删除
-                </el-button>
+                <div class="action-buttons">
+                  <div class="button-row">
+                    <el-button v-if="row.isDirectory" type="primary" size="default" @click="enterDirectory(row.id)">
+                      <el-icon class="mr-1"><FolderOpened /></el-icon>进入
+                    </el-button>
+                    <el-button v-else type="primary" size="default" @click="handlePreview(row)">
+                      <el-icon class="mr-1"><View /></el-icon>预览
+                    </el-button>
+                    <el-button type="primary" size="default" @click="handleDownload(row)">
+                      <el-icon class="mr-1"><Download /></el-icon>下载
+                    </el-button>
+                  </div>
+                  <div class="button-row">
+                    <el-button type="primary" size="default" @click="showTagDialog(row)">
+                      <el-icon class="mr-1"><PriceTag /></el-icon>标签
+                    </el-button>
+                    <el-button type="danger" size="default" @click="handleDelete(row)">
+                      <el-icon class="mr-1"><Delete /></el-icon>删除
+                    </el-button>
+                  </div>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -483,6 +489,15 @@ async function handleUpload() {
       return
     }
     
+    // 检测是否是 zip 文件，如果是则自动使用文件夹上传逻辑，静默处理
+    const fileName = uploadFile.value?.name || ''
+    if (fileName.toLowerCase().endsWith('.zip')) {
+      uploadDirFile.value = uploadFile.value
+      uploadDialogVisible.value = false
+      await uploadDirectory()
+      return
+    }
+    
     uploading.value = true
     try {
       const formData = new FormData()
@@ -503,19 +518,28 @@ async function handleUpload() {
       return
     }
     
-    uploading.value = true
-    try {
-      const formData = new FormData()
-      formData.append('file', uploadDirFile.value.raw)
-      await scriptApi.uploadDirectory(formData)
-      ElMessage.success('上传成功')
-      uploadDialogVisible.value = false
-      fetchScripts()
-    } catch (error) {
-      ElMessage.error('上传失败')
-    } finally {
-      uploading.value = false
-    }
+    await uploadDirectory()
+  }
+}
+
+async function uploadDirectory() {
+  if (!uploadDirFile.value) {
+    ElMessage.warning('请选择ZIP文件')
+    return
+  }
+  
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', uploadDirFile.value.raw)
+    await scriptApi.uploadDirectory(formData)
+    ElMessage.success('上传成功')
+    uploadDialogVisible.value = false
+    fetchScripts()
+  } catch (error) {
+    ElMessage.error('上传失败')
+  } finally {
+    uploading.value = false
   }
 }
 
@@ -808,5 +832,34 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+.button-row .el-button {
+  flex: 1;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+:deep(.el-table) {
+  font-size: 14px;
+}
+
+:deep(.el-table .cell) {
+  font-size: 14px;
+}
+
+:deep(.el-tag) {
+  font-size: 13px;
 }
 </style>
