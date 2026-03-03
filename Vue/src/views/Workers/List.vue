@@ -226,7 +226,7 @@ const workerStore = useWorkerStore()
 const tagDialogVisible = ref(false)
 const allTags = ref<TagVO[]>([])
 const currentWorker = ref<WorkerVO | null>(null)
-const selectedTags = ref<string[]>([])
+const selectedTags = ref<(string | number)[]>([])
 
 const currentPage = ref(1)
 const pageSize = ref(10)

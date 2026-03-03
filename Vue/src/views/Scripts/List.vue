@@ -15,7 +15,10 @@
           class="folder-tree"
         >
           <template #default="{ node, data }">
-            <span class="custom-tree-node" :class="{ 'is-directory': data.isDirectory, 'is-file': !data.isDirectory }">
+            <span
+              class="custom-tree-node"
+              :class="{ 'is-directory': data.isDirectory, 'is-file': !data.isDirectory }"
+            >
               <el-icon class="mr-2">
                 <component :is="data.isDirectory ? 'Folder' : 'Document'" />
               </el-icon>
@@ -31,11 +34,8 @@
           <div class="header-left">
             <h1 class="page-title">{{ currentFolder }}</h1>
             <el-breadcrumb v-if="breadcrumb.length > 1" separator="/" class="mt-2">
-              <el-breadcrumb-item 
-                v-for="(item, index) in breadcrumb" 
-                :key="item.id"
-              >
-                <span 
+              <el-breadcrumb-item v-for="(item, index) in breadcrumb" :key="item.id">
+                <span
                   :class="{ 'breadcrumb-clickable': index < breadcrumb.length - 1 }"
                   @click="index < breadcrumb.length - 1 ? navigateToBreadcrumb(item) : undefined"
                 >
@@ -54,8 +54,8 @@
         </div>
 
         <el-card class="table-card" shadow="never">
-          <el-table 
-            :data="filteredScripts" 
+          <el-table
+            :data="filteredScripts"
             v-loading="loading"
             style="width: 100%"
             stripe
@@ -69,15 +69,21 @@
                     <component :is="getFileIcon(row)" />
                   </el-icon>
                   <span>{{ row.name }}</span>
-                  <el-tag v-if="row.isDirectory" size="small" type="warning" style="margin-left: 8px">目录</el-tag>
+                  <el-tag
+                    v-if="row.isDirectory"
+                    size="small"
+                    type="warning"
+                    style="margin-left: 8px"
+                    >目录</el-tag
+                  >
                 </div>
               </template>
             </el-table-column>
             <el-table-column label="标签" min-width="200">
               <template #default="{ row }">
                 <div class="tags-cell">
-                  <el-tag 
-                    v-for="tag in row.tags" 
+                  <el-tag
+                    v-for="tag in row.tags"
                     :key="tag.id"
                     size="small"
                     class="script-tag"
@@ -98,7 +104,12 @@
               <template #default="{ row }">
                 <div class="action-buttons">
                   <div class="button-row">
-                    <el-button v-if="row.isDirectory" type="primary" size="default" @click="enterDirectory(row.id)">
+                    <el-button
+                      v-if="row.isDirectory"
+                      type="primary"
+                      size="default"
+                      @click="enterDirectory(row.id)"
+                    >
                       <el-icon class="mr-1"><FolderOpened /></el-icon>进入
                     </el-button>
                     <el-button v-else type="primary" size="default" @click="handlePreview(row)">
@@ -138,9 +149,7 @@
             drag
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-            <div class="el-upload__text">
-              拖拽文件到此处或 <em>点击上传</em>
-            </div>
+            <div class="el-upload__text">拖拽文件到此处或 <em>点击上传</em></div>
             <template #tip>
               <div class="el-upload__tip text-center">
                 支持 Python(.py)、Java(.java)、Go(.go) 脚本文件
@@ -148,7 +157,7 @@
             </template>
           </el-upload>
         </el-tab-pane>
-        
+
         <el-tab-pane label="文件夹上传" name="directory">
           <el-upload
             ref="uploadDirRef"
@@ -160,18 +169,14 @@
             drag
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-            <div class="el-upload__text">
-              拖拽ZIP压缩包到此处或 <em>点击上传</em>
-            </div>
+            <div class="el-upload__text">拖拽ZIP压缩包到此处或 <em>点击上传</em></div>
             <template #tip>
-              <div class="el-upload__tip text-center">
-                上传ZIP压缩包，将自动解压保持目录结构
-              </div>
+              <div class="el-upload__tip text-center">上传ZIP压缩包，将自动解压保持目录结构</div>
             </template>
           </el-upload>
         </el-tab-pane>
       </el-tabs>
-      
+
       <template #footer>
         <el-button @click="uploadDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="handleUpload">
@@ -187,10 +192,10 @@
           <el-input :model-value="editForm.name" disabled />
         </el-form-item>
         <el-form-item label="脚本内容">
-          <el-input 
-            :model-value="editForm.content" 
-            type="textarea" 
-            :rows="20" 
+          <el-input
+            :model-value="editForm.content"
+            type="textarea"
+            :rows="20"
             readonly
             class="font-mono bg-gray-50"
           />
@@ -200,14 +205,14 @@
         <el-button @click="editDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
-    
+
     <!-- 标签弹窗 -->
     <el-dialog v-model="tagDialogVisible" title="编辑标签" width="500px">
       <div class="tag-dialog-content">
         <div class="script-info">
           <h4>{{ currentScript?.name }}</h4>
         </div>
-        
+
         <div class="tag-selection">
           <h5 class="mb-2">选择标签</h5>
           <el-select
@@ -217,25 +222,22 @@
             placeholder="搜索并选择标签"
             style="width: 100%"
           >
-            <el-option
-              v-for="tag in allTags"
-              :key="tag.id"
-              :label="tag.name"
-              :value="tag.id"
-            >
+            <el-option v-for="tag in allTags" :key="tag.id" :label="tag.name" :value="tag.id">
               <div class="flex justify-between items-center w-full">
                 <span>{{ tag.name }}</span>
-                <el-tag v-if="tag.description" size="small" type="info" effect="plain">{{ tag.description }}</el-tag>
+                <el-tag v-if="tag.description" size="small" type="info" effect="plain">{{
+                  tag.description
+                }}</el-tag>
               </div>
             </el-option>
           </el-select>
-          
+
           <div v-if="!allTags.length" class="no-tags-hint">
             <el-empty description="暂无标签" :image-size="60" />
           </div>
         </div>
       </div>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <span class="selected-count">已选择 {{ selectedTags.length }} 个标签</span>
@@ -252,7 +254,17 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, PriceTag, Delete, Folder, Document, View, UploadFilled, FolderOpened } from '@element-plus/icons-vue'
+import {
+  Upload,
+  Download,
+  PriceTag,
+  Delete,
+  Folder,
+  Document,
+  View,
+  UploadFilled,
+  FolderOpened,
+} from '@element-plus/icons-vue'
 import { scriptApi, tagApi } from '@/services'
 import type { ScriptVO, TagVO } from '@/types'
 import { formatDateTime } from '@/utils/date'
@@ -266,7 +278,7 @@ const editDialogVisible = ref(false)
 const scripts = ref<ScriptVO[]>([])
 const allTags = ref<TagVO[]>([])
 const currentScript = ref<ScriptVO | null>(null)
-const selectedTags = ref<string[]>([])
+const selectedTags = ref<(string | number)[]>([])
 const uploadFile = ref<any>(null)
 const uploadDirFile = ref<any>(null)
 const uploadTab = ref('file')
@@ -281,20 +293,20 @@ const breadcrumb = computed(() => {
   if (!currentDirectoryId.value) {
     return [{ id: null, name: '根目录' }]
   }
-  
-  const path: { id: string | null, name: string }[] = [{ id: null, name: '根目录' }]
+
+  const path: { id: string | null; name: string }[] = [{ id: null, name: '根目录' }]
   let currentId: string | null = currentDirectoryId.value
-  
+
   while (currentId) {
-    const folder = scripts.value.find(s => s.id === currentId && s.isDirectory)
+    const folder = scripts.value.find((s) => s.id === currentId && s.isDirectory)
     if (folder) {
       path.push({ id: folder.id, name: folder.name })
-      currentId = folder.parentId
+      currentId = folder.parentId ?? null
     } else {
       break
     }
   }
-  
+
   return path
 })
 
@@ -304,20 +316,20 @@ function enterDirectory(folderId: string | null) {
   if (folderId === null) {
     currentFolder.value = '根目录'
   } else {
-    const folder = scripts.value.find(s => s.id === folderId)
+    const folder = scripts.value.find((s) => s.id === folderId)
     currentFolder.value = folder?.name || '目录'
   }
 }
 
 // 点击面包屑导航
-function navigateToBreadcrumb(item: { id: string | null, name: string }) {
+function navigateToBreadcrumb(item: { id: string | null; name: string }) {
   enterDirectory(item.id)
 }
 
 const editForm = reactive({
   id: '',
   name: '',
-  content: ''
+  content: '',
 })
 
 const folderTree = computed(() => {
@@ -327,18 +339,18 @@ const folderTree = computed(() => {
   const nodeMap = new Map<string, any>()
 
   // 第一遍：创建所有节点
-  allScripts.forEach(script => {
+  allScripts.forEach((script) => {
     nodeMap.set(script.id, {
       id: script.id,
       label: script.name,
       isDirectory: script.isDirectory,
       parentId: script.parentId,
-      children: []
+      children: [],
     })
   })
 
   // 第二遍：构建父子关系
-  allScripts.forEach(script => {
+  allScripts.forEach((script) => {
     const node = nodeMap.get(script.id)
     // 为层级节点生成特殊ID
     if (script.isDirectory) {
@@ -362,7 +374,7 @@ const folderTree = computed(() => {
       }
       return a.label.localeCompare(b.label)
     })
-    nodes.forEach(node => {
+    nodes.forEach((node) => {
       if (node.children.length > 0) {
         sortNodes(node.children)
       }
@@ -376,21 +388,21 @@ const folderTree = computed(() => {
 
 const defaultProps = {
   children: 'children',
-  label: 'label'
+  label: 'label',
 }
 
 const filteredScripts = computed(() => {
   // 文件管理器模式：根据当前目录ID过滤
   let result = scripts.value
-  
+
   if (currentDirectoryId.value !== null) {
     // 在目录中：只显示当前目录的直接子文件和子目录
-    result = result.filter(s => s.parentId === currentDirectoryId.value)
+    result = result.filter((s) => s.parentId === currentDirectoryId.value)
   } else {
     // 根目录视图：显示所有根目录下的直接子文件和子目录
-    result = result.filter(s => !s.parentId)
+    result = result.filter((s) => !s.parentId)
   }
-  
+
   // 目录在前，文件在后排序
   return result.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) {
@@ -435,19 +447,21 @@ function handleNodeClick(data: any) {
   // 处理层级目录中的真实目录节点
   if (data.isDirectory) {
     // 提取真实目录ID（去除 dir_ 前缀）
-    const folderId = data.id.toString().startsWith('dir_') 
-      ? data.id.toString().replace('dir_', '') 
+    const folderId = data.id.toString().startsWith('dir_')
+      ? data.id.toString().replace('dir_', '')
       : data.id
     enterDirectory(folderId)
     return
   }
-  
+
   // 处理层级目录中的文件节点 - 跳转到文件所在目录
   const allScripts = scripts.value
-  const fileNode = allScripts.find(s => s.id === data.id || s.id === data.id.toString().replace('dir_', ''))
+  const fileNode = allScripts.find(
+    (s) => s.id === data.id || s.id === data.id.toString().replace('dir_', ''),
+  )
   if (fileNode && !fileNode.isDirectory) {
     // 跳转到文件的父目录
-    enterDirectory(fileNode.parentId)
+    enterDirectory(fileNode.parentId ?? null)
     return
   }
 }
@@ -488,7 +502,7 @@ async function handleUpload() {
       ElMessage.warning('请选择文件')
       return
     }
-    
+
     // 检测是否是 zip 文件，如果是则自动使用文件夹上传逻辑，静默处理
     const fileName = uploadFile.value?.name || ''
     if (fileName.toLowerCase().endsWith('.zip')) {
@@ -497,7 +511,7 @@ async function handleUpload() {
       await uploadDirectory()
       return
     }
-    
+
     uploading.value = true
     try {
       const formData = new FormData()
@@ -517,7 +531,7 @@ async function handleUpload() {
       ElMessage.warning('请选择ZIP文件')
       return
     }
-    
+
     await uploadDirectory()
   }
 }
@@ -527,7 +541,7 @@ async function uploadDirectory() {
     ElMessage.warning('请选择ZIP文件')
     return
   }
-  
+
   uploading.value = true
   try {
     const formData = new FormData()
@@ -548,7 +562,7 @@ async function handlePreview(row: ScriptVO) {
   editForm.name = row.name
   editForm.content = '正在加载内容...'
   editDialogVisible.value = true
-  
+
   try {
     const blob = await scriptApi.download(row.id)
     if (blob.size > 0) {
@@ -577,28 +591,28 @@ async function handleDownload(row: ScriptVO) {
 
 function showTagDialog(row: ScriptVO) {
   currentScript.value = row
-  selectedTags.value = row.tags?.map(t => t.id) || []
+  selectedTags.value = row.tags?.map((t) => t.id) || []
   tagDialogVisible.value = true
 }
 
 async function saveTags() {
   if (!currentScript.value) return
-  
+
   try {
-    const oldTagIds = currentScript.value.tags?.map(t => t.id) || []
+    const oldTagIds = currentScript.value.tags?.map((t) => t.id) || []
     const newSelectedTags = [...selectedTags.value]
-    
-    const addTagIds = newSelectedTags.filter(id => !oldTagIds.includes(id as string))
-    const removeTagIds = oldTagIds.filter(id => !newSelectedTags.includes(id as string))
-    
+
+    const addTagIds = newSelectedTags.filter((id) => !oldTagIds.includes(id as string))
+    const removeTagIds = oldTagIds.filter((id) => !newSelectedTags.includes(id as string))
+
     for (const tagId of removeTagIds) {
       await scriptApi.removeTag(currentScript.value!.id, tagId)
     }
-    
+
     if (addTagIds.length > 0) {
       await scriptApi.addTags(currentScript.value!.id, addTagIds as unknown as number[])
     }
-    
+
     ElMessage.success('保存成功')
     tagDialogVisible.value = false
     fetchScripts()
@@ -611,7 +625,7 @@ async function saveTags() {
 function getTagType(tagName: string): string {
   const types = ['primary', 'success', 'info', 'warning', 'danger']
   const hash = tagName.split('').reduce((a, b) => {
-    a = ((a << 5) - a) + b.charCodeAt(0)
+    a = (a << 5) - a + b.charCodeAt(0)
     return a & a
   }, 0)
   return types[Math.abs(hash) % types.length] || 'info'
