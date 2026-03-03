@@ -137,6 +137,9 @@
               <el-button type="primary" size="default" @click="$router.push(`/workers/${row.id}`)">
                 <el-icon class="mr-1"><View /></el-icon>详情
               </el-button>
+              <el-button type="primary" size="default" @click="handleEdit(row)">
+                <el-icon class="mr-1"><Edit /></el-icon>编辑
+              </el-button>
               <el-button type="primary" size="default" @click="showTagDialog(row)">
                 <el-icon class="mr-1"><PriceTag /></el-icon>标签
               </el-button>
@@ -207,6 +210,21 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 编辑主机名弹窗 -->
+    <el-dialog v-model="editDialogVisible" title="编辑执行器" width="400px">
+      <el-form label-width="80px">
+        <el-form-item label="主机名">
+          <el-input v-model="editingHost" placeholder="请输入主机名" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="editDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveHost">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -214,19 +232,22 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  CircleCheck, CircleClose, Cpu, Search, Refresh, View, Delete, PriceTag
+  CircleCheck, CircleClose, Cpu, Search, Refresh, View, Edit, Delete, PriceTag
 } from '@element-plus/icons-vue'
 import { useWorkerStore } from '@/stores/worker'
 import { tagApi } from '@/services/tag'
+import { workerApi } from '@/services/worker'
 import { formatDateTime } from '@/utils/date'
 import type { WorkerVO, TagVO } from '@/types'
 
 const workerStore = useWorkerStore()
 
 const tagDialogVisible = ref(false)
+const editDialogVisible = ref(false)
 const allTags = ref<TagVO[]>([])
 const currentWorker = ref<WorkerVO | null>(null)
 const selectedTags = ref<(string | number)[]>([])
+const editingHost = ref('')
 
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -336,6 +357,29 @@ async function saveTags() {
     fetchWorkers()
   } catch (error) {
     console.error('保存标签失败:', error)
+    ElMessage.error('保存失败')
+  }
+}
+
+function handleEdit(row: WorkerVO) {
+  currentWorker.value = row
+  editingHost.value = row.host
+  editDialogVisible.value = true
+}
+
+async function saveHost() {
+  if (!currentWorker.value || !editingHost.value.trim()) {
+    ElMessage.warning('请输入主机名')
+    return
+  }
+  
+  try {
+    await workerApi.updateHost(currentWorker.value.id, editingHost.value.trim())
+    ElMessage.success('保存成功')
+    editDialogVisible.value = false
+    fetchWorkers()
+  } catch (error) {
+    console.error('保存主机名失败:', error)
     ElMessage.error('保存失败')
   }
 }

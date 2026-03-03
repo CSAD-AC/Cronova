@@ -118,7 +118,15 @@
           <template #default="{ row }">
             <div class="action-buttons">
               <div class="button-row">
-                <el-button type="primary" size="default" @click="$router.push(`/tasks/${row.id}`)">
+                <el-button 
+                  v-if="row.executeType === 'callback'" 
+                  type="primary" 
+                  size="default" 
+                  @click="handleHealthCheck(row)"
+                >
+                  <el-icon class="mr-1"><Monitor /></el-icon>检查
+                </el-button>
+                <el-button v-else type="primary" size="default" @click="$router.push(`/tasks/${row.id}`)">
                   <el-icon class="mr-1"><View /></el-icon>详情
                 </el-button>
                 <el-button type="primary" size="default" @click="$router.push(`/tasks/${row.id}/edit`)">
