@@ -145,14 +145,14 @@
             :auto-upload="false"
             :on-change="handleFileChange"
             :limit="1"
-            accept=".py,.java,.go"
+            accept=".py,.java,.jar,.bin"
             drag
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
             <div class="el-upload__text">拖拽文件到此处或 <em>点击上传</em></div>
             <template #tip>
               <div class="el-upload__tip text-center">
-                支持 Python(.py)、Java(.java)、Go(.go) 脚本文件
+                支持 Python(.py)、Java(.jar/.class)、Go(.bin) 二进制文件
               </div>
             </template>
           </el-upload>
@@ -577,11 +577,21 @@ async function handlePreview(row: ScriptVO) {
 
 async function handleDownload(row: ScriptVO) {
   try {
-    const blob = await scriptApi.download(row.id)
+    let blob: Blob
+    let fileName: string
+    
+    if (row.isDirectory) {
+      blob = await scriptApi.downloadDirectory(row.id)
+      fileName = row.name + '.zip'
+    } else {
+      blob = await scriptApi.download(row.id)
+      fileName = row.name
+    }
+    
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = row.name
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
   } catch (error) {

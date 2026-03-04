@@ -1,5 +1,5 @@
 from time import sleep
-from utils import logger
+from sjdt_utils import logger
 
 logger.info("Hello World")
 

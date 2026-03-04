@@ -16,6 +16,7 @@ import com.sjdt.scheduler.mapper.TagMapper;
 import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.service.IScriptService;
 import io.minio.*;
+import io.minio.errors.*;
 import io.minio.messages.Item;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,6 +34,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 脚本服务实现类
@@ -410,6 +414,118 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
         } catch (Exception e) {
             throw new IOException("下载脚本文件失败: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public void downloadDirectory(String id, HttpServletResponse response) throws IOException {
+        Script rootDir = getById(id);
+        if (rootDir == null) {
+            throw new IOException("脚本不存在");
+        }
+
+        if (!Boolean.TRUE.equals(rootDir.getIsDirectory())) {
+            throw new IOException("该脚本不是文件夹类型，请使用下载脚本接口");
+        }
+
+        String folderName = rootDir.getName() + ".zip";
+        response.setContentType("application/zip");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + folderName + "\"");
+
+        List<Script> allScripts = getAllChildScripts(id);
+        log.info("开始下载文件夹 {}，共 {} 个文件", rootDir.getName(), allScripts.size());
+
+        try (ZipOutputStream zos = new ZipOutputStream(response.getOutputStream())) {
+            for (Script script : allScripts) {
+                if (Boolean.TRUE.equals(script.getIsDirectory())) {
+                    continue;
+                }
+
+                String entryName = getEntryName(rootDir, script);
+                ZipEntry zipEntry = new ZipEntry(entryName);
+                zos.putNextEntry(zipEntry);
+
+                String objectName = script.getPath();
+                if (objectName.startsWith(BUCKET_NAME + "/")) {
+                    objectName = objectName.substring(BUCKET_NAME.length() + 1);
+                }
+
+                try (java.io.InputStream is = minioClient.getObject(
+                        io.minio.GetObjectArgs.builder()
+                                .bucket(BUCKET_NAME)
+                                .object(objectName)
+                                .build()
+                )) {
+                    byte[] buffer = new byte[1024 * 1024];
+                    int bytesRead;
+                    while ((bytesRead = is.read(buffer)) != -1) {
+                        zos.write(buffer, 0, bytesRead);
+                    }
+                } catch (ServerException e) {
+                    throw new RuntimeException(e);
+                } catch (InsufficientDataException e) {
+                    throw new RuntimeException(e);
+                } catch (ErrorResponseException e) {
+                    throw new RuntimeException(e);
+                } catch (NoSuchAlgorithmException e) {
+                    throw new RuntimeException(e);
+                } catch (InvalidKeyException e) {
+                    throw new RuntimeException(e);
+                } catch (InvalidResponseException e) {
+                    throw new RuntimeException(e);
+                } catch (XmlParserException e) {
+                    throw new RuntimeException(e);
+                } catch (InternalException e) {
+                    throw new RuntimeException(e);
+                }
+
+                zos.closeEntry();
+            }
+        }
+
+        log.info("文件夹下载完成: {}", rootDir.getName());
+    }
+
+    private List<Script> getAllChildScripts(String parentId) {
+        List<Script> result = new ArrayList<>();
+        LambdaQueryWrapper<Script> queryWrapper = new LambdaQueryWrapper<Script>()
+                .eq(Script::getParentId, parentId);
+        List<Script> children = list(queryWrapper);
+
+        for (Script child : children) {
+            result.add(child);
+            if (Boolean.TRUE.equals(child.getIsDirectory())) {
+                result.addAll(getAllChildScripts(child.getId()));
+            }
+        }
+
+        return result;
+    }
+
+    private String getEntryName(Script rootDir, Script script) {
+        String rootPath = rootDir.getPath();
+        if (rootPath.startsWith(BUCKET_NAME + "/")) {
+            rootPath = rootPath.substring(BUCKET_NAME.length() + 1);
+        }
+        if (rootPath.endsWith("/")) {
+            rootPath = rootPath.substring(0, rootPath.length() - 1);
+        }
+
+        String scriptPath = script.getPath();
+        if (scriptPath.startsWith(BUCKET_NAME + "/")) {
+            scriptPath = scriptPath.substring(BUCKET_NAME.length() + 1);
+        }
+
+        String entryName = scriptPath;
+        if (rootPath.isEmpty()) {
+            entryName = script.getName();
+        } else if (scriptPath.startsWith(rootPath)) {
+            entryName = scriptPath.substring(rootPath.length());
+            if (entryName.startsWith("/")) {
+                entryName = entryName.substring(1);
+            }
+        }
+
+        return entryName;
     }
 
     @Override

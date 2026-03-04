@@ -89,7 +89,7 @@
               action="#"
               :auto-upload="false"
               :on-change="handleScriptChange"
-              accept=".py,.java,.go"
+              accept=".py,.java,.jar,.class,.bin,.zip"
               :show-file-list="false"
             >
               <el-button type="primary" plain>
@@ -252,9 +252,9 @@ const getScriptLabel = (script: ScriptVO) => {
 const getScriptType = (script: ScriptVO) => {
   const ext = script.name?.toLowerCase()
   if (ext?.endsWith('.py')) return 'Python'
-  if (ext?.endsWith('.java')) return 'Java'
   if (ext?.endsWith('.jar')) return 'Java'
-  if (ext?.endsWith('.go')) return 'Go'
+  if (ext?.endsWith('.class')) return 'Java'
+  if (ext?.endsWith('.bin')) return 'Go'
   return '未知'
 }
 
@@ -262,8 +262,8 @@ const getScriptType = (script: ScriptVO) => {
 const getScriptTypeTag = (script: ScriptVO) => {
   const ext = script.name?.toLowerCase()
   if (ext?.endsWith('.py')) return 'success'
-  if (ext?.endsWith('.java') || ext?.endsWith('.jar')) return 'warning'
-  if (ext?.endsWith('.go')) return 'info'
+  if (ext?.endsWith('.jar') || ext?.endsWith('.class')) return 'warning'
+  if (ext?.endsWith('.bin')) return 'info'
   return 'info'
 }
 
@@ -438,10 +438,19 @@ async function handleScriptChange(file: any) {
   const uploadedFile = file.raw || file
   if (uploadedFile) {
     try {
+      const fileName = uploadedFile.name || ''
       const uploadFormData = new FormData()
       uploadFormData.append('file', uploadedFile)
       
-      const response = await scriptApi.upload(uploadFormData)
+      let response
+      
+      // 检测是否是 ZIP 文件夹上传
+      if (fileName.toLowerCase().endsWith('.zip')) {
+        response = await scriptApi.uploadDirectory(uploadFormData)
+      } else {
+        response = await scriptApi.upload(uploadFormData)
+      }
+      
       const scriptId = response.id
       
       // 上传成功后刷新脚本列表

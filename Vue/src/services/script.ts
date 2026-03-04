@@ -31,6 +31,10 @@ export const scriptApi = {
   download: (id: string) => {
     return get<Blob>(`/api/script/download/${id}`, {}, { responseType: 'blob' })
   },
+
+  downloadDirectory: (id: string) => {
+    return get<Blob>(`/api/script/download-directory/${id}`, {}, { responseType: 'blob' })
+  },
   
   delete: (id: string) => {
     return del(`/api/script/${id}`)

@@ -92,6 +92,7 @@ export interface ScriptVO {
   isDirectory?: boolean
   mainFile?: string
   parentId?: string | null
+  rootPath?: string
   tags?: Tag[]
   createTime?: string
   updateTime?: string

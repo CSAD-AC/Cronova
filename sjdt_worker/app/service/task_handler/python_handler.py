@@ -83,10 +83,10 @@ class PythonHandler(BaseHandler):
                 getattr(task.script, 'name', None), script_object, root_path, is_directory, parent_id)
             
             # 需要下载目录的情况：
-            # 1. 有root_path且不是目录类型，且root_path不是根目录
-            # 2. 或者是目录类型本身
-            # 3. 或者有parent_id（说明在某个目录下，需要下载整个父目录）
-            need_download_dir = (root_path and root_path != '/' and not is_directory) or is_directory or parent_id
+            # 1. 本身是目录类型（is_directory=True）
+            # 2. 或者有父目录ID（parent_id 存在），说明是文件夹中的文件
+            # 注意：不再依赖 root_path 来判断，因为单文件时 root_path 也会有值
+            need_download_dir = is_directory or parent_id
             
             temp_script_path = None
             
@@ -94,20 +94,23 @@ class PythonHandler(BaseHandler):
             scripts_dir = "/app/app/scripts_tmp"
             os.makedirs(scripts_dir, exist_ok=True)
             
+            # 获取入口文件信息（优先使用main_file字段）
+            main_file = getattr(task.script, 'main_file', None)
+            logger.info("脚本信息: name=%s, path=%s, root_path=%s, is_directory=%s, parent_id=%s, main_file=%s",
+                getattr(task.script, 'name', None), script_object, root_path, is_directory, parent_id, main_file)
+            
             if need_download_dir:
-                # 有根目录路径：下载整个文件夹
+                # 下载整个文件夹
                 from app.utils.minio_utils import download_directory
                 
                 # 确定要下载的目录前缀
                 if is_directory:
                     # 本身是目录，下载整个目录
                     folder_prefix = script_object
-                elif root_path:
-                    # 有root_path，使用root_path
-                    folder_prefix = root_path
                 else:
-                    # 没有root_path但有parent_id，从脚本路径中提取父目录
-                    folder_prefix = script_object.rsplit('/', 1)[0] + '/'
+                    # 有 parent_id，使用 root_path
+                    # root_path 在这种情况下应该是父目录的路径
+                    folder_prefix = root_path if root_path else script_object.rsplit('/', 1)[0] + '/'
                 
                 if folder_prefix.startswith(f"{script_bucket}/"):
                     folder_prefix = folder_prefix[len(script_bucket) + 1:]
@@ -122,14 +125,22 @@ class PythonHandler(BaseHandler):
                 file_count = download_directory(script_bucket, folder_prefix, temp_dir)
                 logger.info("目录下载完成，共 %d 个文件", file_count)
                 
-                # 根据脚本路径确定具体执行文件
-                script_relative_path = script_object
-                if script_object.startswith(f"{script_bucket}/"):
-                    script_relative_path = script_object[len(script_bucket) + 1:]
-                if script_relative_path.startswith(folder_prefix):
-                    script_relative_path = script_relative_path[len(folder_prefix):]
+                # 优先使用 main_file 确定入口文件，否则使用脚本路径
+                if main_file:
+                    # main_file 是相对于 folder_prefix 的相对路径
+                    entry_file = main_file
+                    if entry_file.startswith('/'):
+                        entry_file = entry_file[1:]
+                    temp_script_path = os.path.join(temp_dir, entry_file)
+                else:
+                    # 根据脚本路径确定具体执行文件
+                    script_relative_path = script_object
+                    if script_object.startswith(f"{script_bucket}/"):
+                        script_relative_path = script_object[len(script_bucket) + 1:]
+                    if script_relative_path.startswith(folder_prefix):
+                        script_relative_path = script_relative_path[len(folder_prefix):]
+                    temp_script_path = os.path.join(temp_dir, script_relative_path)
                 
-                temp_script_path = os.path.join(temp_dir, script_relative_path)
                 logger.info("入口文件路径：%s", temp_script_path)
             else:
                 # 文件类型：下载单个文件，使用原始脚本名
@@ -191,19 +202,23 @@ class PythonHandler(BaseHandler):
             process_manager.add_process(task_run_id, process_info)
             logger.info("进程已添加到进程管理器，taskRunId：%s", task_run_id)
             
-            # 5. 启动日志监控线程
+            # 5. 创建日志共享队列
+            import queue
+            log_queue = queue.Queue()
+            
+            # 6. 启动日志监控线程（唯一 stdout 消费者）
             log_thread = threading.Thread(
                 target=self._monitor_log_output,
-                args=(process, log_bucket, log_object, task_run_id),
+                args=(process, log_bucket, log_object, task_run_id, log_queue),
                 daemon=True
             )
             log_thread.start()
             logger.info("日志监控线程已启动，threadName：%s", log_thread.name)
             
-            # 启动状态监控线程
+            # 7. 启动状态监控线程（只负责 wait，不再 read stdout）
             status_thread = threading.Thread(
                 target=self._monitor_process_status,
-                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path),
+                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path, log_queue),
                 daemon=True
             )
             status_thread.start()
@@ -213,13 +228,19 @@ class PythonHandler(BaseHandler):
             logger.error("异步任务执行失败（%s）：%s", task.taskId, str(e), exc_info=True)
             self._handle_task_error(task, task_run_id, str(e), start_time)
 
-    def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str):
-        """监控并实时上传日志输出"""
+    def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str, log_queue):
+        """
+        日志监控线程 - 唯一 stdout 消费者
+        将日志放入共享队列，由状态线程处理上传
+        """
         try:
             logger.info("启动日志监控线程，taskRunId: %s", task_run_id)
             
+            import sys
+            import io
             import time
-            import os
+            from io import BytesIO
+            from app.utils.minio_utils import minio_upload_file
             
             local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
             start_time = time.time()
@@ -233,43 +254,72 @@ class PythonHandler(BaseHandler):
                 else:
                     return 5
             
-            def upload_log_file():
-                try:
-                    if os.path.exists(local_log_path):
-                        with open(local_log_path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                        if content:
-                            from io import BytesIO
-                            from app.utils.minio_utils import minio_upload_file
-                            log_buffer = BytesIO(content.encode('utf-8'))
-                            minio_upload_file(log_bucket, log_object, log_buffer, len(content))
-                            logger.debug("日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
-                except Exception as e:
-                    logger.error("日志上传失败: %s", str(e))
-            
             while True:
                 line = process.stdout.readline()
+                
+                # 检查进程是否已退出
+                process_exited = process.poll() is not None
+                
+                # 如果没有输出且进程已退出，退出循环
                 if not line:
-                    break
+                    if process_exited:
+                        break
+                    else:
+                        # 进程还没退出，但没有输出（可能缓冲区空），继续等待
+                        time.sleep(0.01)
+                        continue
                 
-                with open(local_log_path, 'a', encoding='utf-8') as f:
-                    f.write(line)
-                
-                current_time = time.time()
-                elapsed = current_time - start_time
-                interval = get_upload_interval(elapsed)
-                
-                if current_time - last_upload_time >= interval:
-                    upload_log_file()
-                    last_upload_time = current_time
-                
-                if process.poll() is not None:
-                    break
+                if line:
+                    # 同时输出到容器stdout（Docker日志中可见）
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    
+                    # 写入本地文件
+                    with open(local_log_path, 'a', encoding='utf-8') as f:
+                        f.write(line)
+                    
+                    # 放入共享队列
+                    log_queue.put(line)
+                    
+                    # 定时上传日志到MinIO（实时更新日志）
+                    current_time = time.time()
+                    elapsed = current_time - start_time
+                    interval = get_upload_interval(elapsed)
+                    
+                    if current_time - last_upload_time >= interval:
+                        try:
+                            with open(local_log_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            if content:
+                                log_buffer = BytesIO(content.encode('utf-8'))
+                                minio_upload_file(log_bucket, log_object, log_buffer, len(content))
+                                logger.debug("定时日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
+                        except Exception as e:
+                            logger.error("定时日志上传失败: %s", str(e))
+                        last_upload_time = current_time
+                    
+                    # 如果进程已退出，发送结束信号
+                    if process_exited:
+                        log_queue.put(None)  # 发送结束信号
+                        break
             
-            upload_log_file()
             logger.info("日志监控完成，taskRunId: %s", task_run_id)
             
+            # 确保本地文件的最终内容已上传
             if os.path.exists(local_log_path):
+                try:
+                    with open(local_log_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    if content:
+                        from io import BytesIO
+                        from app.utils.minio_utils import minio_upload_file
+                        log_buffer = BytesIO(content.encode('utf-8'))
+                        minio_upload_file(log_bucket, log_object, log_buffer, len(content))
+                        logger.info("最终日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
+                except Exception as e:
+                    logger.error("最终日志上传失败: %s", str(e))
+                
+                # 上传完成后删除本地缓存
                 os.remove(local_log_path)
                 logger.info("本地日志缓存已删除，taskRunId: %s", task_run_id)
             
@@ -325,26 +375,29 @@ class PythonHandler(BaseHandler):
 
     def _monitor_process_status(self, process, task: TaskExecuteMessage, task_run_id: str, 
                              start_time: datetime, log_bucket: str, log_object: str, 
-                             temp_script_path: str):
-        """监控进程状态变化"""
+                             temp_script_path: str, log_queue):
+        """
+        状态监控线程 - 只负责 wait，不再 read stdout
+        从共享队列收集日志，构建 errorMessage
+        """
         try:
             logger.info("启动状态监控线程，taskRunId: %s", task_run_id)
             
             # 等待进程完成
             exit_code = process.wait()
             
-            # 读取所有剩余的输出（包括stdout和stderr，因为stderr已经重定向到stdout）
-            remaining_stdout = process.stdout.read() if process.stdout else ""
+            # 从队列收集所有日志
+            all_output_parts = []
+            while True:
+                try:
+                    line = log_queue.get(timeout=1)
+                    if line is None:  # 结束信号
+                        break
+                    all_output_parts.append(line)
+                except:
+                    break
             
-            # 收集所有输出
-            all_output = remaining_stdout
-            
-            # 定义本地日志路径
-            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
-            
-            # 上传最终的完整日志
-            if all_output:
-                self._upload_partial_log_with_retry(log_bucket, log_object, all_output, local_log_path)
+            all_output = ''.join(all_output_parts)
             
             # 构建最终结果
             end_time = datetime.utcnow()

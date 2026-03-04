@@ -46,6 +46,14 @@ public interface IScriptService extends IService<Script> {
     void downloadScript(String id, HttpServletResponse response) throws IOException;
 
     /**
+     * 下载文件夹（ZIP压缩包）
+     * @param id 脚本ID（文件夹类型）
+     * @param response 响应对象
+     * @throws IOException IO异常
+     */
+    void downloadDirectory(String id, HttpServletResponse response) throws IOException;
+
+    /**
      * 删除脚本及其对应的MinIO文件
      * @param id 脚本ID
      * @return 是否成功

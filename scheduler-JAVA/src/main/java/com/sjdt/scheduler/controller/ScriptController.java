@@ -61,10 +61,40 @@ public class ScriptController {
                         .isDirectory(script.getIsDirectory())
                         .mainFile(script.getMainFile())
                         .parentId(script.getParentId())
+                        .rootPath(getRootPath(script))
                         .tags(script.getTags())
                         .build())
                 .toList();
         return Result.success(scriptVOs);
+    }
+    
+    /**
+     * 计算脚本的根目录路径
+     * @param script 脚本对象
+     * @return 根目录路径
+     */
+    private String getRootPath(Script script) {
+        // 如果是目录类型，根目录就是自己的路径
+        if (Boolean.TRUE.equals(script.getIsDirectory())) {
+            return script.getPath();
+        }
+        
+        // 如果有父目录ID，需要查询父目录的路径
+        if (script.getParentId() != null) {
+            Script parentScript = scriptService.getById(script.getParentId());
+            if (parentScript != null) {
+                return parentScript.getPath();
+            }
+        }
+        
+        // 否则返回脚本所在的目录路径（去掉文件名部分）
+        String scriptPath = script.getPath();
+        int lastSlash = scriptPath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            return scriptPath.substring(0, lastSlash);
+        }
+        
+        return "/";
     }
 
     /**
@@ -99,6 +129,18 @@ public class ScriptController {
     @Operation(summary = "下载脚本文件", description = "根据脚本ID下载脚本文件")
     public void downloadScript(@PathVariable String id, HttpServletResponse response) throws IOException {
         scriptService.downloadScript(id, response);
+    }
+
+    /**
+     * 下载文件夹（ZIP压缩包）
+     * @param id 脚本ID（文件夹类型）
+     * @param response 响应对象
+     * @throws IOException IO异常
+     */
+    @GetMapping("/download-directory/{id}")
+    @Operation(summary = "下载文件夹", description = "根据脚本ID下载文件夹（ZIP压缩包）")
+    public void downloadDirectory(@PathVariable String id, HttpServletResponse response) throws IOException {
+        scriptService.downloadDirectory(id, response);
     }
 
     /**

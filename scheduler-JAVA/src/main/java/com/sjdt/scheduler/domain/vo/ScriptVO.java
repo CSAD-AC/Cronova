@@ -27,6 +27,9 @@ public class ScriptVO {
     /** 父脚本ID，用于构建层级关系 */
     private String parentId;
 
+    /** 根目录路径，用于下载整个目录 */
+    private String rootPath;
+
     /** 标签 */
     private Set<Tag> tags;
 }

@@ -70,35 +70,64 @@ class GoHandler(BaseHandler):
             # 获取根目录路径
             root_path = getattr(task.script, 'root_path', None)
             is_directory = getattr(task.script, 'is_directory', False)
+            parent_id = getattr(task.script, 'parent_id', None)
+            main_file = getattr(task.script, 'main_file', None)
+            
+            logger.info("脚本信息: name=%s, path=%s, root_path=%s, is_directory=%s, parent_id=%s, main_file=%s",
+                getattr(task.script, 'name', None), script_object, root_path, is_directory, parent_id, main_file)
             
             temp_bin_path = None
             
-            if root_path and not is_directory:
-                # 有根目录路径：下载整个文件夹
+            # 需要下载目录的情况：
+            # 1. 本身是目录类型（is_directory=True）
+            # 2. 或者有父目录ID（parent_id 存在），说明是文件夹中的文件
+            # 注意：不再依赖 root_path 来判断，因为单文件时 root_path 也会有值
+            need_download_dir = is_directory or parent_id
+            
+            # 确保scripts_tmp目录存在
+            scripts_dir = "/app/app/scripts_tmp"
+            os.makedirs(scripts_dir, exist_ok=True)
+            
+            if need_download_dir:
+                # 下载整个文件夹
                 from app.utils.minio_utils import download_directory
                 
-                scripts_dir = "/app/app/scripts_tmp"
-                os.makedirs(scripts_dir, exist_ok=True)
+                # 确定要下载的目录前缀
+                if is_directory:
+                    # 本身是目录，下载整个目录
+                    folder_prefix = script_object
+                else:
+                    # 有 parent_id，使用 root_path
+                    # root_path 在这种情况下应该是父目录的路径
+                    folder_prefix = root_path if root_path else script_object.rsplit('/', 1)[0] + '/'
                 
-                folder_prefix = root_path
                 if folder_prefix.startswith(f"{script_bucket}/"):
                     folder_prefix = folder_prefix[len(script_bucket) + 1:]
                 
-                # 使用原始脚本名作为目录名
-                script_name = getattr(task.script, 'name', 'script')
-                temp_dir = os.path.join(scripts_dir, script_name)
+                # 使用目录名作为本地目录名（统一命名逻辑）
+                dir_name = folder_prefix.rstrip('/').split('/')[-1]
+                if not dir_name:
+                    dir_name = 'root'
+                temp_dir = os.path.join(scripts_dir, dir_name)
+                
                 logger.info("开始下载Go目录，prefix：%s，local_dir：%s", folder_prefix, temp_dir)
                 file_count = download_directory(script_bucket, folder_prefix, temp_dir)
                 logger.info("目录下载完成，共 %d 个文件", file_count)
                 
-                # 根据脚本路径确定具体执行文件
-                script_relative_path = script_object
-                if script_object.startswith(f"{script_bucket}/"):
-                    script_relative_path = script_object[len(script_bucket) + 1:]
-                if script_relative_path.startswith(folder_prefix):
-                    script_relative_path = script_relative_path[len(folder_prefix):]
+                # 优先使用 main_file 确定入口文件，否则使用脚本路径
+                if main_file:
+                    entry_file = main_file
+                    if entry_file.startswith('/'):
+                        entry_file = entry_file[1:]
+                    temp_bin_path = os.path.join(temp_dir, entry_file)
+                else:
+                    script_relative_path = script_object
+                    if script_object.startswith(f"{script_bucket}/"):
+                        script_relative_path = script_object[len(script_bucket) + 1:]
+                    if script_relative_path.startswith(folder_prefix):
+                        script_relative_path = script_relative_path[len(folder_prefix):]
+                    temp_bin_path = os.path.join(temp_dir, script_relative_path)
                 
-                temp_bin_path = os.path.join(temp_dir, script_relative_path)
                 os.chmod(temp_bin_path, 0o755)
                 logger.info("目录下载成功：%s", temp_bin_path)
             else:
@@ -145,18 +174,22 @@ class GoHandler(BaseHandler):
             }
             process_manager.add_process(task_run_id, process_info)
             
-            # 7. 启动日志监控线程
+            # 7. 创建日志共享队列
+            import queue
+            log_queue = queue.Queue()
+            
+            # 8. 启动日志监控线程（唯一 stdout 消费者）
             log_thread = threading.Thread(
                 target=self._monitor_log_output,
-                args=(process, log_bucket, log_object, task_run_id),
+                args=(process, log_bucket, log_object, task_run_id, log_queue),
                 daemon=True
             )
             log_thread.start()
             
-            # 8. 启动状态监控线程
+            # 9. 启动状态监控线程（只负责 wait，不再 read stdout）
             status_thread = threading.Thread(
                 target=self._monitor_process_status,
-                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path),
+                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, log_queue),
                 daemon=True
             )
             status_thread.start()
@@ -165,27 +198,97 @@ class GoHandler(BaseHandler):
             logger.error("异步Go任务执行失败（%s）：%s", task.taskId, str(e), exc_info=True)
             self._handle_task_error(task, task_run_id, str(e), start_time)
 
-    def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str):
-        """监控并实时上传日志输出（逻辑同PythonHandler）"""
+    def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str, log_queue):
+        """
+        日志监控线程 - 唯一 stdout 消费者
+        将日志放入共享队列，由状态线程处理上传
+        """
         try:
+            import sys
+            import time
+            from io import BytesIO
+            from app.utils.minio_utils import minio_upload_file
+            
             local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
-            log_content = []
-            for line in iter(process.stdout.readline, ''):
+            start_time = time.time()
+            last_upload_time = start_time
+            
+            def get_upload_interval(elapsed):
+                if elapsed < 10:
+                    return 1
+                elif elapsed < 60:
+                    return 3
+                else:
+                    return 5
+            
+            while True:
+                line = process.stdout.readline()
+                
+                # 检查进程是否已退出
+                process_exited = process.poll() is not None
+                
+                # 如果没有输出且进程已退出，退出循环
+                if not line:
+                    if process_exited:
+                        break
+                    else:
+                        # 进程还没退出，但没有输出（可能缓冲区空），继续等待
+                        time.sleep(0.01)
+                        continue
+                
                 if line:
-                    log_content.append(line)
+                    # 同时输出到容器stdout（Docker日志中可见）
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    
+                    # 写入本地文件
                     with open(local_log_path, 'a', encoding='utf-8') as f:
                         f.write(line)
-                    if len(log_content) >= 5 or line.endswith('\n'):
-                        self._upload_partial_log_with_retry(log_bucket, log_object, ''.join(log_content), local_log_path)
-                        log_content = []
-                if process.poll() is not None:
-                    break
+                    
+                    # 放入共享队列
+                    log_queue.put(line)
+                    
+                    # 定时上传日志到MinIO（实时更新日志）
+                    current_time = time.time()
+                    elapsed = current_time - start_time
+                    interval = get_upload_interval(elapsed)
+                    
+                    if current_time - last_upload_time >= interval:
+                        try:
+                            with open(local_log_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            if content:
+                                log_buffer = BytesIO(content.encode('utf-8'))
+                                minio_upload_file(log_bucket, log_object, log_buffer, len(content))
+                                logger.debug("定时日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
+                        except Exception as e:
+                            logger.error("定时日志上传失败: %s", str(e))
+                        last_upload_time = current_time
+                    
+                    # 如果进程已退出，发送结束信号
+                    if process_exited:
+                        log_queue.put(None)  # 发送结束信号
+                        break
             
-            if log_content:
-                self._upload_partial_log_with_retry(log_bucket, log_object, ''.join(log_content), local_log_path)
+            logger.info("日志监控完成，taskRunId: %s", task_run_id)
             
+            # 删除本地日志缓存前，确保本地文件的最终内容已上传
             if os.path.exists(local_log_path):
+                try:
+                    with open(local_log_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    if content:
+                        from io import BytesIO
+                        from app.utils.minio_utils import minio_upload_file
+                        log_buffer = BytesIO(content.encode('utf-8'))
+                        minio_upload_file(log_bucket, log_object, log_buffer, len(content))
+                        logger.info("最终日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
+                except Exception as e:
+                    logger.error("最终日志上传失败: %s", str(e))
+                
+                # 上传完成后删除本地缓存
                 os.remove(local_log_path)
+                logger.info("本地日志缓存已删除，taskRunId: %s", task_run_id)
         except Exception as e:
             logger.error("Go任务日志监控异常: %s", str(e))
 
@@ -222,25 +325,34 @@ class GoHandler(BaseHandler):
         except Exception as e:
             logger.error("Go日志上传失败: %s", str(e))
 
-    def _monitor_process_status(self, process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path):
-        """监控进程状态逻辑同PythonHandler"""
+    def _monitor_process_status(self, process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, log_queue):
+        """
+        状态监控线程 - 只负责 wait，不再 read stdout
+        从共享队列收集日志，构建 errorMessage
+        """
         try:
+            # 等待进程完成
             exit_code = process.wait()
-            # 读取所有剩余的输出
-            remaining_output = process.stdout.read() if process.stdout else ""
             
-            # 定义本地日志路径
-            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
-
-            if remaining_output:
-                self._upload_partial_log_with_retry(log_bucket, log_object, remaining_output, local_log_path)
+            # 从队列收集所有日志
+            all_output_parts = []
+            while True:
+                try:
+                    line = log_queue.get(timeout=1)
+                    if line is None:  # 结束信号
+                        break
+                    all_output_parts.append(line)
+                except:
+                    break
+            
+            all_output = ''.join(all_output_parts)
             
             end_time = datetime.utcnow()
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
             
             error_message = None
             if exit_code != 0:
-                error_message = remaining_output[:1000] if remaining_output else f"退出码：{exit_code}"
+                error_message = all_output[:1000] if all_output else f"退出码：{exit_code}"
             
             result = TaskResultMessage(
                 workerId=Config.WORKER_ID,
