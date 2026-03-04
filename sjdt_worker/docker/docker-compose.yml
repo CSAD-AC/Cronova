@@ -1,3 +1,4 @@
+# 本地测试docker-compose
 services:
   sjdt-worker:
     image: sjdt-worker:1.0
