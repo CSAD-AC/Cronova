@@ -1,0 +1,50 @@
+# =====================================================================
+# Java 执行器（worker-JAVA）配置
+# 所有可变项通过环境变量注入（.env 文件 / Docker env），未设置时回退默认值。
+# 环境变量清单见仓库根 .env.example（E 阶段约定）。
+# =====================================================================
+worker:
+  # 调度器地址
+  scheduler-base-url: ${SCHEDULER_BASE_URL:http://127.0.0.1:28085}
+  # 本地配置路径（WorkerID / AK / SK / 标签持久化）
+  local-config-path: ${LOCAL_CONFIG_PATH:./local_config.json}
+  # 脚本下载目录（容器内）
+  scripts-dir: ${WORKER_SCRIPTS_DIR:/app/scripts_tmp}
+  # 任务实例数据目录
+  instance-dir: ${WORKER_INSTANCE_DIR:/app/task_instances}
+  # 标签（逗号分隔，env 优先于 .env 文件，再优先于 local_config.json）
+  worker-tags: ${WORKER_TAGS:}
+
+  # 定时配置（秒）
+  heartbeat-interval-sec: ${HEARTBEAT_INTERVAL:2}
+  status-report-interval-sec: ${STATUS_REPORT_INTERVAL:10}
+  task-status-interval-sec: ${TASK_STATUS_INTERVAL:5}
+  tag-check-interval-sec: ${TAG_CHECK_INTERVAL:60}
+
+  # RocketMQ
+  mq:
+    namesrv-addr: ${MQ_NAMESRV_ADDR:127.0.0.1:9876}
+    consumer-group: ${MQ_CONSUMER_GROUP:WORKER_EXECUTOR_GROUP}
+    producer-group: ${MQ_PRODUCER_GROUP:WORKER_EXECUTOR_GROUP}
+    task-topic: ${MQ_TASK_TOPIC:TASK_EXECUTE}
+    task-result-topic: ${MQ_TASK_RESULT_TOPIC:TASK_RESULT}
+    task-control-topic: ${MQ_TASK_CONTROL_TOPIC:TASK_CONTROL}
+    send-msg-timeout-ms: 5000
+
+  # MinIO
+  minio:
+    endpoint: ${MINIO_ENDPOINT:127.0.0.1:9000}
+    access-key: ${MINIO_ACCESS_KEY:changeme}
+    secret-key: ${MINIO_SECRET_KEY:changeme}
+    secure: ${MINIO_SECURE:false}
+    bucket: ${MINIO_BUCKET_NAME:task-engine}
+
+  # 执行并发度（任务线程池）
+  executor-threads: 12
+
+logging:
+  level:
+    root: INFO
+    com.sjdt.worker: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} | %-5level | %logger{36}:%L - %msg%n"

@@ -59,3 +59,7 @@ doc/
 **/.env
 **/local_config.json
 
+### Java 执行器运行时产物 ###
+worker-JAVA/scripts_tmp/
+worker-JAVA/task_instances/
+

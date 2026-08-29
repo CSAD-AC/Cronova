@@ -1,0 +1,6 @@
+target/
+.idea/
+*.iml
+local_config.json
+scripts_tmp/
+task_instances/

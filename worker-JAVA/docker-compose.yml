@@ -1,0 +1,15 @@
+# 本地测试 docker-compose（Java 执行器）
+services:
+  sjdt-worker-java:
+    image: sjdt-worker-java:1.0
+    network_mode: host
+    container_name: sjdt-worker-java
+    restart: always
+    env_file:
+      - .env
+    working_dir: /app
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
