@@ -1,5 +1,24 @@
 # SJDT 任务引擎
 
+SJDT 任务引擎是一个分布式任务调度系统，支持两种任务类型：**脚本任务**（Worker 执行）和 **HTTP 回调任务**（调度器直连业务系统）。
+
+## 仓库结构
+
+| 目录 | 说明 |
+|---|---|
+| `scheduler-JAVA/` | 调度中心（Spring Boot）：任务管理、到期触发、路由派发、结果消费、Worker 管理 |
+| `sjdt_worker/` | Worker 执行器（Python）：脚本任务接收、执行、状态汇报、日志管理 |
+| `Vue/` | 前端（Vue 3 + Element Plus） |
+| `docs/` | 文档收口目录（架构 / 面试 / 计划 / 开发 / 集成参考 / 踩坑记录） |
+| `examples/` | 各语言回调任务模板示例（java / python / go） |
+| `experiments/` | 一次性实验工程 |
+
+## 文档索引
+
+详细文档统一收口在 [`docs/README.md`](docs/README.md)：架构方案、面试要点、改造计划、开发启动、各语言集成指南、踩坑记录。
+
+---
+
 ## 简介
 
 **SJDT任务引擎**是一个分布式任务调度系统，支持两种任务类型：**脚本任务**和**HTTP回调任务**。
@@ -421,10 +440,10 @@ task-engine bucket/
 
 | Key | 说明 | 过期 |
 |-----|------|------|
-| `scheduler:worker:heartbeat:{workerId}` | Worker存活状态 | 30s |
-| `scheduler:worker:info:{workerId}` | Worker负载信息 | 无 |
-| `scheduler:cache:tasks:active` | 活跃任务缓存 | 无 |
-| `scheduler:cache:scripts` | 脚本信息缓存 | 无 |
+| `scheduler:worker:heartbeat:{workerId}` | Worker 存活状态 | 30s |
+| `scheduler:worker:info:{workerId}` | Worker 负载信息（CPU/内存/运行任务数） | 无 |
+| `scheduler:lock:scan` | 调度扫描分布式锁（多实例互斥） | 4s |
+| `scheduler:route:rr` | 轮询路由游标（ROUND_ROBIN 共享计数器） | 无 |
 
 ---
 

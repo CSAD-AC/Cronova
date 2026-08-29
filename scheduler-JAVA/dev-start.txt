@@ -1,8 +1,0 @@
-启动MQ
-mqnamesrv.cmd
-
-基础配置(broker)
-mqbroker.cmd -n 127.0.0.1:9876 autoCreateTopicEnable=true
-
-MinIO启动
-D:\Project\Scheduler\minio.exe server D:\minio_data --console-address ":9001"
