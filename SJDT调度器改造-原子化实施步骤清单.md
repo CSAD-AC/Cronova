@@ -210,7 +210,7 @@ if (firedAt.isBefore(now.minusMinutes(5))) {          // 落后超过 5 分钟 =
 
 ### 步骤 9｜实现 Worker 在线快照 `WorkerRegistry`
 
-- [ ] **目标**：为路由提供"当前在线 Worker + 实时负载"的统一视图（数据源全部现成）。
+- [x] **目标**：为路由提供"当前在线 Worker + 实时负载"的统一视图（数据源全部现成）。
 
 - **涉及文件**：新增 `route/WorkerRegistry.java`、`route/WorkerSnapshot.java`。
 
@@ -233,7 +233,7 @@ public List<WorkerSnapshot> filterByTags(List<WorkerSnapshot> ws, Set<String> re
 
 ### 步骤 10｜实现路由策略 SPI + 注册中心
 
-- [ ] **目标**：6 种策略可插拔，新增策略只需实现一个接口。
+- [x] **目标**：6 种策略可插拔，新增策略只需实现一个接口。
 
 - **涉及文件**：新增 `route/strategy/RouteStrategy.java`、`route/strategy/RouteStrategyRouter.java`。
 
@@ -253,7 +253,7 @@ public interface RouteStrategy {
 
 ### 步骤 11｜ROUND_ROBIN 策略
 
-- [ ] **目标**：任务均匀轮流分配给候选 Worker。
+- [x] **目标**：任务均匀轮流分配给候选 Worker。
 
 - **涉及文件**：新增 `route/strategy/RoundRobinStrategy.java`。
 
@@ -265,7 +265,7 @@ public interface RouteStrategy {
 
 ### 步骤 12｜RANDOM 策略
 
-- [ ] **目标**：随机分配（简单、实现为零状态）。
+- [x] **目标**：随机分配（简单、实现为零状态）。
 
 - **涉及文件**：新增 `route/strategy/RandomStrategy.java`。
 
@@ -277,7 +277,7 @@ public interface RouteStrategy {
 
 ### 步骤 13｜CONSISTENT_HASH 策略
 
-- [ ] **目标**：同一 taskId 尽量命中同一 Worker；Worker 增减时**迁移最小**。
+- [x] **目标**：同一 taskId 尽量命中同一 Worker；Worker 增减时**迁移最小**。
 
 - **涉及文件**：新增 `route/strategy/ConsistentHashStrategy.java`。
 
@@ -289,7 +289,7 @@ public interface RouteStrategy {
 
 ### 步骤 14｜LEAST_LOAD 策略
 
-- [ ] **目标**：按**真实负载**选最闲的 Worker（比 xxl 的 LFU 只看触发频次更贴近实际）。
+- [x] **目标**：按**真实负载**选最闲的 Worker（比 xxl 的 LFU 只看触发频次更贴近实际）。
 
 - **涉及文件**：新增 `route/strategy/LeastLoadStrategy.java`。
 
@@ -301,7 +301,7 @@ public interface RouteStrategy {
 
 ### 步骤 15｜FAILOVER 策略
 
-- [ ] **目标**：首选 Worker 失联时自动换人，避免单点失败。
+- [x] **目标**：首选 Worker 失联时自动换人，避免单点失败。
 
 - **涉及文件**：新增 `route/strategy/FailoverStrategy.java`。
 
@@ -313,7 +313,7 @@ public interface RouteStrategy {
 
 ### 步骤 16｜TAG_MATCH 策略
 
-- [ ] **目标**：让 `requiredTags` 真正生效（当前是死字段，没有任何分发逻辑引用）。
+- [x] **目标**：让 `requiredTags` 真正生效（当前是死字段，没有任何分发逻辑引用）。
 
 - **涉及文件**：新增 `route/strategy/TagMatchStrategy.java`。
 
@@ -325,7 +325,7 @@ public interface RouteStrategy {
 
 ### 步骤 17｜任务 DTO / 实体透传新字段
 
-- [ ] **目标**：前端能配置 `route_strategy / block_strategy / shard_total`，并持久化到 `tasks`。
+- [x] **目标**：前端能配置 `route_strategy / block_strategy / shard_total`，并持久化到 `tasks`。
 
 - **涉及文件**：`Task.java`、`TaskCreateDTO.java`、`TaskUpdateDTO.java`、`TaskController.java`、前端 Vue 表单（可选）。
 
@@ -337,7 +337,7 @@ public interface RouteStrategy {
 
 ### 步骤 18｜修复定向投递 Bug（生产端：Tag 定向发送）
 
-- [ ] **目标**：把"盲发 topic"改成"按 workerId 打 Tag 定向投递"。这是**整个阶段二价值最大的一步**。
+- [x] **目标**：把"盲发 topic"改成"按 workerId 打 Tag 定向投递"。这是**整个阶段二价值最大的一步**。
 
 - **涉及文件**：`service/TaskProducerService.java`（新增 `sendTask(msg, workerId)`）。
 
@@ -356,7 +356,7 @@ public void sendTask(TaskExecuteMessage msg, String workerId) {
 
 ### 步骤 19｜修复定向投递 Bug（消费端：独立消费组 + 按 Tag 订阅）
 
-- [ ] **目标**：从根上消灭"定向任务被非目标 Worker ACK 吞掉"的隐患。
+- [x] **目标**：从根上消灭"定向任务被非目标 Worker ACK 吞掉"的隐患。
 
 - **Bug 复述（要写进 commit message）**：RocketMQ 集群模式下同组一条消息只投给**一个**消费者；`mq_consumer.py` L87-94 非目标 Worker 收到定向任务直接 `return True`（ACK），消息对全组已消费 -> 任务静默丢失，只能靠 120s 派发超时反复兜底。
 
@@ -381,7 +381,7 @@ self.task_consumer.subscribe(Config.MQ_TASK_TOPIC, self._message_listener,
 
 ### 步骤 20｜统一派发入口 `dispatch()`（合并两条发送路径 + park 兜底）
 
-- [ ] **目标**：cron 触发 / 立即执行 / 重试三条派发路径收敛到一个入口，路由结果统一落 Tag。
+- [x] **目标**：cron 触发 / 立即执行 / 重试三条派发路径收敛到一个入口，路由结果统一落 Tag。
 
 - **涉及文件**：`task/CronTaskScheduler.java`（`dispatch()`）、`service/impl/TaskServiceImpl.java`（`publishScriptTask` 的选人逻辑改走路由 SPI）。
 

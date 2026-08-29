@@ -26,8 +26,7 @@ import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.ICallbackJobConfigService;
 import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.ITaskService;
-import com.sjdt.scheduler.service.IWorkerService;
-import com.sjdt.scheduler.service.TaskProducerService;
+import com.sjdt.scheduler.service.TaskDispatchService;
 import com.sjdt.scheduler.task.TaskCallbackExecutor;
 import com.sjdt.scheduler.util.CronNextTimeUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +37,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -49,8 +47,8 @@ import java.util.stream.Collectors;
 @Service
 public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements ITaskService {
 
-    /** 任务生产者服务 */
-    private final TaskProducerService taskProducerService;
+    /** 统一派发服务（路由选 Worker + Tag 定向投递） */
+    private final TaskDispatchService taskDispatchService;
 
     /** 脚本服务 */
     private final IScriptService scriptService;
@@ -72,19 +70,16 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
 
     private final ObjectMapper objectMapper;
 
-    private final IWorkerService workerService;
-
     @Autowired
-    public TaskServiceImpl(TaskProducerService taskProducerService,
+    public TaskServiceImpl(TaskDispatchService taskDispatchService,
                           IScriptService scriptService,
                           ScriptMapper scriptMapper,
                           TaskRunMapper taskRunMapper,
                           CallbackJobConfigMapper callbackJobConfigMapper,
                           ICallbackJobConfigService callbackJobConfigService,
                           TaskCallbackExecutor taskCallbackExecutor,
-                          ObjectMapper objectMapper,
-                          IWorkerService workerService) {
-        this.taskProducerService = taskProducerService;
+                          ObjectMapper objectMapper) {
+        this.taskDispatchService = taskDispatchService;
         this.scriptService = scriptService;
         this.scriptMapper = scriptMapper;
         this.taskRunMapper = taskRunMapper;
@@ -92,7 +87,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         this.callbackJobConfigService = callbackJobConfigService;
         this.taskCallbackExecutor = taskCallbackExecutor;
         this.objectMapper = objectMapper;
-        this.workerService = workerService;
     }
 
     /**
@@ -297,6 +291,9 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .retryCount(dto.getRetryCount() != null ? dto.getRetryCount() : 0)
                 .retryIntervalSeconds(dto.getRetryIntervalSeconds() != null ? dto.getRetryIntervalSeconds() : 60)
                 .targetWorker(dto.getTargetWorker())
+                .routeStrategy(dto.getRouteStrategy())
+                .blockStrategy(dto.getBlockStrategy())
+                .shardTotal(dto.getShardTotal())
                 .requiredTags(requiredTagsJson)
                 .status(TaskStatus.active)
                 .createdBy("system")
@@ -412,44 +409,9 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         log.info("脚本信息 - ID: {}, name: {}, path: {}, isDirectory: {}, parentId: {}, rootPath: {}",
                 script.getId(), script.getName(), script.getPath(), script.getIsDirectory(), script.getParentId(), rootPath);
 
-        // 处理标签匹配：优先根据 requiredTags 匹配 Worker
+        // 路由选择统一交由 TaskDispatchService：requiredTags 过滤 + 路由策略选 Worker + Tag 定向投递。
+        // 消息里的 targetWorkerId 仅作信息字段，不再承担路由职责。
         String targetWorkerId = task.getTargetWorker();
-        Set<String> requiredTags = parseRequiredTags(task.getRequiredTags());
-        
-        // 优先使用标签匹配（即使指定了 targetWorker，也优先检查标签）
-        if (requiredTags != null && !requiredTags.isEmpty()) {
-            log.info("任务指定标签要求，尝试根据标签匹配，requiredTags: {}", requiredTags);
-            List<com.sjdt.scheduler.domain.po.Worker> matchedWorkers = workerService.findOnlineWorkersByTags(requiredTags);
-            
-            if (!matchedWorkers.isEmpty()) {
-                // 如果指定了 targetWorker，检查该 Worker 是否在匹配列表中
-                if (targetWorkerId != null) {
-                    String finalTargetWorkerId = targetWorkerId;
-                    boolean targetWorkerMatched = matchedWorkers.stream()
-                            .anyMatch(w -> w.getId().equals(finalTargetWorkerId));
-                    if (targetWorkerMatched) {
-                        log.info("指定的Worker {} 符合标签要求，任务将定向发送", targetWorkerId);
-                    } else {
-                        // 指定的 Worker 不符合标签要求，选择一个符合的
-                        com.sjdt.scheduler.domain.po.Worker selectedWorker = matchedWorkers.get(0);
-                        targetWorkerId = selectedWorker.getId();
-                        log.warn("指定的Worker {} 不符合标签要求，选择符合的Worker: {}", 
-                                task.getTargetWorker(), targetWorkerId);
-                    }
-                } else {
-                    // 未指定 Worker，选择一个匹配的
-                    // 简单策略：随机选择一个匹配的 Worker
-                    com.sjdt.scheduler.domain.po.Worker selectedWorker = matchedWorkers.get(0);
-                    targetWorkerId = selectedWorker.getId();
-                    log.info("根据标签匹配到Worker: {}, 标签: {}", targetWorkerId, requiredTags);
-                }
-            } else {
-                log.warn("没有找到符合标签要求的在线Worker，任务将无法执行，requiredTags: {}", requiredTags);
-            }
-        } else if (targetWorkerId == null) {
-            // 没有指定标签也没有指定 Worker，不做处理（广播模式）
-            log.info("任务未指定Worker和标签要求，将使用广播模式");
-        }
 
         TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
                 .id(script.getId())
@@ -475,31 +437,14 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .timeoutSeconds(task.getTimeoutSeconds())
                 .build();
 
-        if (delaySeconds > 0) {
-            int delayLevel = com.sjdt.scheduler.util.RocketMQDelayUtil.getDelayLevel(delaySeconds);
-            taskProducerService.sendTaskWithDelay(message, delayLevel);
-            log.info("脚本延时任务已发布，任务ID: {}, 运行ID: {}, 重试次数: {}, 延时: {}s (Level: {})", 
-                    task.getId(), taskRunId, retryNum, delaySeconds, delayLevel);
+        // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
+        boolean dispatched = taskDispatchService.dispatch(task, message, delaySeconds);
+        if (dispatched) {
+            log.info("脚本任务已定向发布，任务ID: {}, 运行ID: {}, 重试次数: {}, 延时: {}s",
+                    task.getId(), taskRunId, retryNum, delaySeconds);
         } else {
-            taskProducerService.sendTask(message);
-            log.info("脚本任务已发布，任务ID: {}, 运行ID: {}, 重试次数: {}", task.getId(), taskRunId, retryNum);
-        }
-    }
-
-    /**
-     * 解析任务 requiredTags 字段
-     * @param requiredTagsJson JSON 格式的标签字符串
-     * @return 标签集合
-     */
-    private Set<String> parseRequiredTags(String requiredTagsJson) {
-        if (requiredTagsJson == null || requiredTagsJson.isEmpty()) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(requiredTagsJson, new com.fasterxml.jackson.core.type.TypeReference<Set<String>>() {});
-        } catch (Exception e) {
-            log.error("解析 requiredTags 失败: {}", requiredTagsJson, e);
-            return null;
+            log.warn("脚本任务无可用Worker，已park，任务ID: {}, 运行ID: {}（交派发超时监控兜底）",
+                    task.getId(), taskRunId);
         }
     }
 
@@ -635,13 +580,12 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                     .timeoutSeconds(task.getTimeoutSeconds())
                     .build();
 
-            if (delaySeconds > 0) {
-                int delayLevel = com.sjdt.scheduler.util.RocketMQDelayUtil.getDelayLevel(delaySeconds);
-                taskProducerService.sendTaskWithDelay(message, delayLevel);
+            // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
+            boolean dispatched = taskDispatchService.dispatch(task, message, delaySeconds);
+            if (dispatched) {
                 log.info("脚本任务已重新发布(超时重试)，TaskRunID: {}, 延时: {}s", taskRunId, delaySeconds);
             } else {
-                taskProducerService.sendTask(message);
-                log.info("脚本任务已重新发布(超时重试)，TaskRunID: {}", taskRunId);
+                log.warn("脚本任务重试无可用Worker，已park，TaskRunID: {}（交派发超时监控兜底）", taskRunId);
             }
 
         } else if (task.getExecuteType() == ExecuteType.callback) {

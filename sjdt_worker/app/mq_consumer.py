@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 class MQConsumer:
     def __init__(self):
         logger.info("初始化MQ消费者，配置信息：")
-        logger.info("- 消费者组(Task)：%s", Config.MQ_CONSUMER_GROUP)
+        logger.info("- 消费者组(Task)：%s_%s", Config.MQ_CONSUMER_GROUP, Config.WORKER_ID)
         logger.info("- 消费者组(Control)：%s_CONTROL", Config.MQ_CONSUMER_GROUP)
         logger.info("- NameServer地址：%s", Config.MQ_NAMESRV_ADDR)
         logger.info("- 任务主题：%s", Config.MQ_TASK_TOPIC)
@@ -22,17 +22,20 @@ class MQConsumer:
         
         self.task_service = TaskService()
 
-        # 1. 任务消费者 (默认集群模式)
-        self.task_consumer = PushConsumer(Config.MQ_CONSUMER_GROUP)
+        # 1. 任务消费者（独立消费组 + expression=workerId，定向投递）
+        # 每个 Worker 一个专属消费组（WORKER_EXECUTOR_GROUP_{workerId}），订阅表达式=自己的 workerId，
+        # 由 Broker 按 Tag 过滤，本 Worker 只会收到发给自己的消息。
+        # 相比原先"集群模式共享消费组 + 非目标 Worker 直接 ACK"，消息不会再被无关 Worker 吞掉。
+        self.task_consumer = PushConsumer("{}_{}".format(Config.MQ_CONSUMER_GROUP, Config.WORKER_ID))
         self.task_consumer.set_namesrv_addr(Config.MQ_NAMESRV_ADDR)
         
-        logger.info("开始订阅任务执行主题：%s", Config.MQ_TASK_TOPIC)
+        logger.info("开始订阅任务执行主题：%s（Tag=%s）", Config.MQ_TASK_TOPIC, Config.WORKER_ID)
         self.task_consumer.subscribe(
             Config.MQ_TASK_TOPIC,
             self._message_listener,
-            expression="*"
+            expression=Config.WORKER_ID
         )
-        logger.info("任务执行主题订阅成功")
+        logger.info("任务执行主题订阅成功，消费组：%s_%s", Config.MQ_CONSUMER_GROUP, Config.WORKER_ID)
         
         # 2. 控制消费者 (广播模式)
         # 使用独立的Group以避免冲突，并启用广播模式确保所有Worker都能收到控制指令
@@ -81,21 +84,10 @@ class MQConsumer:
                 logger.info("消息解析成功 - TaskID: %s, TaskRunID: %s, TaskType: %s, ScriptType: %s", 
                            task.taskId, task.taskRunId, task.taskType, task.scriptType)
                 
-                logger.info("开始处理任务：%s，目标Worker: %s，当前Worker: %s", 
+                logger.info("开始处理任务：%s，消息目标Worker: %s，当前Worker: %s", 
                            task.taskId, task.targetWorkerId, Config.WORKER_ID)
 
-                if task.targetWorkerId:
-                    if task.targetWorkerId == Config.WORKER_ID:
-                        logger.info("定向任务匹配，任务%s定向到当前Worker %s，开始处理", 
-                                   task.taskId, Config.WORKER_ID)
-                    else:
-                        logger.info("定向任务不匹配，任务%s定向到Worker %s，当前Worker为%s，跳过处理", 
-                                   task.taskId, task.targetWorkerId, Config.WORKER_ID)
-                        return True
-                else:
-                    logger.info("公共任务，任务%s为公共任务，当前Worker %s开始处理", 
-                               task.taskId, Config.WORKER_ID)
-
+                # 消息已由 Broker 按 Tag=workerId 定向投递到本消费组，收到的即是指定给自己的任务
                 logger.info("执行任务：%s", task.taskId)
                 success = self.task_service.process_task(task)
                 if success:

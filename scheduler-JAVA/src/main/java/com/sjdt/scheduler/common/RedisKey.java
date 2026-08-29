@@ -27,6 +27,13 @@ public class RedisKey {
     public static final String SCHEDULER_LOCK_SCAN = "scheduler:lock:scan";
 
     /**
+     * 轮询路由游标 (String类型, INCR)
+     * Key: scheduler:route:rr
+     * 多调度实例共享的自增计数器，用于 ROUND_ROBIN 策略
+     */
+    public static final String ROUTE_RR = "scheduler:route:rr";
+
+    /**
      * 脚本信息缓存名称
      */
     public static final String SCRIPT_CACHE = "scheduler:cache:scripts";

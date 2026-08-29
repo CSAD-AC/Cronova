@@ -13,11 +13,17 @@ import org.springframework.stereotype.Service;
 
 /**
  * 任务生产者服务
- * 负责将任务发送到RocketMQ
+ * <p>
+ * 负责将任务发送到 RocketMQ，**按 WorkerID 打 Tag 定向投递**（Topic:Tag = TASK_EXECUTE:{workerId}）。
+ * 定向投递保证：消息只会被目标 Worker 的消费组（expression=workerId）拉到，杜绝
+ * "集群模式同组一消息一消费者 + 非目标 Worker ACK 吞消息"的静默丢失。
+ * 路由权收归调度侧——谁该执行由路由策略决定（见 TaskDispatchService）。
  */
 @Slf4j
 @Service
 public class TaskProducerService {
+
+    private static final String TASK_EXECUTE_TOPIC = "TASK_EXECUTE";
 
     private final RocketMQTemplate rocketMQTemplate;
     private final TaskControlProducerService taskControlProducerService;
@@ -29,43 +35,48 @@ public class TaskProducerService {
     }
 
     /**
-     * 发送任务执行消息
+     * 定向发送任务执行消息到指定 Worker（Tag = workerId）
      *
-     * @param message 任务执行消息
+     * @param message  任务执行消息
+     * @param workerId 目标 Worker ID
      */
-    public void sendTask(TaskExecuteMessage message) {
+    public void sendTask(TaskExecuteMessage message, String workerId) {
         try {
-            rocketMQTemplate.convertAndSend("TASK_EXECUTE", message);
-            log.info("发送任务消息成功，TaskID: {}, RunID: {}", message.getTaskId(), message.getTaskRunId());
+            rocketMQTemplate.syncSend(TASK_EXECUTE_TOPIC + ":" + workerId,
+                    MessageBuilder.withPayload(message).build(),
+                    3000);
+            log.info("定向发送任务消息成功，TaskID: {}, RunID: {}, WorkerID: {}",
+                    message.getTaskId(), message.getTaskRunId(), workerId);
         } catch (Exception e) {
-            log.error("发送任务消息失败，TaskID: {}", message.getTaskId(), e);
-            throw new RuntimeException("发送任务消息失败", e);
+            log.error("定向发送任务消息失败，TaskID: {}, WorkerID: {}", message.getTaskId(), workerId, e);
+            throw new RuntimeException("定向发送任务消息失败", e);
         }
     }
 
     /**
-     * 发送延时任务执行消息
+     * 定向发送延时任务执行消息到指定 Worker（Tag = workerId）
      *
-     * @param message 任务执行消息
+     * @param message    任务执行消息
+     * @param workerId   目标 Worker ID
      * @param delayLevel 延时级别 (1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h)
      */
-    public void sendTaskWithDelay(TaskExecuteMessage message, int delayLevel) {
+    public void sendTaskWithDelay(TaskExecuteMessage message, String workerId, int delayLevel) {
         try {
-            rocketMQTemplate.syncSend("TASK_EXECUTE", 
-                    MessageBuilder.withPayload(message).build(), 
-                    3000, 
+            rocketMQTemplate.syncSend(TASK_EXECUTE_TOPIC + ":" + workerId,
+                    MessageBuilder.withPayload(message).build(),
+                    3000,
                     delayLevel);
-            log.info("发送延时任务消息成功，TaskID: {}, RunID: {}, DelayLevel: {}", 
-                    message.getTaskId(), message.getTaskRunId(), delayLevel);
+            log.info("定向发送延时任务消息成功，TaskID: {}, RunID: {}, WorkerID: {}, DelayLevel: {}",
+                    message.getTaskId(), message.getTaskRunId(), workerId, delayLevel);
         } catch (Exception e) {
-            log.error("发送延时任务消息失败，TaskID: {}", message.getTaskId(), e);
-            throw new RuntimeException("发送延时任务消息失败", e);
+            log.error("定向发送延时任务消息失败，TaskID: {}, WorkerID: {}", message.getTaskId(), workerId, e);
+            throw new RuntimeException("定向发送延时任务消息失败", e);
         }
     }
 
     /**
      * 发送任务控制消息（停止/暂停等）
-     * 修正：委派给专门的 TaskControlProducerService 处理，确保使用正确的 Topic 和 Tag
+     * 委派给专门的 TaskControlProducerService 处理，确保使用正确的 Topic 和 Tag
      *
      * @param message 控制消息
      */

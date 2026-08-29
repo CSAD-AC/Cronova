@@ -53,6 +53,15 @@ public class TaskVO {
     /** 指定Worker ID */
     private String targetWorker;
 
+    /** 路由策略 */
+    private String routeStrategy;
+
+    /** 阻塞策略 */
+    private String blockStrategy;
+
+    /** 分片总数 */
+    private Integer shardTotal;
+
     /** 任务需要的标签（用于自动匹配Worker） */
     private Set<String> requiredTags;
 

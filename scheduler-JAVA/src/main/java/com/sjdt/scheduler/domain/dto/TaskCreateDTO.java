@@ -76,6 +76,18 @@ public class TaskCreateDTO {
     @Schema(description = "指定Worker ID（为空表示自动调度，仅script类型有效）")
     private String targetWorker;
 
+    /** 路由策略：ROUND_ROBIN / RANDOM / CONSISTENT_HASH / LEAST_LOAD / FAILOVER / TAG_MATCH */
+    @Schema(description = "路由策略：ROUND_ROBIN / RANDOM / CONSISTENT_HASH / LEAST_LOAD / FAILOVER / TAG_MATCH", example = "LEAST_LOAD")
+    private String routeStrategy;
+
+    /** 阻塞策略（路由层保留，调度层面执行）：SERIAL / DISCARD_LATER / COVER_EARLY */
+    @Schema(description = "阻塞策略：SERIAL / DISCARD_LATER / COVER_EARLY", example = "DISCARD_LATER")
+    private String blockStrategy;
+
+    /** 分片总数（>1 时任务分片并发投递） */
+    @Schema(description = "分片总数（>1 时任务分片并发投递）", example = "1")
+    private Integer shardTotal;
+
     /** 任务需要的标签（用于自动匹配Worker） */
     @Schema(description = "任务需要的标签（用于自动匹配Worker），如: [\"V1\", \"FastAPI\"]")
     private Set<String> requiredTags;

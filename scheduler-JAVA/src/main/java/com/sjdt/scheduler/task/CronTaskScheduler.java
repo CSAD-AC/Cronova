@@ -15,7 +15,7 @@ import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.ITaskService;
-import com.sjdt.scheduler.service.TaskProducerService;
+import com.sjdt.scheduler.service.TaskDispatchService;
 import com.sjdt.scheduler.util.CronNextTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,7 +62,7 @@ public class CronTaskScheduler {
     private CallbackJobConfigMapper callbackJobConfigMapper;
 
     @Autowired
-    private TaskProducerService taskProducerService;
+    private TaskDispatchService taskDispatchService;
 
     @Autowired
     private TaskCallbackExecutor taskCallbackExecutor;
@@ -214,8 +214,14 @@ public class CronTaskScheduler {
                 .timeoutSeconds(task.getTimeoutSeconds())
                 .build();
 
-            taskProducerService.sendTask(message);
-            log.info("脚本任务消息已发送，任务ID: {}, 运行ID: {}", task.getId(), taskRunId);
+            // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
+            boolean dispatched = taskDispatchService.dispatch(task, message, 0);
+            if (dispatched) {
+                log.info("脚本任务消息已定向发送，任务ID: {}, 运行ID: {}", task.getId(), taskRunId);
+            } else {
+                log.warn("脚本任务无可用Worker，已park，任务ID: {}, 运行ID: {}（交派发超时监控兜底）",
+                        task.getId(), taskRunId);
+            }
 
         } catch (Exception e) {
             log.error("发送脚本任务消息失败，任务ID: {}", task.getId(), e);
