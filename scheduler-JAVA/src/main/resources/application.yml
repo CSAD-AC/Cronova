@@ -19,6 +19,15 @@ spring:
   jackson:
     time-zone: UTC
     date-format: yyyy-MM-dd HH:mm:ss
+  # 数据库版本管理（Flyway）
+  flyway:
+    enabled: true
+    # 迁移脚本位置
+    locations: classpath:db/migration
+    # 存量库（schema 非空）自动基线，避免启动即失败
+    baseline-on-migrate: true
+    # V1 为当前全量 schema（含阶段一列），存量库视为已应用，只跑 V2 及以上增量
+    baseline-version: 1
 # MyBatis-Plus 通用配置
 mybatis-plus:
   # Mapper.xml文件位置

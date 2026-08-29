@@ -258,12 +258,23 @@ PENDING ──→ RUNNING ──→ SUCCESS/FAILED/TIMEOUT
 
 ### 启动步骤
 
-**1. 数据库初始化**
+**1. 数据库初始化**（Flyway 自动迁移）
+
+只需创建空数据库，调度器启动时 Flyway 自动执行迁移（`src/main/resources/db/migration/`）建表并写入种子数据：
 
 ```bash
-cd scheduler-JAVA/sql/
-mysql -u root -p < sjdt-task-engine-init.sql
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS scheduler DEFAULT CHARACTER SET utf8mb4"
+cd scheduler-JAVA/
+./mvnw spring-boot:run   # 启动时自动迁移
 ```
+
+开发环境一键重建（会清空数据）：
+
+```bash
+mysql -u root -p -e "DROP DATABASE IF EXISTS scheduler; CREATE DATABASE scheduler DEFAULT CHARACTER SET utf8mb4"
+```
+
+历史手动脚本（含 `DROP DATABASE` 全量重建）已归档至 `scheduler-JAVA/sql/archive/`。
 
 **2. 启动调度器**
 
