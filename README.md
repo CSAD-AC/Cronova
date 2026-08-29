@@ -8,10 +8,9 @@ SJDT 任务引擎是一个分布式任务调度系统，支持两种任务类型
 |---|---|
 | `scheduler-JAVA/` | 调度中心（Spring Boot）：任务管理、到期触发、路由派发、结果消费、Worker 管理 |
 | `sjdt_worker/` | Worker 执行器（Python）：脚本任务接收、执行、状态汇报、日志管理 |
-| `Vue/` | 前端（Vue 3 + Element Plus） |
+| `frontend/` | 前端（Vue 3 + Element Plus） |
 | `docs/` | 文档收口目录（架构 / 面试 / 计划 / 开发 / 集成参考 / 踩坑记录） |
 | `examples/` | 各语言回调任务模板示例（java / python / go） |
-| `experiments/` | 一次性实验工程 |
 
 ## 文档索引
 
@@ -288,7 +287,7 @@ cd scheduler-JAVA/
 **3. 启动前端**
 
 ```bash
-cd Vue/
+cd frontend/
 npm install
 npm run dev
 # 默认端口: 5173
