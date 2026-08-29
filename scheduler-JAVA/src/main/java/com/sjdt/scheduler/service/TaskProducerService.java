@@ -15,8 +15,8 @@ import org.springframework.stereotype.Service;
  * 任务生产者服务
  * <p>
  * 负责将任务发送到 RocketMQ，**按 WorkerID 打 Tag 定向投递**（Topic:Tag = TASK_EXECUTE:{workerId}）。
- * 定向投递保证：消息只会被目标 Worker 的消费组（expression=workerId）拉到，杜绝
- * "集群模式同组一消息一消费者 + 非目标 Worker ACK 吞消息"的静默丢失。
+ * 定向投递保证：消息只会被目标 Worker 的消费组（expression=workerId）拉到，
+ * 杜绝"集群模式同组一消息一消费者 + 非目标 Worker ACK 吞消息"的静默丢失。
  * 路由权收归调度侧——谁该执行由路由策略决定（见 TaskDispatchService）。
  */
 @Slf4j

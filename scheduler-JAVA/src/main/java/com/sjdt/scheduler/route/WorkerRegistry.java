@@ -92,7 +92,7 @@ public class WorkerRegistry {
      */
     public boolean isOnline(String workerId) {
         try {
-            return Boolean.TRUE.equals(redisTemplate.hasKey(RedisKey.getWorkerHeartbeatKey(workerId)));
+            return redisTemplate.hasKey(RedisKey.getWorkerHeartbeatKey(workerId));
         } catch (Exception e) {
             log.error("查询Worker心跳状态失败，WorkerID: {}", workerId, e);
             return false;
