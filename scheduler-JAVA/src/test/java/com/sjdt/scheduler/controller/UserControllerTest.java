@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(value = UserController.class, 
            excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, 
-                                                classes = {AuthConfig.class, com.sjdt.scheduler.Interceptor.AKSKInterceptor.class}))
+                                                classes = {AuthConfig.class, com.sjdt.scheduler.interceptor.AKSKInterceptor.class}))
 class UserControllerTest {
 
     @Autowired

@@ -2,7 +2,7 @@ package com.sjdt.scheduler.config;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;
-import com.sjdt.scheduler.Interceptor.AKSKInterceptor;
+import com.sjdt.scheduler.interceptor.AKSKInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;

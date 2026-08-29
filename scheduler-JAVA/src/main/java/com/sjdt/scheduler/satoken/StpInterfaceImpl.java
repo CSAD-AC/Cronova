@@ -1,4 +1,4 @@
-package com.sjdt.scheduler.saToken;
+package com.sjdt.scheduler.satoken;
 
 import cn.dev33.satoken.stp.StpInterface;
 import com.sjdt.scheduler.domain.po.Role;

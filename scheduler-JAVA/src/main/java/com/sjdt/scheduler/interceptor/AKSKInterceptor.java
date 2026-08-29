@@ -1,4 +1,4 @@
-package com.sjdt.scheduler.Interceptor;
+package com.sjdt.scheduler.interceptor;
 
 import cn.hutool.core.io.IoUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
