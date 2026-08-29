@@ -5,7 +5,6 @@ import com.sjdt.scheduler.domain.enums.ExecuteType;
 import com.sjdt.scheduler.domain.enums.ScriptType;
 import com.sjdt.scheduler.domain.enums.TaskType;
 import com.sjdt.scheduler.domain.po.Script;
-import com.sjdt.scheduler.domain.po.Task;
 import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.ITaskService;
 import lombok.extern.slf4j.Slf4j;
@@ -69,101 +68,12 @@ class RedisCacheTest {
         try {
             redisTemplate.delete(RedisKey.getWorkerHeartbeatKey(TEST_WORKER_ID));
             redisTemplate.delete(RedisKey.getWorkerInfoKey(TEST_WORKER_ID));
-            redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
             if (testScriptId != null) {
                 redisTemplate.delete(RedisKey.SCRIPT_CACHE + ":" + testScriptId);
             }
         } catch (Exception e) {
             log.warn("清理测试数据时发生异常", e);
         }
-    }
-
-    /**
-     * 测试Task创建后活跃任务缓存是否被清理
-     */
-    @Test
-    @DisplayName("Task创建-清理活跃任务缓存")
-    void testTaskCreate_ClearsActiveCache() {
-        log.info("测试Task创建后活跃任务缓存是否被清理");
-
-        ValueOperations<String, Object> valueOps = redisTemplate.opsForValue();
-        valueOps.set(RedisKey.TASK_ACTIVE_CACHE, "test-data", 30, TimeUnit.MINUTES);
-
-        TaskCreateDTO createDTO = TaskCreateDTO.builder()
-                .name("测试任务-创建缓存测试")
-                .description("测试任务创建是否清理缓存")
-                .executeType(ExecuteType.script)
-                .scriptType(ScriptType.python)
-                .taskType(TaskType.once)
-                .timeoutSeconds(300)
-                .build();
-
-        testTaskId = taskService.createTask(createDTO);
-
-        Object cacheAfterCreate = valueOps.get(RedisKey.TASK_ACTIVE_CACHE);
-        assertNull(cacheAfterCreate, "创建任务后活跃任务缓存应被清理");
-
-        log.info("Task创建清理缓存测试通过 | TaskID: {}", testTaskId);
-    }
-
-    /**
-     * 测试Task更新后活跃任务缓存是否被清理
-     */
-    @Test
-    @DisplayName("Task更新-清理活跃任务缓存")
-    void testTaskUpdate_ClearsActiveCache() {
-        log.info("测试Task更新后活跃任务缓存是否被清理");
-
-        TaskCreateDTO createDTO = TaskCreateDTO.builder()
-                .name("测试任务-更新缓存测试")
-                .description("初始描述")
-                .executeType(ExecuteType.script)
-                .scriptType(ScriptType.python)
-                .taskType(TaskType.once)
-                .timeoutSeconds(300)
-                .build();
-        testTaskId = taskService.createTask(createDTO);
-
-        ValueOperations<String, Object> valueOps = redisTemplate.opsForValue();
-        valueOps.set(RedisKey.TASK_ACTIVE_CACHE, "test-data", 30, TimeUnit.MINUTES);
-
-        Task taskToUpdate = taskService.getById(testTaskId);
-        taskToUpdate.setDescription("更新后的描述");
-        taskService.updateById(taskToUpdate);
-
-        Object cacheAfterUpdate = valueOps.get(RedisKey.TASK_ACTIVE_CACHE);
-        assertNull(cacheAfterUpdate, "更新任务后活跃任务缓存应被清理");
-
-        log.info("Task更新清理缓存测试通过");
-    }
-
-    /**
-     * 测试Task删除后活跃任务缓存是否被清理
-     */
-    @Test
-    @DisplayName("Task删除-清理活跃任务缓存")
-    void testTaskDelete_ClearsActiveCache() {
-        log.info("测试Task删除后活跃任务缓存是否被清理");
-
-        TaskCreateDTO createDTO = TaskCreateDTO.builder()
-                .name("测试任务-删除缓存测试")
-                .description("测试删除是否清理缓存")
-                .executeType(ExecuteType.script)
-                .scriptType(ScriptType.python)
-                .taskType(TaskType.once)
-                .timeoutSeconds(300)
-                .build();
-        testTaskId = taskService.createTask(createDTO);
-
-        ValueOperations<String, Object> valueOps = redisTemplate.opsForValue();
-        valueOps.set(RedisKey.TASK_ACTIVE_CACHE, "test-data", 30, TimeUnit.MINUTES);
-
-        taskService.removeById(testTaskId);
-
-        Object cacheAfterDelete = valueOps.get(RedisKey.TASK_ACTIVE_CACHE);
-        assertNull(cacheAfterDelete, "删除任务后活跃任务缓存应被清理");
-
-        log.info("Task删除清理缓存测试通过");
     }
 
     /**
@@ -404,26 +314,5 @@ class RedisCacheTest {
 
         redisTemplate.delete(testKey);
         log.info("Redis缓存TTL测试通过 | TTL: {}秒", ttl);
-    }
-
-    /**
-     * 测试updateTargetWorkerToNullByWorkerId方法清理缓存
-     */
-    @Test
-    @DisplayName("Worker离线-清理任务缓存测试")
-    void testWorkerOffline_ClearsTaskCache() {
-        log.info("测试Worker离线时是否清理任务活跃缓存");
-
-        String workerId = "test-worker-offline-" + System.currentTimeMillis();
-
-        ValueOperations<String, Object> valueOps = redisTemplate.opsForValue();
-        valueOps.set(RedisKey.TASK_ACTIVE_CACHE, "test-data", 30, TimeUnit.MINUTES);
-
-        taskService.updateTargetWorkerToNullByWorkerId(workerId);
-
-        Object cacheAfterWorkerOffline = valueOps.get(RedisKey.TASK_ACTIVE_CACHE);
-        assertNull(cacheAfterWorkerOffline, "Worker离线后任务活跃缓存应被清理");
-
-        log.info("Worker离线清理任务缓存测试通过");
     }
 }

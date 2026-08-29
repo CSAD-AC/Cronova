@@ -147,8 +147,14 @@ CREATE TABLE tasks (
                        created_by      VARCHAR(64) COMMENT '创建人',
                        create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                        update_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                       next_trigger_time DATETIME(3) NULL COMMENT '下次理论触发时间（驱动到期扫描，CAS 抢占依据）',
+                       last_trigger_time  DATETIME(3) NULL COMMENT '上次实际触发时间',
+                       route_strategy  VARCHAR(32) NOT NULL DEFAULT 'LEAST_LOAD' COMMENT 'ROUND_ROBIN/RANDOM/CONSISTENT_HASH/LEAST_LOAD/FAILOVER/TAG_MATCH/SHARD',
+                       block_strategy VARCHAR(16) NOT NULL DEFAULT 'DISCARD_LATER' COMMENT 'SERIAL/DISCARD_LATER/COVER_EARLY',
+                       shard_total     INT NULL COMMENT '分片总数,NULL/0=不分片',
                        INDEX idx_execute_type (execute_type),
-                       INDEX idx_task_type (task_type)
+                       INDEX idx_task_type (task_type),
+                       INDEX idx_due (status, task_type, next_trigger_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务定义表（支持脚本执行和HTTP回调）';
 
 INSERT INTO tasks(`id`, `name`, `description`, `execute_type`, `script_type`, `script_id`, `task_type`, `cron_expr`, `timeout_seconds`, `retry_count`, `retry_interval_seconds`, `target_worker`, `required_tags`, `status`, `created_by`) VALUES
@@ -168,7 +174,12 @@ CREATE TABLE task_run (
                           error_message   TEXT COMMENT '失败原因',
                           retry_num       INT DEFAULT 0 COMMENT '当前重试次数',
                           create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                          last_heartbeat_time TIMESTAMP COMMENT '上次心跳/状态上报时间'
+                          last_heartbeat_time TIMESTAMP COMMENT '上次心跳/状态上报时间',
+                          shard_index     INT NULL COMMENT '分片序号',
+                          shard_total     INT NULL COMMENT '本批分片总数',
+                          shard_batch_id  VARCHAR(64) NULL COMMENT '同一次触发的分片批次ID',
+                          dispatch_time   DATETIME(3) NULL COMMENT '实际派发时间',
+                          trigger_latency_ms BIGINT NULL COMMENT '派发时间-理论触发时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务执行实例表（一次运行一条记录）';
 
 -- 任务日志表

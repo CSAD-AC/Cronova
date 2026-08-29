@@ -20,9 +20,11 @@ public class RedisKey {
     public static final String WORKER_INFO_PREFIX = "scheduler:worker:info:";
 
     /**
-     * 活跃任务缓存名称
+     * 调度扫描分布式锁 (String类型, SET NX EX)
+     * Key: scheduler:lock:scan
+     * Value: 持有锁的调度实例 token（UUID），释放时用 Lua 校验 token，防止误删他人锁
      */
-    public static final String TASK_ACTIVE_CACHE = "scheduler:cache:tasks:active";
+    public static final String SCHEDULER_LOCK_SCAN = "scheduler:lock:scan";
 
     /**
      * 脚本信息缓存名称

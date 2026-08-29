@@ -105,4 +105,24 @@ public class Task implements Serializable {
     /** 更新时间 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "UTC")
     private LocalDateTime updateTime;
+
+    /** 下次理论触发时间（驱动到期扫描，CAS 抢占依据） */
+    @TableField(value = "next_trigger_time")
+    private LocalDateTime nextTriggerTime;
+
+    /** 上次实际触发时间 */
+    @TableField(value = "last_trigger_time")
+    private LocalDateTime lastTriggerTime;
+
+    /** 路由策略：ROUND_ROBIN/RANDOM/CONSISTENT_HASH/LEAST_LOAD/FAILOVER/TAG_MATCH/SHARD */
+    @TableField(value = "route_strategy")
+    private String routeStrategy;
+
+    /** 阻塞策略：SERIAL/DISCARD_LATER/COVER_EARLY */
+    @TableField(value = "block_strategy")
+    private String blockStrategy;
+
+    /** 分片总数（NULL/0=不分片） */
+    @TableField(value = "shard_total")
+    private Integer shardTotal;
 }

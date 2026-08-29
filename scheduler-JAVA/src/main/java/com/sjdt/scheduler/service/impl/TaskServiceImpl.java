@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sjdt.scheduler.common.RedisKey;
 import com.sjdt.scheduler.domain.dto.CallbackJobConfigCreateDTO;
 import com.sjdt.scheduler.domain.dto.CallbackJobConfigUpdateDTO;
 import com.sjdt.scheduler.domain.dto.TaskCreateDTO;
@@ -30,14 +29,13 @@ import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.service.IWorkerService;
 import com.sjdt.scheduler.service.TaskProducerService;
 import com.sjdt.scheduler.task.TaskCallbackExecutor;
+import com.sjdt.scheduler.util.CronNextTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -72,8 +70,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     /** 回调任务执行器 */
     private final TaskCallbackExecutor taskCallbackExecutor;
 
-    private final RedisTemplate<String, Object> redisTemplate;
-
     private final ObjectMapper objectMapper;
 
     private final IWorkerService workerService;
@@ -86,7 +82,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                           CallbackJobConfigMapper callbackJobConfigMapper,
                           ICallbackJobConfigService callbackJobConfigService,
                           TaskCallbackExecutor taskCallbackExecutor,
-                          RedisTemplate<String, Object> redisTemplate,
                           ObjectMapper objectMapper,
                           IWorkerService workerService) {
         this.taskProducerService = taskProducerService;
@@ -96,18 +91,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         this.callbackJobConfigMapper = callbackJobConfigMapper;
         this.callbackJobConfigService = callbackJobConfigService;
         this.taskCallbackExecutor = taskCallbackExecutor;
-        this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.workerService = workerService;
-    }
-
-    /**
-     * 启动时清理任务缓存，防止由于序列化格式变更导致的 ClassCastException
-     */
-    @PostConstruct
-    public void init() {
-        log.info("系统启动，清理任务活跃状态缓存以防止序列化异常");
-        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
     }
 
     /**
@@ -129,10 +114,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      */
     @Override
     public void updateTargetWorkerToNullByWorkerId(String workerId) {
-        log.info("Worker离线，批量清理关联任务的TargetWorker并失效任务缓存 | WorkerID: {}", workerId);
-        // 清理 Redis 缓存（手动清理）
-        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
-        
+        log.info("Worker离线，批量清理关联任务的TargetWorker | WorkerID: {}", workerId);
+
         this.lambdaUpdate()
                 .eq(Task::getTargetWorker, workerId)
                 .set(Task::getTargetWorker, null)
@@ -143,11 +126,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     @Transactional(rollbackFor = Exception.class)
     public String createTask(TaskCreateDTO taskCreateDTO) {
         log.info("开始创建任务，任务名称：{}", taskCreateDTO.getName());
-        
-        // 清理缓存
-        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
 
         Task task = buildTaskFromDTO(taskCreateDTO);
+        // 活跃 cron 任务必须落库 next_trigger_time，否则到期驱动扫描永远扫不到它
+        fillNextTriggerTime(task);
         this.save(task);
         log.info("任务创建成功，任务ID：{}", task.getId());
 
@@ -162,9 +144,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     @Transactional(rollbackFor = Exception.class)
     public void updateTask(TaskUpdateDTO taskUpdateDTO) {
         log.info("开始更新任务，任务ID：{}", taskUpdateDTO.getId());
-        
-        // 清理缓存
-        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
 
         Task task = this.getById(taskUpdateDTO.getId());
         if (task == null) {
@@ -188,7 +167,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         if (taskUpdateDTO.getStatus() != null) {
             task.setStatus(taskUpdateDTO.getStatus());
         }
-        
+
+        // cron 表达式或状态变更后，重新计算下次触发时间（恢复/改 cron 都对齐到未来）
+        fillNextTriggerTime(task);
+
         task.setUpdateTime(LocalDateTime.now());
         this.updateById(task);
 
@@ -287,18 +269,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         return taskVO;
     }
 
-    @Override
-    public boolean updateById(Task entity) {
-        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
-        return super.updateById(entity);
-    }
-
-    @Override
-    public boolean removeById(java.io.Serializable id) {
-        redisTemplate.delete(RedisKey.TASK_ACTIVE_CACHE);
-        return super.removeById(id);
-    }
-
     /**
      * 从DTO构建Task实体
      *
@@ -333,6 +303,28 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
                 .build();
+    }
+
+    /**
+     * 为活跃 cron 任务计算并回填 next_trigger_time
+     * <p>
+     * 到期驱动扫描以 next_trigger_time 索引为准；新建/更新 cron 任务时必须落库下次触发时间，
+     * 否则该任务要等重启（回填 Runner）才会被扫描到。updateById 默认只更新非 NULL 字段，
+     * 因此非 cron / 非 active 任务不会被误写。
+     */
+    private void fillNextTriggerTime(Task task) {
+        if (task.getTaskType() != TaskType.cron || task.getStatus() != TaskStatus.active) {
+            return;
+        }
+        if (task.getCronExpr() == null || task.getCronExpr().isEmpty()) {
+            log.warn("cron任务{}缺少cron表达式，无法计算下次触发时间", task.getId());
+            return;
+        }
+        try {
+            task.setNextTriggerTime(CronNextTimeUtil.next(LocalDateTime.now(), task.getCronExpr()));
+        } catch (Exception e) {
+            log.error("计算任务{}的next_trigger_time失败，cron: {}", task.getId(), task.getCronExpr(), e);
+        }
     }
 
     /**
