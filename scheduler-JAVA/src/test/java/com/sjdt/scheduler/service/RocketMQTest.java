@@ -23,7 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RocketMQTest {
 
-    private static final String NAMESRV_ADDR = "127.0.0.1:9876";
+    // MQ 地址通过环境变量 MQ_NAMESRV_ADDR 注入，未设置时回退本地默认（真实地址见 .env，不入库）
+    private static final String NAMESRV_ADDR =
+            System.getenv().getOrDefault("MQ_NAMESRV_ADDR", "127.0.0.1:9876");
     private static final String TOPIC = "TASK_EXECUTE";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();

@@ -9,13 +9,13 @@
 
 ## 0. 总览
 
-| 阶段 | 主题 | 步骤 | 优先级 | 解决的问题 |
-|---|---|---|---|---|
-| 一 | 调度内核高可用（锁 + CAS） | 1 ~ 8 | **P0** | 单点重复触发 / 60s 精度 / 静默漏触发 |
-| 二 | 路由策略 + 定向投递修复 | 9 ~ 19 | **P1** | 负载均衡名存实亡 / 定向任务被 ACK 吞掉 |
-| 三 | 任务分片 | 20 ~ 23 | **P1** | 大任务单点跑、无法并行与单跑重试 |
-| 四 | 阻塞策略 + 故障转移 + 幂等 | 24 ~ 29 | **P2** | Worker 宕机任务滞留 / 重复执行 / 结果覆盖 |
-| 五 | 可观测 + 压测 + 工程化 | 30 ~ 32 | **P2** | 拿不出改造前后对比数据 |
+| 阶段  | 主题               | 步骤      | 优先级    | 解决的问题                       |
+| --- | ---------------- | ------- | ------ | --------------------------- |
+| 一   | 调度内核高可用（锁 + CAS） | 1 ~ 8   | **P0** | 单点重复触发 / 60s 精度 / 静默漏触发     |
+| 二   | 路由策略 + 定向投递修复    | 9 ~ 19  | **P1** | 负载均衡名存实亡 / 定向任务被 ACK 吞掉     |
+| 三   | 任务分片             | 20 ~ 23 | **P1** | 大任务单点跑、无法并行与单跑重试            |
+| 四   | 阻塞策略 + 故障转移 + 幂等 | 24 ~ 29 | **P2** | Worker 宕机任务滞留 / 重复执行 / 结果覆盖 |
+| 五   | 可观测 + 压测 + 工程化   | 30 ~ 32 | **P2** | 拿不出改造前后对比数据                 |
 
 **依赖链**：`1~8(内核)` → `9~19(路由)` → `20~23(分片)` → `24~29(可靠性)` → `30~32(观测)`。
 关键耦合：分片复用阶段二的"Tag 定向投递"；阻塞/转移依赖阶段二的"路由权收归调度侧"。
@@ -616,12 +616,12 @@ for (TaskRun run : orphans) {
 
 - **核心实现要点**：双调度实例 + 10 Worker，1000 任务/分钟 × 10 分钟，输出下表：
 
-| 指标 | 目标 | 改造前 |
-|---|---|---|
-| 重复触发 | 0 | 双实例必重复 |
-| 触发延迟 P99 | < 2s | 最差 ~60s |
-| 定向投递成功率 | 100% | 存在静默丢失 |
-| 10 分片吞吐 | ≥ 6x 单片 | - |
+| 指标       | 目标      | 改造前     |
+| -------- | ------- | ------- |
+| 重复触发     | 0       | 双实例必重复  |
+| 触发延迟 P99 | < 2s    | 最差 ~60s |
+| 定向投递成功率  | 100%    | 存在静默丢失  |
+| 10 分片吞吐  | ≥ 6x 单片 | -       |
 
 - **验收标准**：脚本可重复运行并落盘结果；每阶段完成打 tag（`v1-ha` / `v2-routing` / `v3-sharding` / `v4-reliability` / `v5-benchmark`）后跑一次对比。
 
@@ -648,23 +648,23 @@ for (TaskRun run : orphans) {
 3. **每步一个提交**：commit message 写明动机（尤其步骤 18/19 的 Bug 修复单独成 commit）。
 4. **变更文件对照表**（最终全量）：
 
-| 文件 | 步骤 |
-|---|---|
-| `common/SchedulerLock.java`（新） | 3 |
-| `common/RedisKey.java` | 3 / 5 / 30 |
-| `task/ScheduledTaskRunnerTask.java` | 4 |
-| `task/CronTaskScheduler.java` | 5 / 6 / 7 / 8 / 20 / 22 / 25 |
-| `route/WorkerRegistry.java` + `route/strategy/*`（新） | 9 ~ 16 |
-| `service/TaskProducerService.java` | 18 / 20 |
-| `service/TaskResultConsumer.java` | 28 |
-| `task/WorkerHeartbeatCheckTask.java` | 29 |
-| `task/QueuedRunDispatcher.java`（新） | 26 |
-| `service/ShardSettlementService.java`（新） | 22 / 23 |
-| `domain/po/Task.java`、`TaskRun.java`、`TaskExecuteMessage.java`、DTO/Controller | 1 / 17 / 21 / 24 |
-| `sjdt_worker/app/mq_consumer.py`、`config.py` | 19 |
-| `sjdt_worker/app/service/task_service.py`、`task_handler/*.py` ×3 | 23 / 27 |
-| `DashboardController.java`（新）、`benchmark/`、`docker-compose.yml`（新） | 30 / 31 / 32 |
-| 删除 | `TASK_ACTIVE_CACHE`、`shouldExecuteNow` 相关（步骤 5 / 8） |
+| 文件                                                                            | 步骤                                                  |
+| ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| `common/SchedulerLock.java`（新）                                                | 3                                                   |
+| `common/RedisKey.java`                                                        | 3 / 5 / 30                                          |
+| `task/ScheduledTaskRunnerTask.java`                                           | 4                                                   |
+| `task/CronTaskScheduler.java`                                                 | 5 / 6 / 7 / 8 / 20 / 22 / 25                        |
+| `route/WorkerRegistry.java` + `route/strategy/*`（新）                           | 9 ~ 16                                              |
+| `service/TaskProducerService.java`                                            | 18 / 20                                             |
+| `service/TaskResultConsumer.java`                                             | 28                                                  |
+| `task/WorkerHeartbeatCheckTask.java`                                          | 29                                                  |
+| `task/QueuedRunDispatcher.java`（新）                                            | 26                                                  |
+| `service/ShardSettlementService.java`（新）                                      | 22 / 23                                             |
+| `domain/po/Task.java`、`TaskRun.java`、`TaskExecuteMessage.java`、DTO/Controller | 1 / 17 / 21 / 24                                    |
+| `sjdt_worker/app/mq_consumer.py`、`config.py`                                  | 19                                                  |
+| `sjdt_worker/app/service/task_service.py`、`task_handler/*.py` ×3              | 23 / 27                                             |
+| `DashboardController.java`（新）、`benchmark/`、`docker-compose.yml`（新）            | 30 / 31 / 32                                        |
+| 删除                                                                            | `TASK_ACTIVE_CACHE`、`shouldExecuteNow` 相关（步骤 5 / 8） |
 
 ---
 

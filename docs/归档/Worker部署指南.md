@@ -129,7 +129,7 @@ docker-compose down -v
 | MQ_CONSUMER_GROUP | 消费者组 | WORKER_EXECUTOR_GROUP |
 | MQ_TASK_TOPIC | 任务主题 | TASK_EXECUTE |
 | MQ_TASK_RESULT_TOPIC | 结果主题 | TASK_RESULT |
-| MINIO_ENDPOINT | MinIO 服务地址 | 127.0.0.1:9000 |
+| MINIO_ENDPOINT | MinIO 服务地址 | http://127.0.0.1:9000 |
 | MINIO_ACCESS_KEY | MinIO 访问密钥 | changeme |
 | MINIO_SECRET_KEY | MinIO 密钥 | changeme |
 | MINIO_BUCKET_NAME | 存储桶名称 | task-engine |

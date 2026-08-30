@@ -5,7 +5,7 @@
 # =====================================================================
 worker:
   # 调度器地址
-  scheduler-base-url: ${SCHEDULER_BASE_URL:http://127.0.0.1:28085}
+  scheduler-base-url: ${SCHEDULER_BASE_URL:http://localhost:8085}
   # 本地配置路径（WorkerID / AK / SK / 标签持久化）
   local-config-path: ${LOCAL_CONFIG_PATH:./local_config.json}
   # 脚本下载目录（容器内）
@@ -33,7 +33,7 @@ worker:
 
   # MinIO
   minio:
-    endpoint: ${MINIO_ENDPOINT:127.0.0.1:9000}
+    endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
     access-key: ${MINIO_ACCESS_KEY:changeme}
     secret-key: ${MINIO_SECRET_KEY:changeme}
     secure: ${MINIO_SECURE:false}
