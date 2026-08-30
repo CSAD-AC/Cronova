@@ -35,9 +35,29 @@ public class MinioStorage {
     public MinioStorage(WorkerProperties properties) {
         this.properties = properties;
         this.client = MinioClient.builder()
-                .endpoint(properties.getMinio().getEndpoint())
+                .endpoint(normalizeEndpoint(properties.getMinio().getEndpoint()))
                 .credentials(properties.getMinio().getAccessKey(), properties.getMinio().getSecretKey())
                 .build();
+    }
+
+    /**
+     * 规范化 MinIO endpoint：裸地址（host:port）自动补 http:// 前缀
+     * <p>
+     * MinioClient 要求 endpoint 为完整 URL，直接传 "host:port" 裸地址会报 invalid hostname。
+     *
+     * @param endpoint 原始配置值
+     * @return 带 http:// 或 https:// 前缀的合法 endpoint
+     */
+    private String normalizeEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            throw new IllegalArgumentException("MinIO endpoint 未配置");
+        }
+        String trimmed = endpoint.trim();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            log.info("MinIO endpoint 缺少协议前缀，已自动补充 http://，原值：{}", trimmed);
+            return "http://" + trimmed;
+        }
+        return trimmed;
     }
 
     private void ensureBucket(String bucket) throws Exception {
