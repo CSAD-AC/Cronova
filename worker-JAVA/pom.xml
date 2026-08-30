@@ -74,6 +74,15 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- 本地开发读取 .env 文件（Spring Boot 3.x）：
+             注册为 Spring PropertySource，${MQ_NAMESRV_ADDR:默认值} 占位符可直接命中 .env 中同名变量；
+             生产/Docker 环境无 .env 文件时自动跳过，不影响运行 -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>springboot3-dotenv</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+
         <!-- 测试 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
