@@ -8,8 +8,8 @@ class Config:
     # 认证配置
     LOCAL_CONFIG_PATH = os.getenv("LOCAL_CONFIG_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_config.json"))
 
-    # 调度器接口地址
-    SCHEDULER_BASE_URL = os.getenv("SCHEDULER_BASE_URL", "http://127.0.0.1:28085")
+    # 调度器接口地址（真实地址通过环境变量 SCHEDULER_BASE_URL 或 .env 注入）
+    SCHEDULER_BASE_URL = os.getenv("SCHEDULER_BASE_URL", "http://127.0.0.1:8085")
     AKSK_VALIDATE_URL = f"{SCHEDULER_BASE_URL}/api/worker/validate-aksk"  # AKSK验证接口
     WORKER_REGISTER_URL = f"{SCHEDULER_BASE_URL}/api/worker/register"  # Worker注册接口
     WORKER_HEARTBEAT_URL_TEMPLATE = f"{SCHEDULER_BASE_URL}/api/worker/heartbeat/{{worker_id}}"  # 心跳接口
@@ -28,7 +28,7 @@ class Config:
     MQ_TASK_CONTROL_TOPIC = os.getenv("MQ_TASK_CONTROL_TOPIC", "TASK_CONTROL")
 
     # MinIO配置
-    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+    MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://127.0.0.1:9000")
     MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "changeme")
     MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "changeme")
     MINIO_SECURE = os.getenv("MINIO_SECURE", "False").lower() == "true"
