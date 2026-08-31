@@ -1,0 +1,257 @@
+/* ============================================================
+   SJDT "调度脉搏" 设计系统 · 深海观测色系
+   双主题：html[data-theme="light"] / html[data-theme="dark"]
+   提供：CSS 变量 Token、Element Plus 变量桥接、表格斑马纹、
+        脉搏动画、等宽仪表读数工具类
+   ============================================================ */
+
+/* ---------- Tailwind 指令（现有视图使用了工具类，保留） ---------- */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- 基础重置 ---------- */
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: "HarmonyOS Sans SC", "MiSans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+body {
+  background: var(--sjdt-bg);
+  color: var(--sjdt-text);
+  transition: background-color .25s ease, color .25s ease;
+}
+
+/* ---------- 浅色主题 Token（深海观测 · 海雾蓝） ---------- */
+:root {
+  --sjdt-bg: #F0F5F9;
+  --sjdt-surface: #FFFFFF;
+  --sjdt-elevated: #FFFFFF;
+  --sjdt-border: #DCE6EE;
+  --sjdt-border-strong: #C6D4E0;
+  --sjdt-text: #0F1C2E;
+  --sjdt-muted: #56637A;
+  --sjdt-primary: #0284C7;
+  --sjdt-primary-soft: rgba(2, 132, 199, .10);
+  --sjdt-primary-glow: rgba(2, 132, 199, .30);
+  --sjdt-on-primary: #FFFFFF;
+  --sjdt-accent: #0EA5E9;
+  --sjdt-accent-soft: rgba(14, 165, 233, .10);
+  --sjdt-success: #16A34A;
+  --sjdt-success-soft: rgba(22, 163, 74, .12);
+  --sjdt-success-glow: rgba(22, 163, 74, .45);
+  --sjdt-running: #D97706;
+  --sjdt-running-soft: rgba(217, 119, 6, .13);
+  --sjdt-running-glow: rgba(217, 119, 6, .50);
+  --sjdt-danger: #DC2626;
+  --sjdt-danger-soft: rgba(220, 38, 38, .10);
+  --sjdt-pending: #64748B;
+  --sjdt-pending-soft: rgba(100, 116, 139, .13);
+  --sjdt-sidebar-bg: #E8F0F6;
+  --sjdt-sidebar-border: #D2DFEA;
+  --sjdt-sidebar-divider: #DEE9F1;
+  --sjdt-sidebar-heading: #0F1C2E;
+  --sjdt-sidebar-group: #8CA2B5;
+  --sjdt-sidebar-text: #45586E;
+  --sjdt-sidebar-hover: rgba(2, 132, 199, .08);
+  --sjdt-sidebar-hover-text: #0F1C2E;
+  --sjdt-sidebar-active-bg: rgba(2, 132, 199, .12);
+  --sjdt-sidebar-active-text: #0369A1;
+  --sjdt-card-shadow: 0 6px 18px rgba(15, 28, 46, .06);
+  --sjdt-row-stripe: #F2F7FB;
+  --sjdt-row-hover: rgba(2, 132, 199, .06);
+  --sjdt-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  --sjdt-logo-grad: linear-gradient(135deg, #0284C7, #22D3EE);
+  --sjdt-avatar-grad: linear-gradient(135deg, #0284C7, #38BDF8);
+}
+
+/* ---------- 深色主题 Token（深海底 + 柠檬青） ---------- */
+html[data-theme="dark"] {
+  --sjdt-bg: #0B1220;
+  --sjdt-surface: #111A2C;
+  --sjdt-elevated: #16223A;
+  --sjdt-border: #1F2E47;
+  --sjdt-border-strong: #2B3D5C;
+  --sjdt-text: #E2EAF4;
+  --sjdt-muted: #7D8CA6;
+  --sjdt-primary: #22D3EE;
+  --sjdt-primary-soft: rgba(34, 211, 238, .12);
+  --sjdt-primary-glow: rgba(34, 211, 238, .25);
+  --sjdt-on-primary: #062730;
+  --sjdt-accent: #38BDF8;
+  --sjdt-accent-soft: rgba(56, 189, 248, .12);
+  --sjdt-success: #34D399;
+  --sjdt-success-soft: rgba(52, 211, 153, .14);
+  --sjdt-success-glow: rgba(52, 211, 153, .45);
+  --sjdt-running: #FBBF24;
+  --sjdt-running-soft: rgba(251, 191, 36, .14);
+  --sjdt-running-glow: rgba(251, 191, 36, .50);
+  --sjdt-danger: #FB7185;
+  --sjdt-danger-soft: rgba(251, 113, 133, .12);
+  --sjdt-pending: #94A3B8;
+  --sjdt-pending-soft: rgba(148, 163, 184, .15);
+  --sjdt-sidebar-bg: #0E1726;
+  --sjdt-sidebar-border: #1C2B44;
+  --sjdt-sidebar-divider: #182741;
+  --sjdt-sidebar-heading: #E2EAF4;
+  --sjdt-sidebar-group: rgba(226, 234, 244, .35);
+  --sjdt-sidebar-text: rgba(226, 234, 244, .55);
+  --sjdt-sidebar-hover: rgba(34, 211, 238, .09);
+  --sjdt-sidebar-hover-text: #E2EAF4;
+  --sjdt-sidebar-active-bg: rgba(34, 211, 238, .14);
+  --sjdt-sidebar-active-text: #67E8F9;
+  --sjdt-card-shadow: none;
+  --sjdt-row-stripe: rgba(255, 255, 255, .035);
+  --sjdt-row-hover: rgba(34, 211, 238, .07);
+}
+
+/* ---------- Element Plus 变量桥接（浅色） ---------- */
+:root {
+  --el-color-primary: var(--sjdt-primary);
+  --el-color-primary-light-3: #38A8DD;
+  --el-color-primary-light-5: #6BBEE6;
+  --el-color-primary-light-7: #A5D8F0;
+  --el-color-primary-light-8: #C4E5F5;
+  --el-color-primary-light-9: var(--sjdt-primary-soft);
+  --el-color-primary-dark-2: #026AA3;
+  --el-color-success: var(--sjdt-success);
+  --el-color-warning: var(--sjdt-running);
+  --el-color-danger: var(--sjdt-danger);
+  --el-color-error: var(--sjdt-danger);
+  --el-color-info: var(--sjdt-pending);
+  --el-border-color: var(--sjdt-border);
+  --el-border-color-light: var(--sjdt-border);
+  --el-border-color-lighter: var(--sjdt-border);
+  --el-border-color-extra-light: var(--sjdt-border);
+  --el-text-color-primary: var(--sjdt-text);
+  --el-text-color-regular: var(--sjdt-text);
+  --el-text-color-secondary: var(--sjdt-muted);
+  --el-text-color-placeholder: var(--sjdt-muted);
+  --el-bg-color: var(--sjdt-surface);
+  --el-bg-color-page: var(--sjdt-bg);
+  --el-bg-color-overlay: var(--sjdt-elevated);
+  --el-fill-color-blank: var(--sjdt-surface);
+  --el-fill-color-light: var(--sjdt-primary-soft);
+  --el-fill-color-lighter: var(--sjdt-row-stripe);
+  --el-fill-color-extra-light: var(--sjdt-primary-soft);
+  --el-box-shadow-light: var(--sjdt-card-shadow);
+  --el-font-family: "HarmonyOS Sans SC", "MiSans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+}
+
+/* ---------- Element Plus 变量桥接（深色） ---------- */
+html[data-theme="dark"] {
+  --el-color-primary: var(--sjdt-primary);
+  --el-color-primary-light-3: #4FDCEF;
+  --el-color-primary-light-5: #84E5F3;
+  --el-color-primary-light-7: #AEEFF7;
+  --el-color-primary-light-8: #C6F5FA;
+  --el-color-primary-light-9: var(--sjdt-primary-soft);
+  --el-color-primary-dark-2: #0FB5CC;
+  --el-color-success: var(--sjdt-success);
+  --el-color-warning: var(--sjdt-running);
+  --el-color-danger: var(--sjdt-danger);
+  --el-color-error: var(--sjdt-danger);
+  --el-color-info: var(--sjdt-pending);
+  --el-border-color: var(--sjdt-border);
+  --el-border-color-light: var(--sjdt-border);
+  --el-border-color-lighter: var(--sjdt-border);
+  --el-border-color-extra-light: var(--sjdt-border);
+  --el-text-color-primary: var(--sjdt-text);
+  --el-text-color-regular: var(--sjdt-text);
+  --el-text-color-secondary: var(--sjdt-muted);
+  --el-text-color-placeholder: var(--sjdt-muted);
+  --el-bg-color: var(--sjdt-surface);
+  --el-bg-color-page: var(--sjdt-bg);
+  --el-bg-color-overlay: var(--sjdt-elevated);
+  --el-fill-color-blank: var(--sjdt-surface);
+  --el-fill-color-light: rgba(255, 255, 255, .06);
+  --el-fill-color-lighter: var(--sjdt-row-stripe);
+  --el-fill-color-extra-light: rgba(255, 255, 255, .04);
+}
+
+/* ---------- 全局卡片 / 表格 / 弹窗质感 ---------- */
+.el-card {
+  border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+  transition: background-color .25s ease, border-color .25s ease;
+}
+
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-header-text-color: var(--sjdt-muted);
+  --el-table-row-hover-bg-color: var(--sjdt-row-hover);
+  --el-table-border-color: var(--sjdt-border);
+  background-color: transparent;
+  font-size: 14px;
+}
+
+/* 斑马纹：偶数行轻重交替，方便逐行阅读 */
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: var(--sjdt-row-stripe);
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+
+.el-dialog, .el-message-box, .el-drawer {
+  border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-elevated);
+}
+
+/* ---------- 主按钮（深色主题为青底深字，浅色为蓝底白字） ---------- */
+.el-button--primary {
+  --el-button-bg-color: var(--sjdt-primary);
+  --el-button-border-color: var(--sjdt-primary);
+  --el-button-text-color: var(--sjdt-on-primary);
+  --el-button-hover-bg-color: var(--el-color-primary-light-3);
+  --el-button-hover-border-color: var(--el-color-primary-light-3);
+  --el-button-hover-text-color: var(--sjdt-on-primary);
+  font-weight: 500;
+}
+
+/* ---------- 脉搏动画（签名元素：运行中/在线状态呼吸脉冲） ---------- */
+@keyframes sjdt-pulse-success {
+  0%   { box-shadow: 0 0 0 0 var(--sjdt-success-glow); }
+  70%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes sjdt-pulse-running {
+  0%   { box-shadow: 0 0 0 0 var(--sjdt-running-glow); }
+  70%  { box-shadow: 0 0 0 5px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* 尊重系统"减少动态效果"偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ---------- 等宽仪表读数（数字/cron/host/IP/耗时） ---------- */
+.sjdt-mono {
+  font-family: var(--sjdt-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* ---------- 统一交互过渡 ---------- */
+.el-button, .el-card, .el-tag, .el-link {
+  transition: all .18s ease;
+}
