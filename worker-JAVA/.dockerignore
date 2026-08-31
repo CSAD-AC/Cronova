@@ -1,4 +1,5 @@
-target/
+target/*
+!target/sjdt-worker.jar
 .idea/
 *.iml
 local_config.json

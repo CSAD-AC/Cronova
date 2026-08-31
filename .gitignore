@@ -1,6 +1,7 @@
 ### 本地测试使用文件 ###
 minio.exe
 frpc/
+*.bundle
 /优化目标文档.md
 test1/
 *.zip
