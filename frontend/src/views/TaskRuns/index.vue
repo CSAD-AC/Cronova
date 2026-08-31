@@ -1,19 +1,21 @@
 <template>
   <div class="task-run-list-container">
-    <div class="page-header">
-      <div class="header-left">
-        <h1 class="page-title">任务运行记录</h1>
-        <p class="page-subtitle">查看系统中所有任务的执行记录</p>
-      </div>
-      <div class="header-right">
-        <el-button type="primary" @click="fetchTaskRuns" :loading="loading">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-      </div>
+    <PageHeader title="任务运行记录" subtitle="查看系统中所有任务的执行记录">
+      <el-button type="primary" @click="fetchTaskRuns" :loading="loading">
+        <el-icon><Refresh /></el-icon>
+        刷新
+      </el-button>
+    </PageHeader>
+
+    <!-- ============ 统计卡 ============ -->
+    <div class="stat-grid">
+      <StatCard title="运行中" :value="statusCount('running')" :icon="VideoPlay" tone="running" :pulse="statusCount('running') > 0" />
+      <StatCard title="执行成功" :value="statusCount('success')" :icon="CircleCheck" tone="success" />
+      <StatCard title="执行失败" :value="failCount" :icon="CircleClose" tone="danger" />
+      <StatCard title="记录总数" :value="taskRuns.length" :icon="Document" tone="primary" />
     </div>
-    
-    <el-card class="filter-card">
+
+    <FilterCard>
       <el-form :inline="true" :model="filterForm" class="filter-form">
         <el-form-item label="任务">
           <el-select v-model="filterForm.taskId" placeholder="选择任务" clearable filterable style="width: 200px">
@@ -62,16 +64,16 @@
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
-    
-    <el-card class="table-card">
-      <el-table 
-        :data="filteredTaskRuns" 
+    </FilterCard>
+
+    <div class="table-panel">
+      <el-table
+        :data="filteredTaskRuns"
         v-loading="loading"
         style="width: 100%"
         stripe
       >
-        <el-table-column type="index" label="序号" width="80" :index="indexMethod" />
+        <el-table-column type="index" label="序号" width="70" :index="indexMethod" />
         <el-table-column prop="taskId" label="任务" min-width="170">
           <template #default="{ row }">
             <el-link type="primary" @click="viewTaskDetail(row.taskId)">
@@ -79,68 +81,67 @@
             </el-link>
           </template>
         </el-table-column>
-        <el-table-column prop="workerId" label="执行器" width="180">
+        <el-table-column prop="workerId" label="执行器" width="170">
           <template #default="{ row }">
-            <el-link type="info" @click="viewWorkerDetail(row.workerId)">
+            <el-link v-if="row.workerId" type="primary" @click="viewWorkerDetail(row.workerId)">
               {{ getWorkerName(row.workerId) }}
             </el-link>
+            <span v-else class="empty-text">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="90">
+        <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
+            <StatusTag :status="row.status" />
           </template>
         </el-table-column>
-        <el-table-column prop="exitCode" label="退出码" width="70">
+        <el-table-column prop="exitCode" label="退出码" width="80">
           <template #default="{ row }">
-            <span v-if="row.exitCode !== undefined && row.exitCode !== null">
+            <span v-if="row.exitCode !== undefined && row.exitCode !== null" class="sjdt-mono exit-code" :class="row.exitCode === 0 ? 'code-success' : 'code-fail'">
               {{ row.exitCode }}
             </span>
-            <span v-else>-</span>
+            <span v-else class="empty-text">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="durationMs" label="耗时" width="100">
           <template #default="{ row }">
-            <span v-if="row.durationMs">
+            <span v-if="row.durationMs" class="sjdt-mono time-text">
               {{ formatDuration(row.durationMs) }}
             </span>
-            <span v-else>-</span>
+            <span v-else class="empty-text">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="startTime" label="开始时间" width="170">
           <template #default="{ row }">
-            {{ formatDateTime(row.startTime) }}
+            <span class="sjdt-mono time-text">{{ formatDateTime(row.startTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
-              <el-button type="primary" size="default" @click="viewDetail(row)">
+              <el-button link type="primary" @click="viewDetail(row)">
                 <el-icon class="mr-1"><View /></el-icon>详情
               </el-button>
-              <el-button v-if="isScriptTask(row.taskId)" type="primary" size="default" @click="previewLog(row)">
+              <el-button v-if="isScriptTask(row.taskId)" link type="primary" @click="previewLog(row)">
                 <el-icon class="mr-1"><Document /></el-icon>日志
               </el-button>
-              <el-button v-if="canPause(row)" type="warning" size="default" @click="handlePause(row)">
+              <el-button v-if="canPause(row)" link type="warning" @click="handlePause(row)">
                 <el-icon class="mr-1"><VideoPause /></el-icon>暂停
               </el-button>
-              <el-button v-if="canResume(row)" type="success" size="default" @click="handleResume(row)">
+              <el-button v-if="canResume(row)" link type="success" @click="handleResume(row)">
                 <el-icon class="mr-1"><VideoPlay /></el-icon>恢复
               </el-button>
-              <el-button type="danger" size="default" @click="handleDelete(row)">
+              <el-button link type="danger" @click="handleDelete(row)">
                 <el-icon class="mr-1"><Delete /></el-icon>删除
               </el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
-      
+
       <div v-if="taskRuns.length === 0 && !loading" class="empty-tip">
         <el-empty description="暂无运行记录" :image-size="100" />
       </div>
-    </el-card>
+    </div>
     
     <el-dialog v-model="detailDialogVisible" title="运行详情" width="900px" height="600px">
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
@@ -160,9 +161,7 @@
               </el-descriptions-item>
             </template>
             <el-descriptions-item label="状态">
-              <el-tag :type="getStatusType(currentRun.status)" size="small">
-                {{ getStatusText(currentRun.status) }}
-              </el-tag>
+              <StatusTag :status="currentRun.status" />
             </el-descriptions-item>
             <el-descriptions-item label="退出码">
               {{ currentRun.exitCode !== undefined && currentRun.exitCode !== null ? currentRun.exitCode : '-' }}
@@ -320,9 +319,7 @@
           <el-descriptions-item label="任务ID">{{ controlTaskRun?.taskId }}</el-descriptions-item>
           <el-descriptions-item label="任务名称">{{ getTaskName(controlTaskRun?.taskId) }}</el-descriptions-item>
           <el-descriptions-item label="当前状态">
-            <el-tag :type="getStatusType(controlTaskRun?.status)" size="small">
-              {{ getStatusText(controlTaskRun?.status) }}
-            </el-tag>
+            <StatusTag :status="controlTaskRun?.status || 'pending'" />
           </el-descriptions-item>
         </el-descriptions>
       </div>
@@ -345,15 +342,30 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, Search, View, Document, Download, Loading, Delete, VideoPause, VideoPlay, Warning, FullScreen, Filter, ArrowDown } from '@element-plus/icons-vue'
+import { Refresh, Search, View, Document, Download, Loading, Delete, VideoPause, VideoPlay, Warning, FullScreen, Filter, ArrowDown, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { taskRunApi, taskApi, workerApi, minioApi, callbackJobRunApi } from '@/services'
 import type { TaskRun, TaskVO, WorkerVO } from '@/types'
 import { ElMessageBox } from 'element-plus'
 import { formatDateTime, formatDuration } from '@/utils/date'
+import PageHeader from '@/components/PageHeader.vue'
+import StatCard from '@/components/StatCard.vue'
+import StatusTag from '@/components/StatusTag.vue'
+import FilterCard from '@/components/FilterCard.vue'
 
 const router = useRouter()
 const loading = ref(false)
 const taskRuns = ref<TaskRun[]>([])
+
+/**
+ * 统计：指定状态的记录数
+ * @param status 运行状态
+ */
+function statusCount(status: string): number {
+  return taskRuns.value.filter(r => r.status === status).length
+}
+
+/** 统计：失败数（failed + timeout） */
+const failCount = computed(() => taskRuns.value.filter(r => r.status === 'failed' || r.status === 'timeout').length)
 const taskMap = ref<Map<string, string>>(new Map())
 const workerMap = ref<Map<string, string>>(new Map())
 const filterForm = ref({
@@ -1170,34 +1182,53 @@ onUnmounted(() => {
 
 <style scoped>
 .task-run-list-container {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
+/* ---------- 统计卡 ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 8px;
+@media (max-width: 1024px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
-.page-subtitle {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0;
-}
-
-.filter-card,
-.table-card {
-  margin-bottom: 24px;
+/* ---------- 表格面板 ---------- */
+.table-panel {
   border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+  padding: 8px 16px 16px;
+}
+
+.empty-text {
+  color: var(--sjdt-muted);
+}
+
+.exit-code {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.code-success {
+  color: var(--sjdt-success);
+}
+
+.code-fail {
+  color: var(--sjdt-danger);
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--sjdt-text);
 }
 
 .filter-form {
@@ -1210,7 +1241,7 @@ onUnmounted(() => {
 }
 
 .error-message {
-  color: #ef4444;
+  color: var(--sjdt-danger);
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -1230,32 +1261,33 @@ onUnmounted(() => {
 .log-title {
   font-weight: 600;
   font-size: 16px;
+  color: var(--sjdt-text);
 }
 
 .log-content-wrapper {
-  border: 1px solid #333333;
+  border: 1px solid #1F2E47;
   border-radius: 6px;
-  background: #000000;
+  background: #0B1220;
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .log-container {
   flex: 1;
   overflow: auto;
-  background-color: #000000;  /* 纯黑色背景 */
+  background-color: #0B1220;  /* 深海底色 */
   border-radius: 6px;
   padding: 16px;
-  border: 1px solid #333333;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);  /* 内部阴影效果 */
-  max-height: 500px;  /* 限制最大高度 */
+  border: 1px solid #1F2E47;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  max-height: 500px;
 }
 
 .log-text {
   margin: 0;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;  /* 经典终端字体 */
+  font-family: var(--sjdt-mono);
   font-size: 12px;
-  line-height: 1.4;  /* 稍微紧凑的行距 */
-  color: #FFFFFF;  /* 白色文字 */
+  line-height: 1.4;
+  color: #E2EAF4;
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-all;
@@ -1269,17 +1301,17 @@ onUnmounted(() => {
 }
 
 .log-container::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: #111A2C;
   border-radius: 4px;
 }
 
 .log-container::-webkit-scrollbar-thumb {
-  background: #444444;
+  background: #2B3D5C;
   border-radius: 4px;
 }
 
 .log-container::-webkit-scrollbar-thumb:hover {
-  background: #555555;
+  background: #3B4D6C;
 }
 
 /* 日志工具栏样式 */
@@ -1297,7 +1329,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   z-index: 9999;
-  background-color: #000000 !important;
+  background-color: #0B1220 !important;
   border-radius: 0;
   border: none;
   box-shadow: none;
@@ -1318,49 +1350,12 @@ onUnmounted(() => {
   margin-right: 0;
 }
 
-.log-level-filter .el-checkbox__label {
-  color: #e5e7eb;
-}
-
-/* 下拉菜单样式优化 */
-:deep(.el-dropdown-menu) {
-  background-color: #1f2937;
-  border: 1px solid #374151;
-}
-
-:deep(.el-dropdown-menu__item) {
-  color: #e5e7eb;
-  padding: 0;
-}
-
-:deep(.el-dropdown-menu__item:hover) {
-  background-color: #374151;
-}
-
-:deep(.el-checkbox__inner) {
-  background-color: #374151;
-  border-color: #4b5563;
-}
-
-:deep(.el-checkbox__inner:hover) {
-  border-color: #60a5fa;
-}
-
-:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-  background-color: #3b82f6;
-  border-color: #3b82f6;
-}
-
-:deep(.el-checkbox__input.is-checked .el-checkbox__inner::after) {
-  border-color: #ffffff;
-}
-
 .log-loading {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #6b7280;
+  color: var(--sjdt-muted);
 }
 
 .log-loading .el-icon {
@@ -1381,16 +1376,17 @@ onUnmounted(() => {
 .callback-title {
   font-weight: 600;
   font-size: 16px;
+  color: var(--sjdt-text);
 }
 
 .callback-content {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--sjdt-border);
   border-radius: 6px;
-  background: #f9fafb;
+  background: var(--sjdt-bg);
 }
 
 .callback-content-text {
-  font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-family: var(--sjdt-mono);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1400,7 +1396,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #6b7280;
+  color: var(--sjdt-muted);
 }
 
 .callback-loading .el-icon {
@@ -1412,16 +1408,16 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--sjdt-danger-soft);
+  border: 1px solid var(--sjdt-danger);
   border-radius: 8px;
   margin-bottom: 20px;
-  color: #991b1b;
+  color: var(--sjdt-danger);
   line-height: 1.5;
 }
 
 .warning-icon {
-  color: #ef4444;
+  color: var(--sjdt-danger);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -1432,33 +1428,19 @@ onUnmounted(() => {
 
 .control-task-info {
   padding: 16px;
-  background: #f9fafb;
+  background: var(--sjdt-bg);
   border-radius: 8px;
 }
 
-:deep(.el-table) {
-  font-size: 14px;
-}
-
-:deep(.el-table .cell) {
-  font-size: 14px;
-}
-
-:deep(.el-tag) {
-  font-size: 13px;
-}
-
-:deep(.el-link) {
-  font-size: 14px;
+.pagination-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
-}
-
-.action-buttons .el-button {
-  font-weight: 500;
 }
 </style>

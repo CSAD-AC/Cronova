@@ -1,82 +1,39 @@
 <template>
   <div class="tag-list-container">
-    <div class="page-header">
-      <div class="header-left">
-        <h1 class="page-title">标签管理</h1>
-        <p class="page-subtitle">管理执行器镜像标签，用于任务匹配</p>
-      </div>
-      <div class="header-right">
-        <el-input
-          v-model="searchKeyword"
-          placeholder="搜索标签..."
-          class="mr-4"
-          style="width: 200px"
-          clearable
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="mr-1"><Plus /></el-icon>
-          创建标签
-        </el-button>
-      </div>
-    </div>
-    
-    <!-- 统计卡片 -->
-    <el-row :gutter="20" class="mb-6">
-      <el-col :span="8">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon bg-blue-100 text-blue-600">
-              <el-icon><PriceTag /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ total }}</div>
-              <div class="stat-label">总标签数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon bg-green-100 text-green-600">
-              <el-icon><Document /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ totalScriptCount }}</div>
-              <div class="stat-label">关联脚本数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon bg-purple-100 text-purple-600">
-              <el-icon><Cpu /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ totalWorkerCount }}</div>
-              <div class="stat-label">关联执行器数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <PageHeader title="标签管理" subtitle="管理执行器镜像标签，用于任务匹配">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索标签..."
+        style="width: 200px"
+        clearable
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+      <el-button type="primary" @click="showCreateDialog">
+        <el-icon class="mr-1"><Plus /></el-icon>
+        创建标签
+      </el-button>
+    </PageHeader>
 
-    <el-card class="table-card" shadow="never">
-      <el-table 
-        :data="filteredTags" 
+    <!-- ============ 统计卡 ============ -->
+    <div class="stat-grid">
+      <StatCard title="总标签数" :value="total" :icon="PriceTag" tone="primary" />
+      <StatCard title="关联脚本数" :value="totalScriptCount" :icon="Document" tone="success" />
+      <StatCard title="关联执行器数" :value="totalWorkerCount" :icon="Cpu" tone="accent" />
+    </div>
+
+    <div class="table-panel">
+      <el-table
+        :data="filteredTags"
         v-loading="loading"
         style="width: 100%"
         stripe
       >
         <el-table-column prop="name" label="标签名称" min-width="150">
           <template #default="{ row }">
-            <el-tag type="primary" effect="plain">{{ row.name }}</el-tag>
+            <span class="tag-name-chip">{{ row.name }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200">
@@ -85,39 +42,39 @@
             <span v-else class="no-description">暂无描述</span>
           </template>
         </el-table-column>
-        <el-table-column label="关联脚本" width="120" align="center">
+        <el-table-column label="关联脚本" width="110" align="center">
           <template #default="{ row }">
-            <el-button type="success" size="small" @click="showDetailDialog(row, 'script')">
+            <el-link type="primary" :underline="false" class="count-link" @click="showDetailDialog(row, 'script')">
               {{ row.scriptCount || 0 }} 个
-            </el-button>
+            </el-link>
           </template>
         </el-table-column>
-        <el-table-column label="关联执行器" width="120" align="center">
+        <el-table-column label="关联执行器" width="110" align="center">
           <template #default="{ row }">
-            <el-button type="warning" size="small" @click="showDetailDialog(row, 'worker')">
+            <el-link type="primary" :underline="false" class="count-link" @click="showDetailDialog(row, 'worker')">
               {{ row.workerCount || 0 }} 个
-            </el-button>
+            </el-link>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="180">
+        <el-table-column prop="createTime" label="创建时间" width="170">
           <template #default="{ row }">
-            {{ formatDateTime(row.createTime) }}
+            <span class="sjdt-mono time-text">{{ formatDateTime(row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
-              <el-button type="primary" size="default" @click="showEditDialog(row)">
+              <el-button link type="primary" @click="showEditDialog(row)">
                 <el-icon class="mr-1"><Edit /></el-icon>编辑
               </el-button>
-              <el-button type="danger" size="default" @click="handleDelete(row)">
+              <el-button link type="danger" @click="handleDelete(row)">
                 <el-icon class="mr-1"><Delete /></el-icon>删除
               </el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
-      
+
       <div class="pagination-container">
         <el-pagination
           v-model:current-page="currentPage"
@@ -129,7 +86,7 @@
           @current-change="fetchTags"
         />
       </div>
-    </el-card>
+    </div>
     
     <!-- 创建/编辑标签弹窗 -->
     <el-dialog 
@@ -179,27 +136,25 @@
           <el-table-column v-if="detailType === 'worker'" prop="ip" label="IP地址" min-width="140" />
           <el-table-column v-if="detailType === 'worker'" label="状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
-                {{ row.status }}
-              </el-tag>
+              <StatusTag :status="row.status" />
             </template>
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">
-              <el-button type="danger" plain size="small" @click="handleUnbind(row)">
+              <el-button link type="danger" @click="handleUnbind(row)">
                 取消关联
               </el-button>
             </template>
           </el-table-column>
         </el-table>
-        
+
         <el-empty v-if="!detailLoading && detailList.length === 0" description="暂无关联" />
       </div>
     </el-dialog>
-    
+
     <!-- 关联弹窗 -->
-    <el-dialog 
-      v-model="bindDialogVisible" 
+    <el-dialog
+      v-model="bindDialogVisible"
       :title="detailType === 'script' ? '关联脚本' : '关联执行器'"
       width="600px"
     >
@@ -210,14 +165,12 @@
         <el-table-column v-if="detailType === 'worker'" prop="ip" label="IP地址" min-width="140" />
         <el-table-column v-if="detailType === 'worker'" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
-              {{ row.status }}
-            </el-tag>
+            <StatusTag :status="row.status" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" plain size="small" @click="handleBind(row)">
+            <el-button link type="primary" @click="handleBind(row)">
               关联
             </el-button>
           </template>
@@ -238,6 +191,9 @@ import { workerApi } from '@/services'
 import type { TagVO, ScriptVO, WorkerVO } from '@/types'
 import type { FormInstance, FormRules } from 'element-plus'
 import { formatDateTime } from '@/utils/date'
+import PageHeader from '@/components/PageHeader.vue'
+import StatCard from '@/components/StatCard.vue'
+import StatusTag from '@/components/StatusTag.vue'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -474,94 +430,70 @@ onMounted(() => {
 
 <style scoped>
 .tag-list-container {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
+/* ---------- 统计卡 ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 8px;
+@media (max-width: 768px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.page-subtitle {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0;
-}
-
-.table-card {
+/* ---------- 表格面板 ---------- */
+.table-panel {
   border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+  padding: 8px 16px 16px;
+}
+
+.tag-name-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  background: var(--sjdt-primary-soft);
+  color: var(--sjdt-primary);
+  white-space: nowrap;
 }
 
 .no-description {
-  color: #94a3b8;
+  color: var(--sjdt-muted);
   font-size: 13px;
 }
 
 .description-text {
-  color: #475569;
+  color: var(--sjdt-text);
   font-size: 13px;
+}
+
+.count-link {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--sjdt-text);
 }
 
 .pagination-container {
   display: flex;
   justify-content: flex-end;
-  margin-top: 20px;
+  margin-top: 16px;
 }
-
-.stat-card {
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-}
-
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  margin-right: 16px;
-}
-
-.stat-info {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1e293b;
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: #64748b;
-  margin-top: 4px;
-}
-
-.bg-blue-100 { background-color: #dbeafe; }
-.text-blue-600 { color: #2563eb; }
-.bg-green-100 { background-color: #dcfce7; }
-.text-green-600 { color: #16a34a; }
-.bg-purple-100 { background-color: #f3e8ff; }
-.text-purple-600 { color: #9333ea; }
 
 .detail-header {
   margin-bottom: 16px;
@@ -569,26 +501,7 @@ onMounted(() => {
 
 .action-buttons {
   display: flex;
-  gap: 8px;
-}
-
-.action-buttons .el-button {
-  font-weight: 500;
-}
-
-:deep(.el-table) {
-  font-size: 14px;
-}
-
-:deep(.el-table .cell) {
-  font-size: 14px;
-}
-
-:deep(.el-tag) {
-  font-size: 13px;
-}
-
-:deep(.el-button link) {
-  font-size: 14px;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 </style>

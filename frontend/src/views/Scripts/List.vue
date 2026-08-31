@@ -53,7 +53,7 @@
           </div>
         </div>
 
-        <el-card class="table-card" shadow="never">
+        <div class="table-panel">
           <el-table
             :data="filteredScripts"
             v-loading="loading"
@@ -62,76 +62,66 @@
             row-class-name="table-row"
             @row-dblclick="handleRowDblClick"
           >
-            <el-table-column prop="name" label="脚本名称" min-width="200">
+            <el-table-column prop="name" label="脚本名称" min-width="220">
               <template #default="{ row }">
-                <div class="flex items-center">
-                  <el-icon class="file-icon mr-2" :size="20">
-                    <component :is="getFileIcon(row)" />
-                  </el-icon>
-                  <span>{{ row.name }}</span>
-                  <el-tag
-                    v-if="row.isDirectory"
-                    size="small"
-                    type="warning"
-                    style="margin-left: 8px"
-                    >目录</el-tag
-                  >
+                <div class="file-cell">
+                  <div class="file-avatar" :class="row.isDirectory ? 'avatar-dir' : 'avatar-file'">
+                    <el-icon :size="17">
+                      <Folder v-if="row.isDirectory" />
+                      <Document v-else />
+                    </el-icon>
+                  </div>
+                  <span class="file-name" :class="{ 'is-dir': row.isDirectory }">{{ row.name }}</span>
                 </div>
               </template>
             </el-table-column>
             <el-table-column label="标签" min-width="200">
               <template #default="{ row }">
                 <div class="tags-cell">
-                  <el-tag
+                  <span
                     v-for="tag in row.tags"
                     :key="tag.id"
-                    size="small"
-                    class="script-tag"
-                    effect="plain"
+                    class="tag-chip"
                   >
                     {{ tag.name }}
-                  </el-tag>
+                  </span>
                   <span v-if="!row.tags?.length" class="no-tags">暂无标签</span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="createTime" label="创建时间" width="180">
+            <el-table-column prop="createTime" label="创建时间" width="170">
               <template #default="{ row }">
-                {{ formatDateTime(row.createTime) }}
+                <span class="sjdt-mono time-text">{{ formatDateTime(row.createTime) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="220" fixed="right">
+            <el-table-column label="操作" width="230" fixed="right">
               <template #default="{ row }">
                 <div class="action-buttons">
-                  <div class="button-row">
-                    <el-button
-                      v-if="row.isDirectory"
-                      type="primary"
-                      size="default"
-                      @click="enterDirectory(row.id)"
-                    >
-                      <el-icon class="mr-1"><FolderOpened /></el-icon>进入
-                    </el-button>
-                    <el-button v-else type="primary" size="default" @click="handlePreview(row)">
-                      <el-icon class="mr-1"><View /></el-icon>预览
-                    </el-button>
-                    <el-button type="primary" size="default" @click="handleDownload(row)">
-                      <el-icon class="mr-1"><Download /></el-icon>下载
-                    </el-button>
-                  </div>
-                  <div class="button-row">
-                    <el-button type="primary" size="default" @click="showTagDialog(row)">
-                      <el-icon class="mr-1"><PriceTag /></el-icon>标签
-                    </el-button>
-                    <el-button type="danger" size="default" @click="handleDelete(row)">
-                      <el-icon class="mr-1"><Delete /></el-icon>删除
-                    </el-button>
-                  </div>
+                  <el-button
+                    v-if="row.isDirectory"
+                    link
+                    type="primary"
+                    @click="enterDirectory(row.id)"
+                  >
+                    <el-icon class="mr-1"><FolderOpened /></el-icon>进入
+                  </el-button>
+                  <el-button v-else link type="primary" @click="handlePreview(row)">
+                    <el-icon class="mr-1"><View /></el-icon>预览
+                  </el-button>
+                  <el-button link type="primary" @click="handleDownload(row)">
+                    <el-icon class="mr-1"><Download /></el-icon>下载
+                  </el-button>
+                  <el-button link type="primary" @click="showTagDialog(row)">
+                    <el-icon class="mr-1"><PriceTag /></el-icon>标签
+                  </el-button>
+                  <el-button link type="danger" @click="handleDelete(row)">
+                    <el-icon class="mr-1"><Delete /></el-icon>删除
+                  </el-button>
                 </div>
               </template>
             </el-table-column>
           </el-table>
-        </el-card>
+        </div>
       </el-main>
     </el-container>
 
@@ -474,13 +464,6 @@ function handleRowDblClick(row: ScriptVO) {
   }
 }
 
-function getFileIcon(row: ScriptVO) {
-  if (row.isDirectory) return 'Folder'
-  if (row.name?.endsWith('.py')) return 'Document'
-  if (row.name?.endsWith('.java')) return 'Document'
-  return 'Document'
-}
-
 function showUploadDialog() {
   uploadDialogVisible.value = true
   uploadFile.value = null
@@ -668,9 +651,10 @@ onMounted(() => {
   margin: -24px; /* 抵消Layout的padding */
 }
 
+/* ---------- 左侧文件夹树 ---------- */
 .script-sidebar {
-  background: white;
-  border-right: 1px solid #e2e8f0;
+  background: var(--sjdt-surface);
+  border-right: 1px solid var(--sjdt-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -678,12 +662,13 @@ onMounted(() => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--sjdt-border);
 }
 
 .sidebar-title {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--sjdt-text);
+  font-size: 14px;
 }
 
 .folder-tree {
@@ -691,36 +676,28 @@ onMounted(() => {
   background: transparent;
   overflow-y: auto;
   flex: 1;
+  --el-tree-node-hover-bg-color: var(--sjdt-row-hover);
 }
 
 .custom-tree-node {
   display: flex;
   align-items: center;
   width: 100%;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .custom-tree-node.is-directory {
-  color: #eab308;
+  color: var(--sjdt-running);
   font-weight: 500;
 }
 
 .custom-tree-node.is-file {
-  color: #64748b;
-}
-
-.count-badge {
-  margin-left: auto;
-  background: #f1f5f9;
-  color: #64748b;
-  padding: 2px 6px;
-  border-radius: 99px;
-  font-size: 12px;
+  color: var(--sjdt-muted);
 }
 
 .script-main {
   padding: 24px;
-  background: #f8fafc;
+  background: var(--sjdt-bg);
   overflow-y: auto;
 }
 
@@ -728,60 +705,112 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .page-title {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--sjdt-text);
   margin: 0 0 4px;
 }
 
 .page-subtitle {
-  font-size: 14px;
-  color: #64748b;
+  font-size: 13px;
+  color: var(--sjdt-muted);
   margin: 0;
 }
 
 .breadcrumb-clickable {
   cursor: pointer;
-  color: #409eff;
+  color: var(--sjdt-primary);
 }
 
 .breadcrumb-clickable:hover {
   text-decoration: underline;
 }
 
-.table-card {
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+/* ---------- 表格面板 ---------- */
+.table-panel {
+  border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+  padding: 8px 16px 16px;
 }
 
 .table-row {
   cursor: pointer;
 }
 
-.file-icon {
-  color: #64748b;
+.file-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.avatar-dir {
+  background: var(--sjdt-running-soft);
+  color: var(--sjdt-running);
+}
+
+.avatar-file {
+  background: var(--sjdt-primary-soft);
+  color: var(--sjdt-primary);
+}
+
+.file-name {
+  font-size: 13px;
+  color: var(--sjdt-text);
+}
+
+.file-name.is-dir {
+  font-weight: 600;
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--sjdt-text);
 }
 
 .tags-cell {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
-.script-tag {
-  margin: 0;
+.tag-chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--sjdt-pending-soft);
+  color: var(--sjdt-pending);
+  white-space: nowrap;
 }
 
 .no-tags {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--sjdt-muted);
 }
 
-/* 编辑标签弹窗样式 */
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ---------- 弹窗样式 ---------- */
 .tag-dialog-content {
   padding: 16px 0;
 }
@@ -789,52 +818,27 @@ onMounted(() => {
 .script-info {
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--sjdt-border);
 }
 
 .script-info h4 {
   margin: 0;
-  color: #1e293b;
+  color: var(--sjdt-text);
   font-size: 16px;
   font-weight: 600;
 }
 
 .tag-selection h5 {
   margin: 0 0 16px;
-  color: #374151;
+  color: var(--sjdt-text);
   font-size: 14px;
   font-weight: 500;
-}
-
-.tag-checkbox-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 8px 0;
-}
-
-.tag-checkbox {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-
-.tag-checkbox:hover {
-  background-color: #f9fafb;
-}
-
-.tag-checkbox .el-checkbox__input {
-  margin-right: 8px;
 }
 
 .no-tags-hint {
   text-align: center;
   padding: 40px 0;
-  color: #9ca3af;
+  color: var(--sjdt-muted);
 }
 
 .dialog-footer {
@@ -844,46 +848,11 @@ onMounted(() => {
 }
 
 .selected-count {
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--sjdt-muted);
+  font-size: 13px;
 }
 
 .font-mono {
-  font-family: 'Monaco', 'Consolas', monospace;
-}
-
-.form-tip {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
-}
-
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.button-row {
-  display: flex;
-  gap: 8px;
-}
-
-.button-row .el-button {
-  flex: 1;
-  font-weight: 500;
-  min-width: 60px;
-}
-
-:deep(.el-table) {
-  font-size: 14px;
-}
-
-:deep(.el-table .cell) {
-  font-size: 14px;
-}
-
-:deep(.el-tag) {
-  font-size: 13px;
+  font-family: var(--sjdt-mono);
 }
 </style>

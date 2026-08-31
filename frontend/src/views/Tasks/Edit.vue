@@ -1,14 +1,13 @@
 <template>
   <div class="task-edit-container">
-    <div class="page-header">
-      <el-page-header @back="$router.back()">
-        <template #content>
-          <span class="page-title">编辑任务</span>
-        </template>
-      </el-page-header>
-    </div>
-    
-    <el-card class="form-card">
+    <PageHeader title="编辑任务" subtitle="修改任务配置与调度参数">
+      <el-button @click="$router.back()">
+        <el-icon class="mr-1"><ArrowLeft /></el-icon>
+        返回
+      </el-button>
+    </PageHeader>
+
+    <div class="panel form-panel">
       <el-form
         ref="formRef"
         :model="formData"
@@ -178,7 +177,7 @@
           <el-button @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -186,9 +185,10 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, ArrowLeft } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { workerApi, scriptApi } from '@/services'
+import PageHeader from '@/components/PageHeader.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { WorkerVO, ScriptVO } from '@/types'
 
@@ -543,25 +543,33 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.form-card {
+/* ---------- 表单面板（主题 Token） ---------- */
+.panel {
   border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+}
+
+.form-panel {
+  padding: 24px 28px 12px;
 }
 
 .task-form {
-  padding: 20px 0;
+  padding: 0;
 }
 
 .form-tip {
   margin-left: 8px;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--sjdt-muted);
+}
+
+/* ---------- 分区标题 ---------- */
+:deep(.el-divider__text) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sjdt-text);
+  background: var(--sjdt-surface);
 }
 </style>

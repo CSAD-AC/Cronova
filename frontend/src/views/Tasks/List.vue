@@ -1,24 +1,26 @@
 <template>
   <div class="task-list-container">
-    <div class="page-header">
-      <div class="header-left">
-        <h1 class="page-title">任务管理</h1>
-        <p class="page-subtitle">管理所有定时任务和一次性任务</p>
-      </div>
-      <div class="header-right">
-        <el-button type="primary" @click="$router.push('/tasks/create')">
-          <el-icon><Plus /></el-icon>
-          创建任务
-        </el-button>
-      </div>
+    <PageHeader title="任务管理" subtitle="管理所有定时任务和一次性任务">
+      <el-button type="primary" @click="$router.push('/tasks/create')">
+        <el-icon><Plus /></el-icon>
+        创建任务
+      </el-button>
+    </PageHeader>
+
+    <!-- ============ 统计卡 ============ -->
+    <div class="stat-grid">
+      <StatCard title="任务总数" :value="taskStore.tasks.length" :icon="List" tone="primary" />
+      <StatCard title="启用中" :value="activeCount" :icon="CircleCheck" tone="success" :pulse="activeCount > 0" />
+      <StatCard title="定时任务" :value="cronCount" :icon="Timer" tone="accent" />
+      <StatCard title="一次性任务" :value="onceCount" :icon="Flag" tone="pending" />
     </div>
-    
-    <el-card class="filter-card">
+
+    <FilterCard>
       <el-form :inline="true" :model="filterForm" class="filter-form">
         <el-form-item label="任务名称">
-          <el-input 
-            v-model="filterForm.name" 
-            placeholder="搜索任务名称" 
+          <el-input
+            v-model="filterForm.name"
+            placeholder="搜索任务名称"
             clearable
             style="width: 200px"
           />
@@ -46,11 +48,11 @@
           </el-button>
         </el-form-item>
       </el-form>
-    </el-card>
-    
-    <el-card class="table-card">
-      <el-table 
-        :data="paginatedTasks" 
+    </FilterCard>
+
+    <div class="table-panel">
+      <el-table
+        :data="paginatedTasks"
         v-loading="taskStore.loading"
         style="width: 100%"
         stripe
@@ -64,88 +66,80 @@
         </el-table-column>
         <el-table-column prop="executeType" label="执行类型" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.executeType === 'script' ? 'success' : 'warning'" size="small">
+            <span class="type-chip" :class="row.executeType === 'script' ? 'chip-script' : 'chip-callback'">
               {{ row.executeType === 'script' ? '脚本' : '回调' }}
-            </el-tag>
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="scriptType" label="脚本类型" width="100">
           <template #default="{ row }">
             <template v-if="row.executeType === 'script'">
-              <el-tag size="small" :type="getScriptTypeTag(row.scriptType)">
-                {{ getScriptTypeText(row.scriptType) }}
-              </el-tag>
+              <span class="type-chip chip-lang">{{ getScriptTypeText(row.scriptType) }}</span>
             </template>
-            <span v-else>-</span>
+            <span v-else class="empty-text">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="taskType" label="任务类型" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.taskType === 'cron' ? 'primary' : 'info'" size="small">
+            <span class="type-chip" :class="row.taskType === 'cron' ? 'chip-cron' : 'chip-once'">
               {{ row.taskType === 'cron' ? '定时任务' : '一次性任务' }}
-            </el-tag>
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="cronExpr" label="Cron表达式" width="200">
           <template #default="{ row }">
-            <div v-if="row.cronExpr && row.taskType === 'cron'">
-              <div class="cron-expr">{{ row.cronExpr }}</div>
+            <div v-if="row.cronExpr && row.taskType === 'cron'" class="cron-cell">
+              <div class="cron-expr sjdt-mono">{{ row.cronExpr }}</div>
               <div class="cron-desc" v-if="cronDescriptions.get(row.id)">
                 {{ cronDescriptions.get(row.id) }}
               </div>
             </div>
-            <span v-else>-</span>
+            <span v-else class="empty-text">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="150">
+        <el-table-column prop="status" label="状态" width="130">
           <template #default="{ row }">
             <el-switch
               v-if="row.taskType === 'cron'"
               :model-value="row.status === 'active'"
-              active-text="启用"
-              inactive-text="禁用"
               @change="toggleStatus(row)"
             />
-            <el-tag v-else type="info" size="small">非定时任务</el-tag>
+            <StatusTag v-else status="pending" />
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="180">
+        <el-table-column prop="createTime" label="创建时间" width="170">
           <template #default="{ row }">
-            {{ formatDateTime(row.createTime) }}
+            <span class="sjdt-mono time-text">{{ formatDateTime(row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
-              <div class="button-row">
-                <el-button 
-                  v-if="row.executeType === 'callback'" 
-                  type="primary" 
-                  size="default" 
-                  @click="handleHealthCheck(row)"
-                >
-                  <el-icon class="mr-1"><Monitor /></el-icon>检查
-                </el-button>
-                <el-button v-else type="primary" size="default" @click="$router.push(`/tasks/${row.id}`)">
-                  <el-icon class="mr-1"><View /></el-icon>详情
-                </el-button>
-                <el-button type="primary" size="default" @click="$router.push(`/tasks/${row.id}/edit`)">
-                  <el-icon class="mr-1"><Edit /></el-icon>编辑
-                </el-button>
-              </div>
-              <div class="button-row">
-                <el-button type="success" size="default" @click="handlePublish(row)">
-                  <el-icon class="mr-1"><VideoPlay /></el-icon>执行
-                </el-button>
-                <el-button type="danger" size="default" @click="handleDelete(row)">
-                  <el-icon class="mr-1"><Delete /></el-icon>删除
-                </el-button>
-              </div>
+              <el-button
+                v-if="row.executeType === 'callback'"
+                link
+                type="primary"
+                @click="handleHealthCheck(row)"
+              >
+                <el-icon class="mr-1"><Monitor /></el-icon>检查
+              </el-button>
+              <el-button v-else link type="primary" @click="$router.push(`/tasks/${row.id}`)">
+                <el-icon class="mr-1"><View /></el-icon>详情
+              </el-button>
+              <el-button link type="primary" @click="$router.push(`/tasks/${row.id}/edit`)">
+                <el-icon class="mr-1"><Edit /></el-icon>编辑
+              </el-button>
+              <el-button link type="success" @click="handlePublish(row)">
+                <el-icon class="mr-1"><VideoPlay /></el-icon>执行
+              </el-button>
+              <el-button link type="danger" @click="handleDelete(row)">
+                <el-icon class="mr-1"><Delete /></el-icon>删除
+              </el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
-      
+
       <div class="pagination-container">
         <el-pagination
           v-model:current-page="currentPage"
@@ -157,35 +151,25 @@
           @current-change="handleCurrentChange"
         />
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.cron-expr {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  color: #409EFF;
-  margin-bottom: 4px;
-}
-
-.cron-desc {
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.3;
-}
-</style>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, Search, Refresh, View, Edit, VideoPlay, Delete, Monitor
+  Plus, Search, Refresh, View, Edit, VideoPlay, Delete, Monitor,
+  List, CircleCheck, Timer, Flag
 } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { formatDateTime } from '@/utils/date'
 import { taskApi } from '@/services/task'
+import PageHeader from '@/components/PageHeader.vue'
+import StatCard from '@/components/StatCard.vue'
+import StatusTag from '@/components/StatusTag.vue'
+import FilterCard from '@/components/FilterCard.vue'
 
 const router = useRouter()
 const taskStore = useTaskStore()
@@ -199,6 +183,15 @@ const filterForm = reactive({
   taskType: '',
   status: '',
 })
+
+/** 统计：启用中的任务数 */
+const activeCount = computed(() => taskStore.tasks.filter(t => t.status === 'active').length)
+
+/** 统计：定时任务数 */
+const cronCount = computed(() => taskStore.tasks.filter(t => t.taskType === 'cron').length)
+
+/** 统计：一次性任务数 */
+const onceCount = computed(() => taskStore.tasks.filter(t => t.taskType !== 'cron').length)
 
 const filteredTasks = computed(() => {
   let result = [...taskStore.tasks]
@@ -436,92 +429,104 @@ onMounted(() => {
 
 <style scoped>
 .task-list-container {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
+/* ---------- 统计卡 ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.page-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 8px;
+@media (max-width: 1024px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
-.page-subtitle {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0;
-}
-
-.filter-card {
-  margin-bottom: 24px;
+/* ---------- 表格面板 ---------- */
+.table-panel {
   border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+  padding: 8px 16px 16px;
 }
 
-.table-card {
-  border-radius: 12px;
+/* ---------- 类型徽章 ---------- */
+.type-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.chip-script {
+  background: var(--sjdt-success-soft);
+  color: var(--sjdt-success);
+}
+
+.chip-callback {
+  background: var(--sjdt-accent-soft);
+  color: var(--sjdt-accent);
+}
+
+.chip-cron {
+  background: var(--sjdt-primary-soft);
+  color: var(--sjdt-primary);
+}
+
+.chip-once {
+  background: var(--sjdt-pending-soft);
+  color: var(--sjdt-pending);
+}
+
+.chip-lang {
+  background: var(--sjdt-running-soft);
+  color: var(--sjdt-running);
+}
+
+.empty-text {
+  color: var(--sjdt-muted);
+}
+
+/* ---------- Cron 单元格 ---------- */
+.cron-cell {
+  line-height: 1.4;
+}
+
+.cron-expr {
+  font-size: 13px;
+  color: var(--sjdt-primary);
+  margin-bottom: 2px;
+}
+
+.cron-desc {
+  font-size: 12px;
+  color: var(--sjdt-muted);
+  line-height: 1.3;
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--sjdt-text);
 }
 
 .pagination-container {
   display: flex;
   justify-content: flex-end;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
 .action-buttons {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.button-row {
-  display: flex;
-  gap: 8px;
-}
-
-.button-row .el-button {
-  flex: 1;
-  font-weight: 500;
-  min-width: 90px;
-}
-
-:deep(.el-table) {
-  font-size: 14px;
-}
-
-:deep(.el-table .cell) {
-  font-size: 14px;
-}
-
-:deep(.el-tag) {
-  font-size: 13px;
-}
-
-:deep(.el-link) {
-  font-size: 14px;
-}
-
-.button-row .el-button {
-  font-size: 13px;
-  padding: 6px 10px;
-  height: 34px;
-  line-height: 20px;
-}
-
-:deep(.el-button) {
-  font-size: 13px;
-  padding: 6px 10px;
-  height: 34px;
-}
-
-.cron-desc {
-  font-size: 13px;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 </style>

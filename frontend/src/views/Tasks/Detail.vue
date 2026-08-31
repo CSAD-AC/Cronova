@@ -1,155 +1,195 @@
 <template>
   <div class="task-detail-container" v-loading="loading">
-    <div class="page-header">
-      <el-page-header @back="$router.back()">
-        <template #content>
-          <span class="page-title">{{ task?.name }}</span>
-        </template>
-        <template #extra>
-            <el-button-group>
-              <el-button @click="$router.push(`/tasks/${taskId}/edit`)">
-                <el-icon><Edit /></el-icon>
-                编辑
-              </el-button>
-              <el-button 
-                type="info" 
-                v-if="task?.executeType === 'callback'"
-                @click="handleHealthCheck"
-                :loading="healthCheckLoading"
-              >
-                <el-icon><Monitor /></el-icon>
-                健康检查
-              </el-button>
-              <el-button type="primary" @click="handlePublish">
-                <el-icon><VideoPlay /></el-icon>
-                立即执行
-              </el-button>
-            </el-button-group>
-          </template>
-      </el-page-header>
-    </div>
-    
-    <el-row :gutter="24">
-      <el-col :span="16">
-        <el-card class="info-card">
-          <template #header>
-            <div class="card-header">
-              <span>任务信息</span>
-              <el-tag :type="task?.status === 'active' ? 'success' : 'danger'">
-                {{ task?.status === 'active' ? '活跃' : task?.status === 'paused' ? '暂停' : '已删除' }}
-              </el-tag>
+    <PageHeader :title="task?.name || '任务详情'" :subtitle="task?.description || '查看任务配置与执行历史'">
+      <el-button @click="$router.back()">
+        <el-icon class="mr-1"><ArrowLeft /></el-icon>
+        返回
+      </el-button>
+      <el-button @click="$router.push(`/tasks/${taskId}/edit`)">
+        <el-icon><Edit /></el-icon>
+        编辑
+      </el-button>
+      <el-button
+        v-if="task?.executeType === 'callback'"
+        @click="handleHealthCheck"
+        :loading="healthCheckLoading"
+      >
+        <el-icon><Monitor /></el-icon>
+        健康检查
+      </el-button>
+      <el-button type="primary" @click="handlePublish">
+        <el-icon><VideoPlay /></el-icon>
+        立即执行
+      </el-button>
+    </PageHeader>
+
+    <div class="detail-grid">
+      <!-- 左列：任务信息 + 执行历史 -->
+      <div class="detail-main">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">任务信息</span>
+            <StatusTag :status="task?.status === 'active' ? 'active' : (task?.status === 'paused' ? 'paused' : 'pending')" />
+          </div>
+
+          <div class="desc-grid">
+            <div class="desc-item">
+              <div class="desc-label">任务ID</div>
+              <div class="desc-value sjdt-mono">{{ task?.id }}</div>
             </div>
-          </template>
-          
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="任务ID">{{ task?.id }}</el-descriptions-item>
-            <el-descriptions-item label="任务名称">{{ task?.name }}</el-descriptions-item>
-            <el-descriptions-item label="执行类型">
-              <el-tag size="small">{{ task?.executeType === 'script' ? '脚本执行' : 'HTTP回调' }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="任务类型">
-              <el-tag size="small" :type="task?.taskType === 'cron' ? 'primary' : 'info'">
-                {{ task?.taskType === 'cron' ? 'Cron定时任务' : '一次性任务' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item v-if="task?.executeType === 'script'" label="脚本类型">
-              {{ getScriptTypeText(task?.scriptType || task?.type) || '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item v-if="task?.executeType === 'script' && scriptName" label="脚本文件">
-              {{ scriptName }}
-            </el-descriptions-item>
-            <el-descriptions-item label="Cron表达式">
-              <div v-if="task?.cronExpr">
-                <div class="cron-expr">{{ task.cronExpr }}</div>
+            <div class="desc-item">
+              <div class="desc-label">任务名称</div>
+              <div class="desc-value">{{ task?.name }}</div>
+            </div>
+            <div class="desc-item">
+              <div class="desc-label">执行类型</div>
+              <div class="desc-value">
+                <span class="type-chip" :class="task?.executeType === 'script' ? 'chip-script' : 'chip-callback'">
+                  {{ task?.executeType === 'script' ? '脚本执行' : 'HTTP回调' }}
+                </span>
+              </div>
+            </div>
+            <div class="desc-item">
+              <div class="desc-label">任务类型</div>
+              <div class="desc-value">
+                <span class="type-chip" :class="task?.taskType === 'cron' ? 'chip-cron' : 'chip-once'">
+                  {{ task?.taskType === 'cron' ? 'Cron定时任务' : '一次性任务' }}
+                </span>
+              </div>
+            </div>
+            <div v-if="task?.executeType === 'script'" class="desc-item">
+              <div class="desc-label">脚本类型</div>
+              <div class="desc-value">{{ getScriptTypeText(task?.scriptType || task?.type) || '-' }}</div>
+            </div>
+            <div v-if="task?.executeType === 'script' && scriptName" class="desc-item">
+              <div class="desc-label">脚本文件</div>
+              <div class="desc-value">{{ scriptName }}</div>
+            </div>
+            <div class="desc-item">
+              <div class="desc-label">Cron表达式</div>
+              <div v-if="task?.cronExpr" class="desc-value">
+                <div class="cron-expr sjdt-mono">{{ task.cronExpr }}</div>
                 <div class="cron-desc" v-if="cronDescription">{{ cronDescription }}</div>
               </div>
-              <span v-else>无</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="超时时间">{{ task?.timeoutSeconds }}秒</el-descriptions-item>
-            <el-descriptions-item label="目标执行器">{{ task?.targetWorker || '自动匹配' }}</el-descriptions-item>
-            
+              <div v-else class="desc-value empty-text">无</div>
+            </div>
+            <div class="desc-item">
+              <div class="desc-label">超时时间</div>
+              <div class="desc-value sjdt-mono">{{ task?.timeoutSeconds }}秒</div>
+            </div>
+            <div class="desc-item">
+              <div class="desc-label">目标执行器</div>
+              <div class="desc-value">{{ task?.targetWorker || '自动匹配' }}</div>
+            </div>
+
             <!-- 回调任务配置显示 -->
             <template v-if="task?.executeType === 'callback' && task?.callbackConfig">
-              <el-descriptions-item label="回调URL">{{ task.callbackConfig.callbackUrl || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="请求方法">{{ task.callbackConfig.callbackMethod || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="密钥">{{ task.callbackConfig.secretKey || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="重试次数">{{ task.callbackConfig.retryCount || 0 }}次</el-descriptions-item>
-              <el-descriptions-item label="重试间隔">{{ task.callbackConfig.retryIntervalSeconds || 60 }}秒</el-descriptions-item>
+              <div class="desc-item">
+                <div class="desc-label">回调URL</div>
+                <div class="desc-value sjdt-mono">{{ task.callbackConfig.callbackUrl || '-' }}</div>
+              </div>
+              <div class="desc-item">
+                <div class="desc-label">请求方法</div>
+                <div class="desc-value sjdt-mono">{{ task.callbackConfig.callbackMethod || '-' }}</div>
+              </div>
+              <div class="desc-item">
+                <div class="desc-label">密钥</div>
+                <div class="desc-value sjdt-mono">{{ task.callbackConfig.secretKey || '-' }}</div>
+              </div>
+              <div class="desc-item">
+                <div class="desc-label">重试次数</div>
+                <div class="desc-value sjdt-mono">{{ task.callbackConfig.retryCount || 0 }}次</div>
+              </div>
+              <div class="desc-item">
+                <div class="desc-label">重试间隔</div>
+                <div class="desc-value sjdt-mono">{{ task.callbackConfig.retryIntervalSeconds || 60 }}秒</div>
+              </div>
             </template>
-            <el-descriptions-item label="创建人">{{ task?.createdBy || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ formatDateTime(task?.createTime) }}</el-descriptions-item>
-            <el-descriptions-item label="更新时间">{{ formatDateTime(task?.updateTime) }}</el-descriptions-item>
-            <el-descriptions-item label="任务描述" :span="2">{{ task?.description || '-' }}</el-descriptions-item>
-          </el-descriptions>
-        </el-card>
-        
-        <el-card class="runs-card">
-          <template #header>
-            <div class="card-header">
-              <span>执行历史</span>
-              <el-button-group>
-                <el-button size="small" @click="fetchTaskRuns">
-                  <el-icon><Refresh /></el-icon>
-                  刷新
-                </el-button>
-              </el-button-group>
+            <div class="desc-item">
+              <div class="desc-label">创建人</div>
+              <div class="desc-value">{{ task?.createdBy || '-' }}</div>
             </div>
-          </template>
-          
-          <el-table 
-            :data="taskRuns" 
+            <div class="desc-item">
+              <div class="desc-label">创建时间</div>
+              <div class="desc-value sjdt-mono">{{ formatDateTime(task?.createTime) }}</div>
+            </div>
+            <div class="desc-item">
+              <div class="desc-label">更新时间</div>
+              <div class="desc-value sjdt-mono">{{ formatDateTime(task?.updateTime) }}</div>
+            </div>
+            <div class="desc-item desc-item--full">
+              <div class="desc-label">任务描述</div>
+              <div class="desc-value">{{ task?.description || '-' }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">执行历史</span>
+            <el-button size="small" text type="primary" @click="fetchTaskRuns">
+              <el-icon class="mr-1"><Refresh /></el-icon>
+              刷新
+            </el-button>
+          </div>
+
+          <el-table
+            :data="taskRuns"
             style="width: 100%"
             v-loading="runsLoading"
             stripe
           >
-            <el-table-column prop="id" label="执行ID" width="180" />
-            <el-table-column prop="status" label="状态" width="100">
+            <el-table-column prop="id" label="执行ID" min-width="170">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)" size="small">
-                  {{ getStatusText(row.status) }}
-                </el-tag>
+                <span class="sjdt-mono time-text">{{ row.id }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="workerId" label="执行器" width="120">
+            <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
-                <span v-if="row.workerId">{{ row.workerId }}</span>
-                <span v-else>-</span>
+                <StatusTag :status="row.status" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="workerId" label="执行器" min-width="110">
+              <template #default="{ row }">
+                <span v-if="row.workerId" class="sjdt-mono time-text">{{ row.workerId }}</span>
+                <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
             <el-table-column prop="startTime" label="开始时间" width="160">
               <template #default="{ row }">
-                {{ formatDateTime(row.startTime) }}
+                <span class="sjdt-mono time-text">{{ formatDateTime(row.startTime) }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="endTime" label="结束时间" width="160">
+            <el-table-column prop="durationMs" label="耗时" width="90">
               <template #default="{ row }">
-                {{ formatDateTime(row.endTime) }}
+                <span v-if="row.durationMs" class="sjdt-mono time-text">{{ formatDuration(row.durationMs) }}</span>
+                <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="durationMs" label="耗时" width="80">
+            <el-table-column prop="exitCode" label="退出码" width="80">
               <template #default="{ row }">
-                {{ row.durationMs ? formatDuration(row.durationMs) : '-' }}
+                <span v-if="row.exitCode !== undefined && row.exitCode !== null" class="sjdt-mono" :class="row.exitCode === 0 ? 'code-success' : 'code-fail'">{{ row.exitCode }}</span>
+                <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="exitCode" label="退出码" width="80" />
-            <el-table-column label="操作" width="160" fixed="right">
+            <el-table-column label="操作" width="120" fixed="right">
               <template #default="{ row }">
-                <el-button-group>
+                <div class="action-buttons">
                   <el-tooltip content="查看日志">
-                    <el-button size="small" @click="viewLogs(row)">
+                    <el-button link type="primary" @click="viewLogs(row)">
                       <el-icon><Document /></el-icon>
                     </el-button>
                   </el-tooltip>
                   <el-tooltip content="下载日志" v-if="row.status === 'success' || row.status === 'failed'">
-                    <el-button size="small" @click="downloadLog(row)">
+                    <el-button link type="primary" @click="downloadLog(row)">
                       <el-icon><Download /></el-icon>
                     </el-button>
                   </el-tooltip>
-                </el-button-group>
+                </div>
               </template>
             </el-table-column>
           </el-table>
-          
+
           <div class="pagination-container" v-if="runsTotal > 0">
             <el-pagination
               v-model:current-page="runsCurrentPage"
@@ -161,20 +201,19 @@
               @current-change="handleRunsCurrentChange"
             />
           </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :span="8">
-        <el-card class="action-card">
-          <template #header>
-            <div class="card-header">
-              <span>操作</span>
-            </div>
-          </template>
-          
+        </div>
+      </div>
+
+      <!-- 右列：操作 + 统计 -->
+      <div class="detail-side">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">操作</span>
+          </div>
+
           <div class="action-list">
-            <el-button 
-              :type="task?.status === 'active' ? 'warning' : 'success'" 
+            <el-button
+              :type="task?.status === 'active' ? 'warning' : 'success'"
               @click="toggleEnabled"
             >
               <el-icon><Switch /></el-icon>
@@ -184,42 +223,40 @@
               <el-icon><VideoPlay /></el-icon>
               立即执行
             </el-button>
-            <el-button type="danger" @click="handleDelete">
+            <el-button type="danger" plain @click="handleDelete">
               <el-icon><Delete /></el-icon>
               删除任务
             </el-button>
           </div>
-        </el-card>
-        
-        <el-card class="status-card">
-          <template #header>
-            <div class="card-header">
-              <span>执行统计</span>
-            </div>
-          </template>
-          
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">执行统计</span>
+          </div>
+
           <div class="stats-list">
             <div class="stat-item">
-              <span class="stat-label">今日执行</span>
-              <span class="stat-value">12</span>
+              <span class="stat-label">执行总次数</span>
+              <span class="stat-value sjdt-mono">{{ runsTotal }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">成功率</span>
-              <span class="stat-value">98.5%</span>
+              <span class="stat-value sjdt-mono">{{ successRate }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">平均耗时</span>
-              <span class="stat-value">2.5s</span>
+              <span class="stat-value sjdt-mono">{{ avgDuration }}</span>
             </div>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+      </div>
+    </div>
 
     <!-- 日志查看对话框 -->
-    <el-dialog 
-      v-model="logDialogVisible" 
-      :title="`任务日志 - ${currentLogTask?.id || ''}`" 
+    <el-dialog
+      v-model="logDialogVisible"
+      :title="`任务日志 - ${currentLogTask?.id || ''}`"
       width="80%"
       :close-on-click-modal="false"
     >
@@ -281,12 +318,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Edit, VideoPlay, Switch, Delete, Refresh, Document, Download, Monitor, 
-  FullScreen, Filter, ArrowDown
+import {
+  Edit, VideoPlay, Switch, Delete, Refresh, Document, Download, Monitor,
+  FullScreen, Filter, ArrowDown, ArrowLeft
 } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { taskRunApi } from '@/services'
@@ -294,6 +331,8 @@ import { taskApi } from '@/services/task'
 import { scriptApi } from '@/services/script'
 import type { TaskRun } from '@/types'
 import { formatDateTime, formatDuration } from '@/utils/date'
+import PageHeader from '@/components/PageHeader.vue'
+import StatusTag from '@/components/StatusTag.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -328,34 +367,26 @@ const allLogLevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 const filteredLogContent = ref('')
 const displayLogContent = ref('') // 统一的显示内容
 
-function getStatusType(status: string) {
-  const map: Record<string, string> = {
-    success: 'success',
-    failed: 'danger',
-    running: 'primary',
-    pending: 'info',
-    paused: 'warning',
-    timeout: 'warning',
-  }
-  return map[status] || 'info'
-}
+/** 统计：成功率（成功数 / 已完成数） */
+const successRate = computed(() => {
+  const finished = taskRuns.value.filter(r => r.status === 'success' || r.status === 'failed' || r.status === 'timeout')
+  if (!finished.length) return '-'
+  const success = finished.filter(r => r.status === 'success').length
+  return `${((success / finished.length) * 100).toFixed(1)}%`
+})
 
-function getStatusText(status: string) {
-  const map: Record<string, string> = {
-    success: '成功',
-    failed: '失败',
-    running: '运行中',
-    pending: '等待',
-    paused: '已暂停',
-    timeout: '超时',
-  }
-  return map[status] || status
-}
+/** 统计：平均耗时 */
+const avgDuration = computed(() => {
+  const withDuration = taskRuns.value.filter(r => r.durationMs)
+  if (!withDuration.length) return '-'
+  const total = withDuration.reduce((sum, r) => sum + (r.durationMs || 0), 0)
+  return formatDuration(total / withDuration.length)
+})
 
 function getScriptTypeText(type: string | undefined) {
   const map: Record<string, string> = {
     python: 'Python',
-    java: 'Java', 
+    java: 'Java',
     go: 'Go'
   }
   return map[type || ''] || type || ''
@@ -930,34 +961,140 @@ onUnmounted(() => {
 
 <style scoped>
 .task-detail-container {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
-.page-header {
-  margin-bottom: 24px;
+/* ---------- 布局网格 ---------- */
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
 }
 
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
+@media (max-width: 1024px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.info-card,
-.runs-card,
-.action-card,
-.status-card {
-  margin-bottom: 24px;
+.detail-main,
+.detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ---------- 面板 ---------- */
+.panel {
   border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+  padding: 18px 20px;
 }
 
-.card-header {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 16px;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sjdt-text);
+}
+
+/* ---------- 描述网格 ---------- */
+.desc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 24px;
+}
+
+.desc-item--full {
+  grid-column: 1 / -1;
+}
+
+.desc-label {
+  font-size: 12px;
+  color: var(--sjdt-muted);
+  margin-bottom: 4px;
+}
+
+.desc-value {
+  font-size: 14px;
+  color: var(--sjdt-text);
+  word-break: break-all;
+}
+
+/* ---------- 类型徽章 ---------- */
+.type-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.chip-script {
+  background: var(--sjdt-success-soft);
+  color: var(--sjdt-success);
+}
+
+.chip-callback {
+  background: var(--sjdt-accent-soft);
+  color: var(--sjdt-accent);
+}
+
+.chip-cron {
+  background: var(--sjdt-primary-soft);
+  color: var(--sjdt-primary);
+}
+
+.chip-once {
+  background: var(--sjdt-pending-soft);
+  color: var(--sjdt-pending);
+}
+
+.empty-text {
+  color: var(--sjdt-muted);
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--sjdt-text);
+}
+
+.code-success {
+  color: var(--sjdt-success);
   font-weight: 600;
 }
 
+.code-fail {
+  color: var(--sjdt-danger);
+  font-weight: 600;
+}
+
+.cron-expr {
+  font-size: 13px;
+  color: var(--sjdt-primary);
+  margin-bottom: 2px;
+}
+
+.cron-desc {
+  font-size: 12px;
+  color: var(--sjdt-muted);
+  line-height: 1.3;
+}
+
+/* ---------- 操作 ---------- */
 .action-list {
   display: flex;
   flex-direction: column;
@@ -968,18 +1105,11 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* 缩小侧栏操作按钮样式，保持与列表/表单一致 */
-.action-list .el-button,
-:deep(.task-detail-container) :deep(.el-button) {
-  font-size: 13px;
-  padding: 6px 10px;
-  height: 34px;
-}
-
+/* ---------- 统计 ---------- */
 .stats-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 4px;
 }
 
 .stat-item {
@@ -987,7 +1117,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--sjdt-border);
 }
 
 .stat-item:last-child {
@@ -995,21 +1125,29 @@ onUnmounted(() => {
 }
 
 .stat-label {
-  color: #64748b;
+  font-size: 13px;
+  color: var(--sjdt-muted);
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--sjdt-text);
 }
 
 .pagination-container {
   display: flex;
   justify-content: center;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ---------- 日志弹窗 ---------- */
 .log-loading {
   padding: 20px;
 }
@@ -1025,8 +1163,30 @@ onUnmounted(() => {
   gap: 8px;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--sjdt-border);
   align-items: center;
+}
+
+.log-container {
+  flex: 1;
+  overflow: auto;
+  background-color: #0B1220;  /* 深海底色 */
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #1F2E47;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.log-text {
+  margin: 0;
+  font-family: var(--sjdt-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #E2EAF4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+  background: transparent;
 }
 
 /* 全屏模式样式 */
@@ -1037,12 +1197,32 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   z-index: 9999;
-  background-color: #000000 !important;
+  background-color: #0B1220 !important;
   border-radius: 0;
   border: none;
   box-shadow: none;
   padding: 20px;
   max-height: none !important;
+}
+
+/* 滚动条样式 */
+.log-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.log-container::-webkit-scrollbar-track {
+  background: #111A2C;
+  border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+  background: #2B3D5C;
+  border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+  background: #3B4D6C;
 }
 
 /* 筛选下拉框样式 */
@@ -1056,124 +1236,5 @@ onUnmounted(() => {
 
 .log-level-filter .el-checkbox {
   margin-right: 0;
-}
-
-.log-level-filter .el-checkbox__label {
-  color: #e5e7eb;
-}
-
-/* 下拉菜单样式优化 */
-:deep(.el-dropdown-menu) {
-  background-color: #1f2937;
-  border: 1px solid #374151;
-}
-
-:deep(.el-dropdown-menu__item) {
-  color: #e5e7eb;
-  padding: 0;
-}
-
-:deep(.el-dropdown-menu__item:hover) {
-  background-color: #374151;
-}
-
-:deep(.el-checkbox__inner) {
-  background-color: #374151;
-  border-color: #4b5563;
-}
-
-:deep(.el-checkbox__inner:hover) {
-  border-color: #60a5fa;
-}
-
-:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-  background-color: #3b82f6;
-  border-color: #3b82f6;
-}
-
-:deep(.el-checkbox__input.is-checked .el-checkbox__inner::after) {
-  border-color: #ffffff;
-}
-
-.log-container {
-  flex: 1;
-  overflow: auto;
-  background-color: #000000;  /* 纯黑色背景 */
-  border-radius: 8px;
-  padding: 16px;
-  border: 1px solid #333333;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);  /* 内部阴影效果 */
-}
-
-.log-text {
-  margin: 0;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;  /* 经典终端字体 */
-  font-size: 13px;
-  line-height: 1.4;  /* 稍微紧凑的行距 */
-  color: #FFFFFF;  /* 白色文字 */
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  word-break: break-all;
-  background: transparent;
-}
-
-/* 终端风格增强 */
-.log-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 70%);
-  pointer-events: none;
-  border-radius: 8px;
-}
-
-/* 滚动条样式 */
-.log-container::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.log-container::-webkit-scrollbar-track {
-  background: #1a1a1a;
-  border-radius: 4px;
-}
-
-.log-container::-webkit-scrollbar-thumb {
-  background: #444444;
-  border-radius: 4px;
-}
-
-.log-container::-webkit-scrollbar-thumb:hover {
-  background: #555555;
-}
-
-.cron-expr {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  color: #409EFF;
-  margin-bottom: 4px;
-}
-
-.cron-desc {
-  font-size: 13px;
-  color: #909399;
-  line-height: 1.4;
-}
-
-/* 健康检查结果弹窗样式 */
-:deep(.health-check-result-dialog) {
-  .el-dialog__body {
-    padding: 20px 24px;
-  }
-  
-  .el-message-box__content {
-    white-space: pre-line;
-    line-height: 1.6;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 13px;
-  }
 }
 </style>

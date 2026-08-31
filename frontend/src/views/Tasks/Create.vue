@@ -1,14 +1,13 @@
 <template>
   <div class="task-create-container">
-    <div class="page-header">
-      <el-page-header @back="$router.back()">
-        <template #content>
-          <span class="page-title">创建任务</span>
-        </template>
-      </el-page-header>
-    </div>
-    
-    <el-card class="form-card">
+    <PageHeader title="创建任务" subtitle="配置新的定时或一次性任务">
+      <el-button @click="$router.back()">
+        <el-icon class="mr-1"><ArrowLeft /></el-icon>
+        返回
+      </el-button>
+    </PageHeader>
+
+    <div class="panel form-panel">
       <el-form
         ref="formRef"
         :model="formData"
@@ -184,7 +183,7 @@
           <el-button @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -192,9 +191,10 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, ArrowLeft } from '@element-plus/icons-vue'
 import { useTaskStore } from '@/stores/task'
 import { workerApi, scriptApi } from '@/services'
+import PageHeader from '@/components/PageHeader.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { WorkerVO, ScriptVO } from '@/types'
 
@@ -527,38 +527,47 @@ async function handleSubmit() {
   margin: 0 auto;
 }
 
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.form-card {
+/* ---------- 表单面板（主题 Token） ---------- */
+.panel {
   border-radius: 12px;
+  border: 1px solid var(--sjdt-border);
+  background: var(--sjdt-surface);
+  box-shadow: var(--sjdt-card-shadow);
+}
+
+.form-panel {
+  padding: 24px 28px 12px;
 }
 
 .task-form {
-  padding: 20px 0;
-}
-
-/* 缩小表单区域的按钮，使与列表页一致 */
-:deep(.task-create-container) :deep(.el-button),
-:deep(.task-create-container) .el-button {
-  font-size: 13px;
-  padding: 6px 10px;
-  height: 34px;
+  padding: 0;
 }
 
 .form-tip {
   margin-left: 8px;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--sjdt-muted);
+}
+
+/* ---------- 分区标题 ---------- */
+:deep(.el-divider__text) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sjdt-text);
+  background: var(--sjdt-surface);
 }
 
 .cron-help {
   font-size: 12px;
   line-height: 1.8;
+  color: var(--sjdt-muted);
+}
+
+.cron-help p {
+  margin: 2px 0;
+}
+
+.cron-help b {
+  color: var(--sjdt-text);
 }
 </style>
