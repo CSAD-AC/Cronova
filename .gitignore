@@ -55,6 +55,7 @@ build/
 
 ### 本地文档信息 ###
 doc/
+docs/
 
 ### 环境配置（本地敏感/环境相关，不入库；模板以 .example 结尾入库）###
 **/.env
@@ -63,4 +64,7 @@ doc/
 ### Java 执行器运行时产物 ###
 worker-JAVA/scripts_tmp/
 worker-JAVA/task_instances/
+
+### 本地测试脚本（模拟Worker黑盒验证，不入库）###
+scripts-tests/
 
