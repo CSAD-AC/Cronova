@@ -149,10 +149,11 @@ class GoHandler(BaseHandler):
                                              log_bucket=log_bucket,
                                              log_object=log_object)
 
-            # 5. 启动子进程执行程序
+            # 5. 启动子进程执行程序（注入 SJDT_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始运行二进制程序，超时时间：%d秒", timeout_seconds)
-            
+
+            env = {**os.environ, **task.to_shard_env()}
             process = subprocess.Popen(
                 [temp_bin_path],
                 stdout=subprocess.PIPE,
@@ -160,7 +161,8 @@ class GoHandler(BaseHandler):
                 text=True,
                 bufsize=1,
                 universal_newlines=True,
-                start_new_session=True
+                start_new_session=True,
+                env=env
             )
             
             # 6. 将进程添加到进程管理器

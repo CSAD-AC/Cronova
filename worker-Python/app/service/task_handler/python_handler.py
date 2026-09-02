@@ -173,10 +173,11 @@ class PythonHandler(BaseHandler):
                                              log_object=log_object)
             logger.info("任务状态已更新为运行中，taskRunId：%s", task_run_id)
 
-            # 启动子进程执行脚本
+            # 启动子进程执行脚本（注入 SJDT_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
-            
+
+            env = {**os.environ, **task.to_shard_env()}
             process = subprocess.Popen(
                 ['python3', temp_script_path],
                 stdout=subprocess.PIPE,
@@ -185,7 +186,8 @@ class PythonHandler(BaseHandler):
                 bufsize=1,  # 行缓冲
                 universal_newlines=True,
                 start_new_session=True,
-                cwd=os.path.dirname(temp_script_path)
+                cwd=os.path.dirname(temp_script_path),
+                env=env
             )
             
             logger.info("子进程已启动，PID：%d", process.pid)

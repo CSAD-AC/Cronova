@@ -54,10 +54,29 @@ class TaskExecuteMessage(BaseModel):
     cronExpr: Optional[str] = None  # Cron表达式（仅cron任务使用）
     timeoutSeconds: int = 60  # 超时时间（秒）
     targetWorkerId: Optional[str] = None  # 目标执行器ID（定向任务）
+    shardIndex: Optional[int] = None  # 分片序号（从0开始；非分片任务为0）
+    shardTotal: Optional[int] = None  # 分片总数（非分片任务为1）
+    shardBatchId: Optional[str] = None  # 分片批次ID（同一次触发的所有分片共享）
 
     class Config:
         extra = "ignore"
         arbitrary_types_allowed = True
+
+    def to_shard_env(self) -> dict:
+        """构建分片环境变量字典，供业务脚本感知自己属于哪一片
+
+        业务脚本约定：hash(数据主键) % SJDT_SHARD_TOTAL == SJDT_SHARD_INDEX 的行归本片处理。
+        消息未携带分片字段（旧版调度器）时返回空字典，等价于不分片。
+
+        :return: 分片环境变量字典（SJDT_SHARD_INDEX / SJDT_SHARD_TOTAL / SJDT_SHARD_BATCH_ID）
+        """
+        if self.shardTotal is None:
+            return {}
+        return {
+            "SJDT_SHARD_INDEX": str(self.shardIndex if self.shardIndex is not None else 0),
+            "SJDT_SHARD_TOTAL": str(self.shardTotal),
+            "SJDT_SHARD_BATCH_ID": str(self.shardBatchId or ""),
+        }
 
     @classmethod
     def from_mq_message(cls, msg_body: str) -> "TaskExecuteMessage":
