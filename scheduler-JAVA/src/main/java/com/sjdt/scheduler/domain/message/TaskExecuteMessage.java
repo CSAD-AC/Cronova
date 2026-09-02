@@ -17,7 +17,7 @@ import java.util.Set;
  * 用于调度器向Worker发送任务执行请求
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class TaskExecuteMessage implements Serializable {
@@ -54,6 +54,15 @@ public class TaskExecuteMessage implements Serializable {
 
     /** 超时时间（秒，0表示不限制） */
     private Integer timeoutSeconds;
+
+    /** 分片序号（从0开始；非分片任务固定为0） */
+    private Integer shardIndex;
+
+    /** 分片总数（非分片任务固定为1） */
+    private Integer shardTotal;
+
+    /** 分片批次ID（同一次触发的所有分片共享；非分片任务为该次run自身的批次ID） */
+    private String shardBatchId;
 
     /**
      * 脚本信息内部类

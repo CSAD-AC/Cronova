@@ -2,18 +2,34 @@ package com.sjdt.scheduler.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskExecuteMessage;
 import com.sjdt.scheduler.domain.po.Task;
+import com.sjdt.scheduler.domain.po.TaskRun;
+import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.route.WorkerRegistry;
 import com.sjdt.scheduler.route.WorkerSnapshot;
 import com.sjdt.scheduler.route.strategy.RouteStrategyRouter;
 import com.sjdt.scheduler.util.RocketMQDelayUtil;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 统一派发入口：路由选 Worker + Tag 定向投递 + park 兜底
@@ -30,20 +46,72 @@ import java.util.Set;
 @Component
 public class TaskDispatchService {
 
+    /** 单片派发结果收集超时（秒）：防止单片 insert/MQ send 卡死无限阻塞调度线程 */
+    private static final long SHARD_DISPATCH_GET_TIMEOUT_SECONDS = 30;
+
     private final WorkerRegistry workerRegistry;
     private final RouteStrategyRouter router;
     private final TaskProducerService taskProducerService;
     private final ObjectMapper objectMapper;
+    private final TaskRunMapper taskRunMapper;
 
+    /** 分片并行派发并行度；0 或负数表示自动按 CPU 核数 */
+    @Value("${sjdt.dispatch.shard-parallelism:0}")
+    private int shardParallelism;
+
+    /** 分片并行派发线程池（@PostConstruct 初始化，应用关闭时释放） */
+    private ExecutorService shardDispatchPool;
+
+    /**
+     * 构造注入派发所需依赖。
+     *
+     * @param workerRegistry      Worker 在线快照注册表
+     * @param router              路由策略路由
+     * @param taskProducerService 任务消息生产者
+     * @param objectMapper        JSON 序列化器
+     * @param taskRunMapper       任务运行实例 Mapper
+     */
     @Autowired
     public TaskDispatchService(WorkerRegistry workerRegistry,
                                RouteStrategyRouter router,
                                TaskProducerService taskProducerService,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               TaskRunMapper taskRunMapper) {
         this.workerRegistry = workerRegistry;
         this.router = router;
         this.taskProducerService = taskProducerService;
         this.objectMapper = objectMapper;
+        this.taskRunMapper = taskRunMapper;
+    }
+
+    /**
+     * 初始化分片并行派发线程池。
+     * 并行度取配置 sjdt.dispatch.shard-parallelism，未配置时按 CPU 核数（最小 2）。
+     */
+    @PostConstruct
+    public void initShardDispatchPool() {
+        int parallelism = shardParallelism > 0
+                ? shardParallelism
+                : Math.max(2, Runtime.getRuntime().availableProcessors());
+        AtomicInteger seq = new AtomicInteger(1);
+        ThreadFactory factory = r -> {
+            Thread t = new Thread(r, "shard-dispatch-" + seq.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        };
+        shardDispatchPool = Executors.newFixedThreadPool(parallelism, factory);
+        log.info("分片并行派发线程池已初始化，并行度: {}", parallelism);
+    }
+
+    /**
+     * 应用关闭时释放分片派发线程池。
+     */
+    @PreDestroy
+    public void shutdownShardDispatchPool() {
+        if (shardDispatchPool != null) {
+            shardDispatchPool.shutdown();
+            log.info("分片并行派发线程池已关闭");
+        }
     }
 
     /**
@@ -93,6 +161,113 @@ public class TaskDispatchService {
 
         send(message, selected.id(), delaySeconds);
         return true;
+    }
+
+    /**
+     * 分片触发派发：shard_total &gt; 0 的任务一次触发生成 N 条 run + N 条 Tag 定向消息
+     * <p>
+     * 关键设计决策：shardTotal 固定（绝不动态缩片）——分片数不随在线 Worker 数漂移，
+     * 否则 hash(主键) % shardTotal 的数据切分会错乱，导致重复处理或漏处理。
+     * 每片独立走 dispatch()：由任务配置的路由策略为该片选 Worker（片数可大于 Worker 数，一台多片）；
+     * 某片无可用 Worker 时该片 run 保持 pending（park），交派发超时监控兜底，不影响其他片。
+     * <p>
+     * 并行化：各分片之间互不依赖，通过共享线程池（{@link #shardDispatchPool}）并行执行
+     * "建 run + 路由派发"，显著降低大分片数（如 ≥16）下的单次触发耗时。
+     * 单片 insert/send 异常被隔离在 {@link #dispatchOneShard} 内，不影响其他分片。
+     *
+     * @param task          任务定义（shardTotal &gt; 0）
+     * @param template      消息模板（taskRunId/shardIndex/shardTotal/shardBatchId 由本方法按片覆写）
+     * @param shardTotal    分片总数
+     * @param retryNum      重试次数（首轮触发为 0）
+     * @param delaySeconds  延时秒数；&gt;0 时走 RocketMQ 延迟级别
+     * @return true=至少一片已投递；false=所有片均 park
+     */
+    public boolean dispatchSharded(Task task, TaskExecuteMessage template,
+                                   int shardTotal, int retryNum, int delaySeconds) {
+        String batchId = UUID.randomUUID().toString().replace("-", "");
+
+        // 1. 并行提交各分片任务（每片：建 run + 路由派发），分片间互不依赖
+        List<Future<Boolean>> futures = new ArrayList<>(shardTotal);
+        for (int i = 0; i < shardTotal; i++) {
+            final int shardIndex = i;
+            futures.add(shardDispatchPool.submit(() -> dispatchOneShard(
+                    task, template, batchId, shardIndex, shardTotal, retryNum, delaySeconds)));
+        }
+
+        // 2. 收集各片投递结果（带超时兜底：单片 MQ send 卡死时不阻塞调度线程）
+        int dispatchedCount = 0;
+        for (Future<Boolean> future : futures) {
+            try {
+                if (Boolean.TRUE.equals(future.get(SHARD_DISPATCH_GET_TIMEOUT_SECONDS, TimeUnit.SECONDS))) {
+                    dispatchedCount++;
+                }
+            } catch (TimeoutException e) {
+                // 超时片取消任务；若 run 已插入则保持 pending，交由派发超时监控兜底
+                future.cancel(true);
+                log.error("分片派发超时（>{}s），已取消该片，任务ID: {}, 批次: {}",
+                        SHARD_DISPATCH_GET_TIMEOUT_SECONDS, task.getId(), batchId);
+            } catch (Exception e) {
+                log.error("分片派发结果收集异常，任务ID: {}", task.getId(), e);
+            }
+        }
+        boolean anyDispatched = dispatchedCount > 0;
+        log.info("分片批次派发完成，任务ID: {}, 批次: {}, 总片数: {}, 已投递: {}, 至少一片投递: {}",
+                task.getId(), batchId, shardTotal, dispatchedCount, anyDispatched);
+        return anyDispatched;
+    }
+
+    /**
+     * 派发单个分片：建 run 记录 + 构造分片消息 + 按路由定向投递。
+     * <p>
+     * 单片异常隔离：insert 或 send 抛异常时仅记录日志并返回 false，
+     * 不会中断同一批次其他分片的派发（比串行实现更健壮）。
+     *
+     * @param task         任务定义
+     * @param template     消息模板
+     * @param batchId      分片批次 ID
+     * @param shardIndex   本片序号（0 起）
+     * @param shardTotal   分片总数
+     * @param retryNum     重试次数
+     * @param delaySeconds 延时秒数
+     * @return true=本片已投递；false=本片 park 或派发异常
+     */
+    private boolean dispatchOneShard(Task task, TaskExecuteMessage template, String batchId,
+                                     int shardIndex, int shardTotal, int retryNum, int delaySeconds) {
+        try {
+            TaskRun run = TaskRun.builder()
+                    .taskId(task.getId())
+                    .status(TaskRunStatus.pending)
+                    .retryNum(retryNum)
+                    .shardIndex(shardIndex)
+                    .shardTotal(shardTotal)
+                    .shardBatchId(batchId)
+                    .startTime(LocalDateTime.now())
+                    .createTime(LocalDateTime.now())
+                    .build();
+            taskRunMapper.insert(run);
+
+            TaskExecuteMessage shardMessage = template.toBuilder()
+                    .taskRunId(run.getId())
+                    .shardIndex(shardIndex)
+                    .shardTotal(shardTotal)
+                    .shardBatchId(batchId)
+                    .build();
+
+            boolean dispatched = dispatch(task, shardMessage, delaySeconds);
+            if (dispatched) {
+                log.info("分片已定向派发，任务ID: {}, 批次: {}, 分片: {}/{}, 运行ID: {}",
+                        task.getId(), batchId, shardIndex, shardTotal - 1, run.getId());
+            } else {
+                log.warn("分片无可用Worker已park，任务ID: {}, 批次: {}, 分片: {}/{}, 运行ID: {}（交派发超时监控兜底）",
+                        task.getId(), batchId, shardIndex, shardTotal - 1, run.getId());
+            }
+            return dispatched;
+        } catch (Exception e) {
+            // 单片异常隔离：不影响其他分片的派发
+            log.error("分片派发异常，任务ID: {}, 批次: {}, 分片: {}/{}",
+                    task.getId(), batchId, shardIndex, shardTotal - 1, e);
+            return false;
+        }
     }
 
     private void send(TaskExecuteMessage message, String workerId, int delaySeconds) {

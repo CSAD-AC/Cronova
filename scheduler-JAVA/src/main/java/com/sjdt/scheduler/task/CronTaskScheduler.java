@@ -73,6 +73,9 @@ public class CronTaskScheduler {
     @Autowired
     private IScriptService scriptService;
 
+    @Autowired
+    private com.sjdt.scheduler.service.ShardSettlementService shardSettlementService;
+
     /**
      * 到期驱动扫描：查询窗口内到期的活跃 cron 任务并逐个触发
      * 由 ScheduledTaskRunnerTask 每 5s 调用（持分布式锁的实例才会进入这里）
@@ -142,13 +145,21 @@ public class CronTaskScheduler {
 
     /**
      * 执行定时任务
-     * 根据executeType分发到不同的执行器
+     * 根据executeType分发到不同的执行器；shardTotal > 0 的脚本任务走分片派发
      *
      * @param task 任务对象
      */
     private void executeTask(Task task) {
         log.info("开始执行定时任务，任务ID: {}, 任务名称: {}, 执行类型: {}",
             task.getId(), task.getName(), task.getExecuteType());
+
+        // 分片分支：shardTotal > 0 的脚本任务一次触发生成 N 片 run + N 条定向消息
+        Integer shardTotal = task.getShardTotal();
+        if (task.getExecuteType() == ExecuteType.script
+                && shardTotal != null && shardTotal > 0) {
+            executeShardedScriptTask(task, shardTotal);
+            return;
+        }
 
         String taskRunId = createTaskRun(task);
 
@@ -160,7 +171,25 @@ public class CronTaskScheduler {
     }
 
     /**
+     * 分片执行脚本任务
+     * 生成一个分片批次ID，为每片建一条 run 并发送一条 Tag 定向消息（复用统一派发入口按路由策略选 Worker）
+     *
+     * @param task       任务对象（shardTotal > 0）
+     * @param shardTotal 分片总数
+     */
+    private void executeShardedScriptTask(Task task, int shardTotal) {
+        try {
+            TaskExecuteMessage template = buildScriptMessage(task, null);
+            taskDispatchService.dispatchSharded(task, template, shardTotal, 0, 0);
+        } catch (Exception e) {
+            log.error("分片脚本任务派发失败，任务ID: {}, 分片数: {}", task.getId(), shardTotal, e);
+        }
+    }
+
+    /**
      * 创建任务运行记录
+     * 非分片任务统一按 N=1 特例写入分片字段（shardIndex=0, shardTotal=1, 独立批次ID），
+     * 与分片任务共用同一条结算路径，不写两套逻辑
      *
      * @param task 任务对象
      * @return 任务运行实例ID
@@ -171,6 +200,9 @@ public class CronTaskScheduler {
                 .status(TaskRunStatus.pending)
                 .createTime(LocalDateTime.now())
                 .startTime(LocalDateTime.now())
+                .shardIndex(0)
+                .shardTotal(1)
+                .shardBatchId(java.util.UUID.randomUUID().toString().replace("-", ""))
                 .build();
         taskRunMapper.insert(taskRun);
         log.info("创建任务运行记录成功，运行ID: {}", taskRun.getId());
@@ -179,40 +211,21 @@ public class CronTaskScheduler {
 
     /**
      * 执行脚本任务
-     * 发送任务消息到RocketMQ
+     * 发送任务消息到RocketMQ（非分片路径，消息统一带 N=1 特例分片身份）
      *
      * @param task 任务对象
      * @param taskRunId 任务运行实例ID
      */
     private void executeScriptTask(Task task, String taskRunId) {
         try {
-            Script script = null;
-            if (task.getScriptId() != null && !task.getScriptId().isEmpty()) {
-                script = scriptMapper.selectById(task.getScriptId());
+            TaskRun run = taskRunMapper.selectById(taskRunId);
+            TaskExecuteMessage message = buildScriptMessage(task, taskRunId);
+            if (run != null) {
+                // N=1 特例：非分片任务的消息同样携带分片身份，Worker 端统一注入 SJDT_SHARD_* 环境变量
+                message.setShardIndex(run.getShardIndex() != null ? run.getShardIndex() : 0);
+                message.setShardTotal(run.getShardTotal() != null ? run.getShardTotal() : 1);
+                message.setShardBatchId(run.getShardBatchId());
             }
-
-            TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
-                .id(script != null ? script.getId() : null)
-                .name(script != null ? script.getName() : null)
-                .path(script != null ? script.getPath() : null)
-                .isDirectory(script != null ? script.getIsDirectory() : null)
-                .mainFile(script != null ? script.getMainFile() : null)
-                .parentId(script != null ? script.getParentId() : null)
-                .rootPath(getRootPath(script))
-                .build();
-
-            TaskExecuteMessage message = TaskExecuteMessage.builder()
-                .taskId(task.getId())
-                .taskName(task.getName())
-                .taskRunId(taskRunId)
-                .description(task.getDescription())
-                .scriptType(task.getScriptType() != null ? task.getScriptType().name() : null)
-                .script(scriptInfo)
-                .taskType(TaskType.cron.name())
-                .cronExpr(task.getCronExpr())
-                .targetWorkerId(task.getTargetWorker())
-                .timeoutSeconds(task.getTimeoutSeconds())
-                .build();
 
             // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
             boolean dispatched = taskDispatchService.dispatch(task, message, 0);
@@ -227,6 +240,43 @@ public class CronTaskScheduler {
             log.error("发送脚本任务消息失败，任务ID: {}", task.getId(), e);
             updateTaskRunStatus(taskRunId, TaskRunStatus.failed, e.getMessage());
         }
+    }
+
+    /**
+     * 构造脚本任务的执行消息模板
+     *
+     * @param task 任务对象
+     * @param taskRunId 任务运行实例ID；分片模板传 null（由 dispatchSharded 按片覆写）
+     * @return 任务执行消息
+     */
+    private TaskExecuteMessage buildScriptMessage(Task task, String taskRunId) {
+        Script script = null;
+        if (task.getScriptId() != null && !task.getScriptId().isEmpty()) {
+            script = scriptMapper.selectById(task.getScriptId());
+        }
+
+        TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
+            .id(script != null ? script.getId() : null)
+            .name(script != null ? script.getName() : null)
+            .path(script != null ? script.getPath() : null)
+            .isDirectory(script != null ? script.getIsDirectory() : null)
+            .mainFile(script != null ? script.getMainFile() : null)
+            .parentId(script != null ? script.getParentId() : null)
+            .rootPath(getRootPath(script))
+            .build();
+
+        return TaskExecuteMessage.builder()
+            .taskId(task.getId())
+            .taskName(task.getName())
+            .taskRunId(taskRunId)
+            .description(task.getDescription())
+            .scriptType(task.getScriptType() != null ? task.getScriptType().name() : null)
+            .script(scriptInfo)
+            .taskType(TaskType.cron.name())
+            .cronExpr(task.getCronExpr())
+            .targetWorkerId(task.getTargetWorker())
+            .timeoutSeconds(task.getTimeoutSeconds())
+            .build();
     }
 
     /**
@@ -306,6 +356,9 @@ public class CronTaskScheduler {
                 taskRunMapper.updateById(taskRun);
                 log.info("任务运行状态已更新，RunID: {}, Status: {}", taskRunId, status);
 
+                // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
+                shardSettlementService.onRunTerminal(taskRunId);
+
                 // 如果是失败状态，触发重试逻辑
                 if (status == TaskRunStatus.failed || status == TaskRunStatus.timeout) {
                     Task task = taskService.getById(taskRun.getTaskId());
@@ -335,10 +388,12 @@ public class CronTaskScheduler {
             int nextRetryNum = currentRetryNum + 1;
             int intervalSeconds = task.getRetryIntervalSeconds() != null ? task.getRetryIntervalSeconds() : 60;
 
-            log.info("定时任务失败/超时，准备重试。TaskID: {}, 下次重试次数: {}, 间隔: {}秒", 
+            log.info("定时任务失败/超时，准备重试。TaskID: {}, 下次重试次数: {}, 间隔: {}秒",
                     task.getId(), nextRetryNum, intervalSeconds);
 
-            taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds);
+            // 单片重试不换片：携带原 run 的分片身份，重试仍处理同一段数据（不重不漏）
+            taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds,
+                    failedRun.getShardIndex(), failedRun.getShardTotal(), failedRun.getShardBatchId());
         }
     }
 

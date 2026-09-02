@@ -61,6 +61,15 @@ public class TaskRun implements Serializable {
     /** 当前重试次数 */
     private Integer retryNum;
 
+    /** 分片序号（从0开始；NULL=历史数据未写分片字段） */
+    private Integer shardIndex;
+
+    /** 本批分片总数（1=非分片任务） */
+    private Integer shardTotal;
+
+    /** 同一次触发的分片批次ID（同批所有分片共享，用于分片结算） */
+    private String shardBatchId;
+
     /** 创建时间（实例生成时间） */
     private LocalDateTime createTime;
 

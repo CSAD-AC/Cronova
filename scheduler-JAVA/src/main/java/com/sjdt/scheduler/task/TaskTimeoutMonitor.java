@@ -8,6 +8,7 @@ import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.service.ShardSettlementService;
 import com.sjdt.scheduler.service.TaskProducerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,14 +32,17 @@ public class TaskTimeoutMonitor {
     private final TaskMapper taskMapper;
     private final ITaskService taskService;
     private final TaskProducerService taskProducerService;
+    private final ShardSettlementService shardSettlementService;
 
     @Autowired
-    public TaskTimeoutMonitor(TaskRunMapper taskRunMapper, TaskMapper taskMapper, 
-                              ITaskService taskService, TaskProducerService taskProducerService) {
+    public TaskTimeoutMonitor(TaskRunMapper taskRunMapper, TaskMapper taskMapper,
+                              ITaskService taskService, TaskProducerService taskProducerService,
+                              ShardSettlementService shardSettlementService) {
         this.taskRunMapper = taskRunMapper;
         this.taskMapper = taskMapper;
         this.taskService = taskService;
         this.taskProducerService = taskProducerService;
+        this.shardSettlementService = shardSettlementService;
     }
 
     /**
@@ -75,6 +79,8 @@ public class TaskTimeoutMonitor {
         if (task == null) {
             log.warn("任务定义不存在，标记实例为失败，TaskRunID: {}", taskRun.getId());
             updateTaskRunStatus(taskRun, TaskRunStatus.failed, "任务定义已被删除");
+            // 终态 -> 触发分片结算检查（任务已删除无重试预算，结算服务会按最终失败处理）
+            shardSettlementService.onRunTerminal(taskRun.getId());
             return;
         }
 
@@ -157,6 +163,10 @@ public class TaskTimeoutMonitor {
 
         // 1. 更新状态为超时 (这一步是为了如果后续逻辑都成功，数据库状态是正确的)
         updateTaskRunStatus(taskRun, TaskRunStatus.timeout, reason);
+
+        // 终态 -> 触发分片结算检查：若该 run 的 retryNum 仍有重试预算（即将 republish），
+        // 结算服务内部会跳过，不会提前判死批次；预算耗尽时才真正结算
+        shardSettlementService.onRunTerminal(taskRun.getId());
 
         Integer maxRetryCount = task.getRetryCount();
         if (maxRetryCount == null || maxRetryCount <= 0) {

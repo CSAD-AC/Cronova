@@ -23,6 +23,7 @@ import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskResultMessage;
 import com.sjdt.scheduler.service.IAKSKService;
 import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.service.ShardSettlementService;
 import com.sjdt.scheduler.common.RedisKey;
 import org.springframework.data.redis.core.RedisTemplate;
 
@@ -58,10 +59,12 @@ public class WorkerController {
     private final ITaskService taskService;
     private final IAKSKService akskService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ShardSettlementService shardSettlementService;
 
-    public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper, 
-                           TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, 
-                           ITaskService taskService, IAKSKService akskService, RedisTemplate<String, Object> redisTemplate) {
+    public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper,
+                           TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper,
+                           ITaskService taskService, IAKSKService akskService, RedisTemplate<String, Object> redisTemplate,
+                           ShardSettlementService shardSettlementService) {
         this.workerMapper = workerMapper;
         this.akskMapper = akskMapper;
         this.workerTagMapper = workerTagMapper;
@@ -71,6 +74,7 @@ public class WorkerController {
         this.taskService = taskService;
         this.akskService = akskService;
         this.redisTemplate = redisTemplate;
+        this.shardSettlementService = shardSettlementService;
     }
 
     /**
@@ -346,7 +350,10 @@ public class WorkerController {
             taskRunMapper.insert(taskRun);
             log.info("任务执行结果插入成功，TaskRunID: {}", resultMessage.getTaskRunId());
         }
-        
+
+        // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
+        shardSettlementService.onRunTerminal(resultMessage.getTaskRunId());
+
         if (resultMessage.getLogPath() != null && !resultMessage.getLogPath().isEmpty()) {
             List<TaskLog> taskLogs = taskLogMapper.selectList(
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
@@ -432,7 +439,10 @@ public class WorkerController {
             taskRunMapper.updateById(taskRun);
             log.debug("任务状态更新成功，TaskRunID: {}, 状态: {}, 持续时间: {}ms, WorkerID: {}",
                     taskRunId, taskStatus.getStatus(), taskStatus.getDurationMs(), taskStatus.getWorkerId());
-            
+
+            // 状态上报也可能携带终态 -> 触发分片结算检查（内部自行判断是否终态）
+            shardSettlementService.onRunTerminal(taskRunId);
+
             if (taskStatus.getLogPath() != null && !taskStatus.getLogPath().isEmpty()) {
                 List<TaskLog> taskLogs = taskLogMapper.selectList(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()

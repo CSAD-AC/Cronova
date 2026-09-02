@@ -44,6 +44,13 @@ public class RedisKey {
     public static final String AKSK_CACHE = "scheduler:cache:aksk";
 
     /**
+     * 分片批次结算幂等标记前缀 (String类型, SET NX EX)
+     * Key: scheduler:shard:settle:{batchId}
+     * 同一分片批次只允许结算一次（多片几乎同时终态时的并发防重）
+     */
+    public static final String SHARD_SETTLE_PREFIX = "scheduler:shard:settle:";
+
+    /**
      * 生成完整的 Worker 心跳 Key
      */
     public static final String getWorkerHeartbeatKey(String workerId) {

@@ -58,3 +58,10 @@ minio:
   bucket-name-scripts: ${MINIO_BUCKET:task-engine}
   bucket-name: ${MINIO_BUCKET:task-engine}
 
+# 分片并行派发配置
+sjdt:
+  dispatch:
+    # 分片并行派发线程数；0 或负数表示按 CPU 核数自动（最小 2）。
+    # 值越大，单次触发大分片任务（如 shardTotal≥16）的派发越快，但占用更多 DB/Redis/MQ 连接。
+    shard-parallelism: 0
+

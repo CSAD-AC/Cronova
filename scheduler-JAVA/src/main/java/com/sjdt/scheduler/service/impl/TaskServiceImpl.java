@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -362,16 +363,27 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     
     /**
      * 发布任务（支持指定重试次数和延时）
+     * 无分片身份，按任务自身配置决定是否分片
      */
     @Override
     public void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds) {
+        publishTaskWithRetryAndDelay(taskId, retryNum, delaySeconds, null, null, null);
+    }
+
+    /**
+     * 发布任务（支持指定重试次数、延时与分片身份）
+     * 分片身份非空时为"单片重试"：新 run 沿用原片身份，重试仍处理同一段数据
+     */
+    @Override
+    public void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds,
+                                             Integer shardIndex, Integer shardTotal, String shardBatchId) {
         Task task = this.getById(taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found with id: " + taskId);
         }
 
         if (task.getExecuteType() == ExecuteType.script) {
-            publishScriptTask(task, retryNum, delaySeconds);
+            publishScriptTask(task, retryNum, delaySeconds, shardIndex, shardTotal, shardBatchId);
         } else if (task.getExecuteType() == ExecuteType.callback) {
             publishCallbackTask(task, retryNum, delaySeconds);
         }
@@ -384,25 +396,34 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @param task 任务对象
      */
     private void publishScriptTask(Task task) {
-        publishScriptTask(task, 0, 0);
+        publishScriptTask(task, 0, 0, null, null, null);
     }
 
     private void publishScriptTask(Task task, int retryNum, int delaySeconds) {
+        publishScriptTask(task, retryNum, delaySeconds, null, null, null);
+    }
+
+    /**
+     * 发布脚本任务（支持分片）
+     * <ul>
+     *     <li>分片任务新触发（无原片身份且 shardTotal &gt; 0）：N 片派发，每片一条 run + 一条定向消息；</li>
+     *     <li>单片重试（shardBatchId 非空）：新 run 沿用原片身份，不换片（保证同段数据不重不漏）；</li>
+     *     <li>非分片任务：单 run，按 N=1 特例写分片字段。</li>
+     * </ul>
+     *
+     * @param task 任务对象
+     * @param retryNum 重试次数
+     * @param delaySeconds 延时秒数
+     * @param shardIndex 原片分片序号（单片重试时非空）
+     * @param shardTotal 原片分片总数（单片重试时非空）
+     * @param shardBatchId 原片分片批次ID（单片重试时非空）
+     */
+    private void publishScriptTask(Task task, int retryNum, int delaySeconds,
+                                   Integer shardIndex, Integer shardTotal, String shardBatchId) {
         Script script = scriptService.getById(task.getScriptId());
         if (script == null) {
             throw new IllegalArgumentException("Script not found with id: " + task.getScriptId());
         }
-
-        TaskRun taskRun = TaskRun.builder()
-                .taskId(task.getId())
-                .status(TaskRunStatus.pending)
-                .startTime(LocalDateTime.now())
-                .retryNum(retryNum)
-                .createTime(LocalDateTime.now())
-                .build();
-        taskRunMapper.insert(taskRun);
-        String taskRunId = taskRun.getId();
-        log.info("运行实例已插入， 开始时间为{} id为{}", taskRun.getStartTime(), taskRunId);
 
         // 调试日志：输出脚本信息
         String rootPath = getRootPath(script);
@@ -424,6 +445,41 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .tags(script.getTags())
                 .build();
 
+        // 分片任务新触发（非单片重试）-> 一次触发生成 N 片 run + N 条定向消息
+        Integer taskShardTotal = task.getShardTotal();
+        boolean isShardRetry = shardBatchId != null && shardIndex != null;
+        if (!isShardRetry && taskShardTotal != null && taskShardTotal > 0) {
+            TaskExecuteMessage template = TaskExecuteMessage.builder()
+                    .taskId(task.getId())
+                    .taskName(task.getName())
+                    .description(task.getDescription())
+                    .scriptType(task.getScriptType().name())
+                    .script(scriptInfo)
+                    .taskType(task.getTaskType().name())
+                    .cronExpr(task.getCronExpr())
+                    .targetWorkerId(targetWorkerId)
+                    .timeoutSeconds(task.getTimeoutSeconds())
+                    .build();
+            taskDispatchService.dispatchSharded(task, template, taskShardTotal, retryNum, delaySeconds);
+            return;
+        }
+
+        // 单 run 路径：N=1 特例（独立批次ID）或单片重试（沿用原片身份）
+        TaskRun taskRun = TaskRun.builder()
+                .taskId(task.getId())
+                .status(TaskRunStatus.pending)
+                .startTime(LocalDateTime.now())
+                .retryNum(retryNum)
+                .createTime(LocalDateTime.now())
+                .shardIndex(isShardRetry ? shardIndex : 0)
+                .shardTotal(isShardRetry ? shardTotal : 1)
+                .shardBatchId(isShardRetry ? shardBatchId
+                        : UUID.randomUUID().toString().replace("-", ""))
+                .build();
+        taskRunMapper.insert(taskRun);
+        String taskRunId = taskRun.getId();
+        log.info("运行实例已插入， 开始时间为{} id为{}", taskRun.getStartTime(), taskRunId);
+
         TaskExecuteMessage message = TaskExecuteMessage.builder()
                 .taskId(task.getId())
                 .taskName(task.getName())
@@ -435,13 +491,17 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .cronExpr(task.getCronExpr())
                 .targetWorkerId(targetWorkerId)
                 .timeoutSeconds(task.getTimeoutSeconds())
+                .shardIndex(taskRun.getShardIndex())
+                .shardTotal(taskRun.getShardTotal())
+                .shardBatchId(taskRun.getShardBatchId())
                 .build();
 
         // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
         boolean dispatched = taskDispatchService.dispatch(task, message, delaySeconds);
         if (dispatched) {
-            log.info("脚本任务已定向发布，任务ID: {}, 运行ID: {}, 重试次数: {}, 延时: {}s",
-                    task.getId(), taskRunId, retryNum, delaySeconds);
+            log.info("脚本任务已定向发布，任务ID: {}, 运行ID: {}, 重试次数: {}, 延时: {}s, 分片: {}/{}",
+                    task.getId(), taskRunId, retryNum, delaySeconds,
+                    taskRun.getShardIndex(), taskRun.getShardTotal());
         } else {
             log.warn("脚本任务无可用Worker，已park，任务ID: {}, 运行ID: {}（交派发超时监控兜底）",
                     task.getId(), taskRunId);
@@ -486,6 +546,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .status(TaskRunStatus.pending)
                 .retryNum(retryNum)
                 .createTime(LocalDateTime.now())
+                // 回调任务不分片，统一按 N=1 特例写分片字段，与分片结算路径保持一致
+                .shardIndex(0)
+                .shardTotal(1)
+                .shardBatchId(UUID.randomUUID().toString().replace("-", ""))
                 .build();
         taskRunMapper.insert(taskRun);
         String taskRunId = taskRun.getId();
@@ -578,6 +642,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                     .cronExpr(task.getCronExpr())
                     .targetWorkerId(task.getTargetWorker())
                     .timeoutSeconds(task.getTimeoutSeconds())
+                    // 沿用原 run 的分片身份：超时重发不换片，仍处理同一段数据
+                    .shardIndex(taskRun.getShardIndex() != null ? taskRun.getShardIndex() : 0)
+                    .shardTotal(taskRun.getShardTotal() != null ? taskRun.getShardTotal() : 1)
+                    .shardBatchId(taskRun.getShardBatchId())
                     .build();
 
             // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）

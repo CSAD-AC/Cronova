@@ -21,9 +21,13 @@ import java.util.List;
 /**
  * RocketMQ消费者服务
  * 负责接收Worker返回的任务执行结果
+ *
+ * 消费组通过配置 rocketmq.consumer.group 控制（对应环境变量 ROCKETMQ_CONSUMER_GROUP），
+ * 便于多环境隔离（如本机独立测试环境使用独立消费组，避免与其它调度器实例竞争 TASK_RESULT）。
  */
 @Service
-@RocketMQMessageListener(topic = "TASK_RESULT", consumerGroup = "SCHEDULER_RESULT_GROUP")
+@RocketMQMessageListener(topic = "TASK_RESULT",
+        consumerGroup = "${rocketmq.consumer.group:SCHEDULER_RESULT_GROUP}")
 @Slf4j
 public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
 
@@ -39,12 +43,18 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
     /** 任务Mapper */
     private final TaskMapper taskMapper;
 
+    /** 分片结算服务 */
+    private final ShardSettlementService shardSettlementService;
+
     @Autowired
-    public TaskResultConsumer(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper, ITaskService taskService, TaskMapper taskMapper) {
+    public TaskResultConsumer(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper,
+                              ITaskService taskService, TaskMapper taskMapper,
+                              ShardSettlementService shardSettlementService) {
         this.taskRunMapper = taskRunMapper;
         this.taskLogMapper = taskLogMapper;
         this.taskService = taskService;
         this.taskMapper = taskMapper;
+        this.shardSettlementService = shardSettlementService;
     }
 
     /**
@@ -97,16 +107,24 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         // 4. 保存日志路径到task_log表
         saveTaskLog(resultMessage);
 
-        // 5. 检查是否需要重试
-        checkAndTriggerRetry(taskRun, resultMessage.getStatus());
+        // 5. 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
+        shardSettlementService.onRunTerminal(resultMessage.getTaskRunId());
+
+        // 6. 检查是否需要重试
+        checkAndTriggerRetry(taskRun, resultMessage.getStatus(), originalRun);
 
         log.info("任务执行结果处理完成，TaskRunID: {}", resultMessage.getTaskRunId());
     }
 
     /**
      * 检查并触发重试
+     * 分片任务携带原片身份（shardIndex/shardTotal/shardBatchId）：单片重试不换片
+     *
+     * @param taskRun 本次结果构建的run记录（含retryNum）
+     * @param status 结果状态
+     * @param originalRun DB中的原run记录（携带分片身份）
      */
-    private void checkAndTriggerRetry(TaskRun taskRun, String status) {
+    private void checkAndTriggerRetry(TaskRun taskRun, String status, TaskRun originalRun) {
         // 只有失败或超时才考虑重试
         if (!"failed".equalsIgnoreCase(status) && !"timeout".equalsIgnoreCase(status)) {
             return;
@@ -131,11 +149,15 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
                 int nextRetryNum = currentRetryNum + 1;
                 int intervalSeconds = task.getRetryIntervalSeconds() != null ? task.getRetryIntervalSeconds() : 60;
                 
-                log.info("任务执行失败/超时，准备重试。TaskID: {}, 当前重试: {}/{}, 间隔: {}秒", 
+                log.info("任务执行失败/超时，准备重试。TaskID: {}, 当前重试: {}/{}, 间隔: {}秒",
                         task.getId(), currentRetryNum, maxRetryCount, intervalSeconds);
 
-                // 改用 RocketMQ 延时消息
-                taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds);
+                // 改用 RocketMQ 延时消息；携带原片分片身份 -> 单片重试不换片（hash 固定，不重不漏）
+                Integer shardIndex = originalRun != null ? originalRun.getShardIndex() : null;
+                Integer shardTotal = originalRun != null ? originalRun.getShardTotal() : null;
+                String shardBatchId = originalRun != null ? originalRun.getShardBatchId() : null;
+                taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds,
+                        shardIndex, shardTotal, shardBatchId);
             } else {
                 log.info("任务执行失败/超时，已达到最大重试次数，不再重试。TaskID: {}, 当前重试: {}/{}", 
                         task.getId(), currentRetryNum, maxRetryCount);

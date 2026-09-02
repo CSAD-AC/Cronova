@@ -81,6 +81,21 @@ public interface ITaskService extends IService<Task> {
     void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds);
 
     /**
+     * 发布任务（支持指定重试次数、延时与分片身份）
+     * 分片身份非空时表示"单片重试"：新 run 沿用原片的 shardIndex/shardTotal/shardBatchId，
+     * 重试仍处理同一段数据（分片由 hash 固定，不重不漏）；为空时按任务自身配置决定是否分片
+     *
+     * @param taskId 任务ID
+     * @param retryNum 当前重试次数
+     * @param delaySeconds 延时秒数
+     * @param shardIndex 原片分片序号（重试场景传入；可为 null）
+     * @param shardTotal 原片分片总数（重试场景传入；可为 null）
+     * @param shardBatchId 原片分片批次ID（重试场景传入；可为 null）
+     */
+    void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds,
+                                      Integer shardIndex, Integer shardTotal, String shardBatchId);
+
+    /**
      * 发布立即执行的任务
      * 用于一次性任务的立即执行
      *
