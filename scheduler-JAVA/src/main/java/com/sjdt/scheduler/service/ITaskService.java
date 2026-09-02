@@ -57,18 +57,18 @@ public interface ITaskService extends IService<Task> {
     void updateTargetWorkerToNullByWorkerId(String workerId);
 
     /**
-     * 发布任务
-     * 根据任务类型（公共/定向）发送到RocketMQ
-     *
-     * @param taskId 任务ID
-     */
-    /**
      * 获取最近的任务列表
      * @param limit 限制数量
      * @return 任务VO列表
      */
     List<TaskVO> listRecentTasks(int limit);
 
+    /**
+     * 发布任务
+     * 根据任务类型（公共/定向）发送到RocketMQ
+     *
+     * @param taskId 任务ID
+     */
     void publishTask(String taskId);
 
     /**

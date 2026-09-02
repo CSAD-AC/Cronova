@@ -67,7 +67,6 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         log.info("收到任务执行结果，TaskRunID: {}, TaskID: {}, Status: {}", 
                 resultMessage.getTaskRunId(), resultMessage.getTaskId(), resultMessage.getStatus());
         
-        // 1. 获取原始TaskRun记录（获取retryNum等信息）
         TaskRun originalRun = taskRunMapper.selectById(resultMessage.getTaskRunId());
         int currentRetryNum = 0;
         if (originalRun != null && originalRun.getRetryNum() != null) {
@@ -76,7 +75,6 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         }
 
 
-        // 2. 创建或更新任务运行实例
         log.debug("开始构建TaskRun对象，WorkerID: {}, ExitCode: {}", 
                 resultMessage.getWorkerId(), resultMessage.getExitCode());
         TaskRun taskRun = TaskRun.builder()
@@ -94,7 +92,7 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         log.debug("TaskRun对象构建完成，ID: {}", taskRun.getId());
         log.info("TaskRun对象构建完成, 开始时间为{}, 结束时间为{} ", taskRun.getStartTime(), taskRun.getEndTime());
 
-        // 3. 保存或更新任务执行结果（避免重复键异常）
+        // 保存或更新任务执行结果（避免重复键异常）
         log.info("保存任务执行结果，TaskRunID: {}, Status: {}", taskRun.getId(), taskRun.getStatus());
         try {
             taskRunMapper.insertOrUpdate(taskRun);
@@ -104,13 +102,12 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
             return;
         }
         
-        // 4. 保存日志路径到task_log表
         saveTaskLog(resultMessage);
 
-        // 5. 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
+        // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
         shardSettlementService.onRunTerminal(resultMessage.getTaskRunId());
 
-        // 6. 检查是否需要重试
+        // 检查是否需要重试
         checkAndTriggerRetry(taskRun, resultMessage.getStatus(), originalRun);
 
         log.info("任务执行结果处理完成，TaskRunID: {}", resultMessage.getTaskRunId());

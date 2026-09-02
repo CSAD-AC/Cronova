@@ -17,10 +17,7 @@ class TagReportService:
 
     @classmethod
     def check_and_report_tags(cls) -> bool:
-        """
-        检测标签变化并上报
-        如果标签发生变化，则上报给调度器
-        """
+        """检测标签变化，有变化时上报给调度器"""
         if not Config.WORKER_ID:
             logger.debug("Worker未注册，跳过标签检测")
             return False

@@ -10,8 +10,7 @@ import java.util.List;
 /**
  * 最少负载策略：按真实负载打分选最闲的 Worker
  * <p>
- * score = 0.4*cpu + 0.3*mem + 0.3*100*running/maxConcurrent，取最小。
- * 相比 xxl-job 的 LFU（只看触发频次），本策略更贴近节点真实负载；
+ * score = 0.4*cpu + 0.3*mem + 0.3*100*running/maxConcurrent，取最小；
  * 权重系数集中为常量，便于调参。
  */
 @Component

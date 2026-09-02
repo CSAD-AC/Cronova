@@ -50,10 +50,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.error(ErrorCodeEnum.USER_IS_EXISTS);
         }
 
-        // 对密码进行加密
         String encodedPassword = passwordEncoder.encode(registerDTO.getPassword());
 
-        // 创建用户对象并保存到数据库
         User user = User.builder()
                 .username(registerDTO.getUsername())
                 .password(encodedPassword)
@@ -77,7 +75,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result<LoginResponseVO> login(UserLoginDTO loginDTO) {
-        // 根据用户名查询用户
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(User::getUsername, loginDTO.getUsername());
         User user = getOne(queryWrapper);
@@ -95,7 +92,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         StpUtil.login(user.getId());
         String token = StpUtil.getTokenValue();
 
-        // 构建响应VO
         UserVO userVO = UserVO.builder().build();
         BeanUtils.copyProperties(user, userVO);
 
@@ -116,18 +112,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result<IPage<UserVO>> getUserList(int page, int size, String username) {
-        // 构建查询条件
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
         if (username != null && !username.isEmpty()) {
             queryWrapper.like(User::getUsername, username);
         }
-        // 按创建时间倒序排序
         queryWrapper.orderByDesc(User::getCreateTime);
 
-        // 分页查询
         IPage<User> userPage = this.page(new Page<>(page, size), queryWrapper);
         
-        // 转换为VO
         IPage<UserVO> userVOPage = userPage.convert(user -> {
             UserVO userVO = new UserVO();
             BeanUtils.copyProperties(user, userVO);
@@ -139,13 +131,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result<UserVO> getUserById(String id) {
-        // 根据ID查询用户
         User user = this.getById(id);
         if (user == null) {
             return Result.error(ErrorCodeEnum.USER_NOT_FOUND);
         }
 
-        // 转换为VO
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
 
@@ -162,19 +152,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.error(ErrorCodeEnum.USER_IS_EXISTS);
         }
 
-        // 加密密码
         String encodedPassword = passwordEncoder.encode(user.getPassword());
         user.setPassword(encodedPassword);
         
-        // 设置创建时间和更新时间
         LocalDateTime now = LocalDateTime.now();
         user.setCreateTime(now);
         user.setUpdateTime(now);
 
-        // 保存用户
         this.save(user);
         
-        // 转换为VO
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
 
@@ -183,13 +169,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result<UserVO> updateUser(String id, UserUpdateDTO userUpdateDTO) {
-        // 根据ID查询用户
         User user = this.getById(id);
         if (user == null) {
             return Result.error(ErrorCodeEnum.USER_NOT_FOUND);
         }
 
-        // 更新用户信息
         if (userUpdateDTO.getNickname() != null) {
             user.setNickname(userUpdateDTO.getNickname());
         }
@@ -198,10 +182,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         user.setUpdateTime(LocalDateTime.now());
 
-        // 保存更新
         this.updateById(user);
         
-        // 转换为VO
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
 
@@ -210,16 +192,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result<Void> deleteUser(String id) {
-        // 根据ID查询用户
         User user = this.getById(id);
         if (user == null) {
             return Result.error(ErrorCodeEnum.USER_NOT_FOUND);
         }
 
-        // 清除用户角色关联
+        // 同步清除用户角色关联
         roleMapper.clearUserRoles(id);
 
-        // 删除用户
         this.removeById(id);
 
         return Result.success();

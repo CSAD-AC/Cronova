@@ -13,6 +13,7 @@ const request = axios.create({
   },
 })
 
+// 请求拦截：向请求头注入 Sa-Token 鉴权
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const userStore = useUserStore()
@@ -26,6 +27,7 @@ request.interceptors.request.use(
   }
 )
 
+// 响应拦截：code=200 解包 data；401 自动登出并跳转登录页
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     // 处理文件下载

@@ -46,15 +46,12 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
     
     @Override
     public Result<IPage<Tag>> getTagList(int page, int size, String name) {
-        // 构建查询条件
         LambdaQueryWrapper<Tag> queryWrapper = new LambdaQueryWrapper<>();
         if (name != null && !name.isEmpty()) {
             queryWrapper.like(Tag::getName, name);
         }
-        // 按创建时间倒序排序
         queryWrapper.orderByDesc(Tag::getCreateTime);
         
-        // 分页查询
         IPage<Tag> tagPage = this.page(new Page<>(page, size), queryWrapper);
         
         // 填充关联数量
@@ -74,7 +71,6 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
     
     @Override
     public Result<Tag> getTagById(Integer id) {
-        // 根据ID查询标签
         Tag tag = this.getById(id);
         if (tag == null) {
             return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
@@ -85,10 +81,8 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
     
     @Override
     public Result<Tag> createTag(Tag tag) {
-        // 设置创建时间
         tag.setCreateTime(LocalDateTime.now());
         
-        // 保存标签
         this.save(tag);
         
         return Result.success(tag);
@@ -96,17 +90,14 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
     
     @Override
     public Result<Tag> updateTag(Integer id, Tag tag) {
-        // 根据ID查询标签
         Tag existingTag = this.getById(id);
         if (existingTag == null) {
             return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
         }
         
-        // 更新标签信息
         existingTag.setName(tag.getName());
         existingTag.setDescription(tag.getDescription());
         
-        // 保存更新
         this.updateById(existingTag);
         
         return Result.success(existingTag);
@@ -114,13 +105,11 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
     
     @Override
     public Result<Void> deleteTag(Integer id) {
-        // 根据ID查询标签
         Tag tag = this.getById(id);
         if (tag == null) {
             return Result.error(ErrorCodeEnum.TAG_NOT_FOUND);
         }
         
-        // 删除标签
         this.removeById(id);
         
         return Result.success();
@@ -245,7 +234,6 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
      */
     private void sendTagUpdateMessage(String workerId) {
         try {
-            // 获取Worker的所有标签
             List<WorkerTag> workerTags = workerTagMapper.selectList(
                 new LambdaQueryWrapper<WorkerTag>()
                     .eq(WorkerTag::getWorkerId, workerId)
@@ -259,7 +247,6 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements ITagS
                 .filter(name -> name != null)
                 .collect(Collectors.toList());
             
-            // 发送MQ消息
             UpdateTagsRequest request = new UpdateTagsRequest();
             request.setWorkerId(workerId);
             request.setTags(tagNames);

@@ -64,7 +64,6 @@ public class WorkerLifecycleService implements ApplicationRunner {
         String ip = localIp();
         List<String> tags = tagManager.loadTags();
 
-        // 1. 加载本地配置（workerId / AK / SK）
         LocalConfigStore.LocalData local = localConfigStore.load();
         boolean hasValidLocal = local.getWorkerId() != null && !local.getWorkerId().isBlank()
                 && local.getAccessKey() != null && !local.getAccessKey().isBlank()
@@ -72,7 +71,6 @@ public class WorkerLifecycleService implements ApplicationRunner {
 
         boolean needRegister = !hasValidLocal;
         if (hasValidLocal) {
-            // 2. 验证 AK/SK 有效性
             workerContext.register(local.getWorkerId(), local.getAccessKey(), local.getSecretKey(),
                     host, ip, tags);
             boolean valid = validateAksk(local.getAccessKey());
@@ -84,7 +82,6 @@ public class WorkerLifecycleService implements ApplicationRunner {
             }
         }
 
-        // 3. 需要注册
         if (needRegister) {
             if (!registerWorker(host, ip, tags)) {
                 log.error("Worker 注册失败，程序退出");
@@ -92,7 +89,6 @@ public class WorkerLifecycleService implements ApplicationRunner {
             }
         }
 
-        // 4. 初始化标签基线 + 启动 MQ
         tagReporter.initReportedTags(workerContext.getWorkerTags());
         resultPublisher.start();
         mqManager.start();

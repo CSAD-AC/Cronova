@@ -62,11 +62,7 @@ public class HealthCheckController {
     }
 
     /**
-     * 转换Cron表达式为中文描述
-     * 
-     * 【功能说明】
-     * 接受cron表达式参数，返回中文含义描述和下次执行时间
-     * 用于前端显示Cron表达式的语义化信息
+     * 转换Cron表达式为中文描述（返回中文含义和下次执行时间）
      */
     @GetMapping("/cron/description")
     @Operation(summary = "Cron表达式转中文描述", description = "接受cron表达式，返回中文含义和下次执行时间")
@@ -101,13 +97,7 @@ public class HealthCheckController {
     }
 
     /**
-     * 回调任务配置健康检查
-     * 
-     * 【健康检查流程】
-     * 1. 查询回调配置信息，得到回调地址、秘钥和关联的任务
-     * 2. 检验Cron表达式是否合法，如果不合法则返回错误，中断请求
-     * 3. 利用回调地址拼接得到健康检查地址，请求健康检查地址
-     * 4. 根据响应结果返回健康检查结果
+     * 回调任务配置健康检查：校验Cron合法性，并请求健康检查地址验证回调服务可用性
      */
     @PostMapping("/callback-job-configs/{id}/health-check")
     @Operation(summary = "回调任务配置健康检查", description = "检验Cron表达式合法性，并请求健康检查地址验证回调服务可用性")
@@ -209,12 +199,6 @@ public class HealthCheckController {
         return result;
     }
 
-    /**
-     * 生成Cron表达式的中文含义描述
-     *
-     * @param cron Cron对象
-     * @return 中文含义描述
-     */
     /**
      * 生成Cron表达式的中文含义描述（支持秒级）
      *

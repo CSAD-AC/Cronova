@@ -15,7 +15,7 @@ class ReportService:
         response = HttpClient.post(Config.WORKER_HEARTBEAT_URL, json_data={})
         if not response:
             return False
-        # 解析响应（保持不变）
+        # 解析响应
         try:
             heartbeat_resp = HeartbeatResponse(**response)
             return heartbeat_resp.code == 200
@@ -29,21 +29,18 @@ class ReportService:
         if not Config.WORKER_ID:
             print("未注册Worker，无法上报状态")
             return False
-        # 获取系统信息
+        # 获取系统信息并构造状态上报数据
         cpu_usage = SystemUtils.get_cpu_usage()
         mem_usage = SystemUtils.get_mem_usage()
         running_tasks = SystemUtils.get_running_tasks()
-        # 构造状态上报数据
         status_data = {
             "cpuUsage": cpu_usage,
             "memUsage": mem_usage,
             "runningTasks": running_tasks
         }
-        # 发送状态上报请求
         response = HttpClient.post(Config.WORKER_STATUS_REPORT_URL, params=status_data, json_data={})
         if not response:
             return False
-        # 解析响应
         try:
             status_resp = StatusReportResponse(**response)
             return True

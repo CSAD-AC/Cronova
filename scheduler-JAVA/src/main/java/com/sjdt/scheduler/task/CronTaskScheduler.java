@@ -339,8 +339,7 @@ public class CronTaskScheduler {
     }
 
     /**
-     * 更新任务运行状态
-     * 修正：增加重试触发逻辑，确保同步执行失败的任务也能重试
+     * 更新任务运行状态，确保同步执行失败的任务也能重试
      *
      * @param taskRunId 任务运行实例ID
      * @param status 状态
@@ -426,7 +425,6 @@ public class CronTaskScheduler {
             return scriptPath.substring(0, lastSlash);
         }
         
-        // 没有目录，返回根路径
         return "/";
     }
 }

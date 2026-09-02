@@ -133,8 +133,7 @@ class TaskControlMessage(BaseModel):
         try:
             msg_dict = json.loads(msg_body)
             
-            # 确保必要字段存在且类型正确
-            # taskId和taskRunId是必填字段，确保它们存在且是字符串
+            # taskId / taskRunId 强制转为字符串（MQ 消息中可能为数字）
             if "taskId" in msg_dict and not isinstance(msg_dict["taskId"], str):
                 msg_dict["taskId"] = str(msg_dict["taskId"])
             if "taskRunId" in msg_dict and not isinstance(msg_dict["taskRunId"], str):

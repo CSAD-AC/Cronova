@@ -48,6 +48,7 @@ public abstract class AbstractProcessHandler implements TaskHandler {
     protected final TaskInstanceManager instanceManager;
     protected final TaskResultPublisher resultPublisher;
 
+    /** 任务执行线程池（守护线程，异步执行任务，提交后立即返回） */
     private final ExecutorService executor;
 
     protected AbstractProcessHandler(WorkerProperties properties,
@@ -115,21 +116,16 @@ public abstract class AbstractProcessHandler implements TaskHandler {
         try {
             log.info("开始执行{}脚本，taskId={}, taskRunId={}", supportType(), task.getTaskId(), runId);
 
-            // 1. 依赖验证
             DependencyValidator.validate(task, workerContext);
 
-            // 2. 下载脚本
             download = downloadScript(task);
 
-            // 3. 日志存储路径
             String logBucket = properties.getMinio().getBucket();
             String logObject = "task-logs/" + task.getTaskId() + "/" + runId + ".log";
 
-            // 4. 置 running
             instanceManager.updateStatus(runId, "running",
                     Map.of("log_bucket", logBucket, "log_object", logObject));
 
-            // 5. 构造命令并启动进程
             List<String> command = buildCommand(task, download);
             log.info("执行命令：{}，超时时间：{}秒", command, task.timeoutSecondsOrDefault());
 
@@ -140,15 +136,12 @@ public abstract class AbstractProcessHandler implements TaskHandler {
             long pid = process.pid();
             log.info("子进程已启动，taskRunId={}, pid={}", runId, pid);
 
-            // 6. 登记进程
             processManager.add(runId, new ProcessManager.RunningProcess(
                     process, pid, task, startTime, logBucket, logObject, download.entryPath()));
 
-            // 7. 日志流式读取 + 等待结束
             localLog = Path.of(download.workDir(), runId + ".log");
             StreamResult stream = streamAndWait(process, localLog, logBucket, logObject);
 
-            // 8. 汇总结果
             finishResult(task, startTime, logBucket, logObject, stream);
         } catch (Exception e) {
             log.error("{}任务执行失败（{}）：{}", supportType(), task.getTaskId(), e.getMessage(), e);

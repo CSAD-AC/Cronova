@@ -75,7 +75,6 @@ public class AKSKInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 5. 鉴权通过，继续处理请求
         return true;
     }
 

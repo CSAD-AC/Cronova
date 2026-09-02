@@ -18,8 +18,6 @@ import java.util.List;
  * <p>注意：@RocketMQMessageListener 注解中显式声明的 consumerGroup 会覆盖
  * spring 配置（rocketmq.consumer.group），本日志输出的"监听器消费组"即进程
  * 实际生效的组名，便于核对多环境隔离（独立消费组）是否真正生效。</p>
- *
- * <p>使用方式：随 Spring Boot 应用启动自动执行，无需额外配置。</p>
  */
 @Slf4j
 @Component

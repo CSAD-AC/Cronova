@@ -17,12 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Cron 表达式"下一个触发时间"计算工具
  * <p>
- * 带解析缓存（ConcurrentHashMap），供以下两处共用：
- * <ul>
- *     <li>{@code CronTaskScheduler.trigger()} —— 触发主流程：CAS 推进 next_trigger_time、misfire 对齐</li>
- *     <li>{@code NextTriggerTimeBackfillRunner} —— 启动时对存量 cron 任务回填 next_trigger_time</li>
- * </ul>
- * 解析结果缓存在内存即可：Cron 表达式数量有限，且只在任务配置变更时新增条目。
+ * 解析结果缓存在内存（ConcurrentHashMap）：Cron 表达式数量有限，
+ * 且只在任务配置变更时新增条目，无需引入外部缓存。
  */
 @Slf4j
 public final class CronNextTimeUtil {

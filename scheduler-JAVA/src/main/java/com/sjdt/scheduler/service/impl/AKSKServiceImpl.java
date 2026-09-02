@@ -51,7 +51,6 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
         // 生成 Secret Key（使用 UUID，确保安全性）
         String secretKey = "SK" + IdUtil.fastSimpleUUID().toUpperCase();
 
-        // 创建 AKSK 实体
         AKSK aksk = AKSK.builder()
                 .accessKey(accessKey)
                 .secretKey(secretKey)
@@ -61,7 +60,6 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
                 .updateTime(LocalDateTime.now())
                 .build();
 
-        // 保存到数据库
         this.save(aksk);
         log.info("AKSK生成成功，WorkerID: {}, AccessKey: {}", workerId, accessKey);
 

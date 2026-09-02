@@ -35,12 +35,10 @@ class TaskStatusService:
             
             # 前一分钟内频率为3s一次，一分钟之后频率为60s一次
             if elapsed_seconds < 60:
-                # 检查是否需要报告（每3秒一次）
                 last_report_time = self._get_last_report_time(task_run_id)
                 if (current_time - last_report_time).total_seconds() >= 3:
                     self._report_status_with_retry(task_run_id, process_info, process_info['start_time'])
             else:
-                # 检查是否需要报告（每60秒一次）
                 last_report_time = self._get_last_report_time(task_run_id)
                 if (current_time - last_report_time).total_seconds() >= 60:
                     self._report_status_with_retry(task_run_id, process_info, process_info['start_time'])
@@ -119,12 +117,11 @@ class TaskStatusService:
         for attempt in range(max_retries):
             try:
                 self._report_status(task_run_id, process_info, start_time)
-                return  # 成功则返回
+                return
             except Exception as e:
                 logger.error("状态报告失败（尝试 %d/%d），taskRunId: %s，错误: %s", 
                            attempt + 1, max_retries, task_run_id, str(e))
                 if attempt < max_retries - 1:
-                    # 等待后重试
                     time.sleep(2 ** attempt)  # 指数退避
                 else:
                     logger.error("状态报告最终失败，taskRunId: %s", task_run_id)

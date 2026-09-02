@@ -138,26 +138,22 @@ public class WorkerServiceImpl extends ServiceImpl<WorkerMapper, Worker> impleme
     public void deleteWorker(String id) {
         log.info("开始删除Worker，WorkerID: {}", id);
         
-        // 1. 删除关联的 AKSK 记录
         log.info("开始删除关联的AKSK记录，WorkerID: {}", id);
         akskService.lambdaUpdate()
                 .eq(AKSK::getWorkerId, id)
                 .remove();
         log.info("关联的AKSK记录删除成功，WorkerID: {}", id);
 
-        // 2. 删除关联的 WorkerTag 记录
         log.info("开始删除关联的WorkerTag记录，WorkerID: {}", id);
         workerTagService.lambdaUpdate()
                 .eq(com.sjdt.scheduler.domain.po.WorkerTag::getWorkerId, id)
                 .remove();
         log.info("关联的WorkerTag记录删除成功，WorkerID: {}", id);
 
-        // 3. 更新关联的任务记录，将 target_worker 设置为 null
         log.info("开始更新关联的任务记录，将target_worker设置为null，WorkerID: {}", id);
         taskMapper.clearTargetWorkerByWorkerId(id);
         log.info("关联的任务记录更新成功，WorkerID: {}", id);
 
-        // 4. 删除 Worker 记录
         log.info("开始删除Worker记录，WorkerID: {}", id);
         this.removeById(id);
         log.info("Worker删除成功，WorkerID: {}", id);

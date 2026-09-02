@@ -60,11 +60,7 @@ public class Task implements Serializable {
     @TableField(value = "task_type")
     private TaskType taskType;
 
-    /**
-     * Cron 表达式
-     * 示例：0 0 * * *
-     * 当 taskType = cron 时必须存在
-     */
+    /** Cron 表达式（taskType = cron 时必须存在，示例：0 0 * * *） */
     @TableField(value = "cron_expr")
     private String cronExpr;
 

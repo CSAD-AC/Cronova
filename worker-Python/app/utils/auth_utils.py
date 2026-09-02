@@ -15,16 +15,11 @@ class AuthUtils:
     def generate_signature(
         timestamp: str,
         json_data: dict = None,
-        params: dict = None,  # 新增：接收查询参数
+        params: dict = None,  # 查询参数
         method: str = "POST",
         url_path: str = ""
     ) -> str:
-        """
-        生成签名（与服务端逻辑统一）
-        :param params: 查询参数（GET/POST的query参数）
-        :param method: 请求方法（如POST/GET，大写）
-        :param url_path: URL路径（如/api/worker/heartbeat/xxx）
-        """
+        """生成签名（算法须与服务端保持一致）"""
         if not all([Config.ACCESS_KEY, Config.SECRET_KEY]):
             raise ValueError("ACCESS_KEY或SECRET_KEY未初始化")
 
@@ -34,9 +29,8 @@ class AuthUtils:
         else:
             body_str = "{}"
 
-        # 生成待签名字符串：仅使用timestamp，不再包含requestBody
+        # 待签名字符串仅用timestamp（不含请求体）
         sign_str = timestamp
-        # 生成签名
         signature = hmac.new(
             Config.SECRET_KEY.encode("utf-8"),
             sign_str.encode("utf-8"),

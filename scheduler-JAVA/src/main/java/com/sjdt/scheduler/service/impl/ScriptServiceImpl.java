@@ -94,7 +94,6 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
         log.info("脚本信息缓存未命中，从数据库加载并同步至缓存 | ScriptID: {}", id);
         Script script = super.getById(id);
         if (script != null) {
-            // 填充标签信息
             List<Integer> tagIds = scriptTagMapper.selectTagIdsByScriptId(script.getId());
             if (tagIds != null && !tagIds.isEmpty()) {
                 List<Tag> tags = tagMapper.selectBatchIds(tagIds);
@@ -114,7 +113,6 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
 
     @Override
     public List<Script> list() {
-        // 获取基础脚本列表
         List<Script> scripts = super.list();
         
         // 为每个脚本填充标签信息
@@ -577,7 +575,7 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
         // 3. 从数据库删除当前记录
         removeById(id);
 
-        // 3. 从MinIO删除文件或文件夹
+        // 4. 从MinIO删除文件或文件夹
         try {
             String path = script.getPath();
             String objectName = path;

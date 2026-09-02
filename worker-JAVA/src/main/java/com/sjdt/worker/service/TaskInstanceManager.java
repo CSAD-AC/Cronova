@@ -63,6 +63,7 @@ public class TaskInstanceManager {
         }
         data.put("status", status);
         String now = utcNow();
+        // 状态机：running→start_time、paused→pause_time、终态(success/failed/timeout)→end_time、resumed→resume_time；extras 统一合并进实例数据
         switch (status) {
             case "running" -> data.put("start_time", now);
             case "paused" -> {

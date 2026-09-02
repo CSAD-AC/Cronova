@@ -25,8 +25,6 @@ public class UserVO {
      */
     private String username;
 
-    /**
-     *
-     */
+    /** 昵称 */
     private String nickname;
 }

@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
 /**
  * 任务管理Controller
  * 处理任务的CRUD操作和发布任务
- * 注意：任务运行实例（TaskRun）的相关接口请参见TaskRunController
  */
 @RestController
 @RequestMapping("/api/tasks")

@@ -117,7 +117,6 @@ public class HttpCallbackClient {
                 httpHeaders.set("X-Secret", secretKey);
             }
 
-            // 使用注入的 ObjectMapper 序列化
             String jsonBody = requestBody == null ? "" : objectMapper.writeValueAsString(requestBody);
             HttpEntity<String> requestEntity = new HttpEntity<>(jsonBody, httpHeaders);
 
@@ -184,7 +183,6 @@ public class HttpCallbackClient {
             return new CallbackResult(requestId, false, 0, 0, null, errorMessage, attemptCount);
         }
 
-        // Getters
         public String getRequestId() { return requestId; }
         public boolean isSuccess() { return success; }
         public int getStatusCode() { return statusCode; }

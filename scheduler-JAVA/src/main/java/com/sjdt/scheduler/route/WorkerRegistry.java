@@ -25,8 +25,8 @@ import java.util.stream.Collectors;
 /**
  * Worker 在线快照注册表：为路由提供"当前可用 Worker + 实时负载 + 标签"的统一视图
  * <p>
- * 在线判定：数据库 status=online（基础集）+ Redis 心跳键存活（更实时的二次确认，TTL 30s）。
- * 负载与最后心跳来自 Redis 信息 Hash（Worker 每 10s 上报，见 WorkerController.reportStatus）。
+ * 在线判定：数据库 status=online（基础集）+ Redis 心跳键存活（实时二次确认，TTL 30s）。
+ * 负载与最后心跳来自 Redis 信息 Hash（Worker 每 10s 上报）。
  * 标签来自 worker_tags + tags 表（每轮一次批量加载，避免逐 Worker 查询）。
  */
 @Slf4j

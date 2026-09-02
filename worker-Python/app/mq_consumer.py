@@ -23,9 +23,7 @@ class MQConsumer:
         self.task_service = TaskService()
 
         # 1. 任务消费者（独立消费组 + expression=workerId，定向投递）
-        # 每个 Worker 一个专属消费组（WORKER_EXECUTOR_GROUP_{workerId}），订阅表达式=自己的 workerId，
-        # 由 Broker 按 Tag 过滤，本 Worker 只会收到发给自己的消息。
-        # 相比原先"集群模式共享消费组 + 非目标 Worker 直接 ACK"，消息不会再被无关 Worker 吞掉。
+        # 专属消费组 WORKER_EXECUTOR_GROUP_{workerId}，由 Broker 按 Tag=workerId 过滤，本 Worker 只收发给自己的消息
         self.task_consumer = PushConsumer("{}_{}".format(Config.MQ_CONSUMER_GROUP, Config.WORKER_ID))
         self.task_consumer.set_namesrv_addr(Config.MQ_NAMESRV_ADDR)
         
@@ -37,8 +35,7 @@ class MQConsumer:
         )
         logger.info("任务执行主题订阅成功，消费组：%s_%s", Config.MQ_CONSUMER_GROUP, Config.WORKER_ID)
         
-        # 2. 控制消费者 (广播模式)
-        # 使用独立的Group以避免冲突，并启用广播模式确保所有Worker都能收到控制指令
+        # 2. 控制消费者：独立 Group + 广播模式，确保所有 Worker 都能收到控制指令
         self.control_consumer = PushConsumer(Config.MQ_CONSUMER_GROUP + "_CONTROL")
         self.control_consumer.set_namesrv_addr(Config.MQ_NAMESRV_ADDR)
         self.control_consumer.set_message_model(MessageModel.BROADCASTING)

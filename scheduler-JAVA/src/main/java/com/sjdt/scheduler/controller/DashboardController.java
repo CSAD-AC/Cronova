@@ -56,10 +56,9 @@ public class DashboardController {
         
         DashboardVO.Stats stats = new DashboardVO.Stats();
         
-        // 1. 任务相关统计
         stats.setTotalTasks(taskService.count());
         
-        // 2. 任务执行统计
+        // 近30天任务执行统计
         ITaskRunService.TaskRunStats taskRunStats = taskRunService.countByStatusAndTimeRange(
             LocalDateTime.now().minusDays(30), LocalDateTime.now()
         );
@@ -68,15 +67,13 @@ public class DashboardController {
         stats.setSuccessRuns(taskRunStats.getSuccess());
         stats.setFailureRuns(taskRunStats.getFailure());
         
-        // 3. Worker相关统计
         stats.setActiveWorkers(workerService.countOnlineWorkers());
         stats.setTotalWorkers(workerService.count());
         
-        // 4. 实时统计
         stats.setRunningTasks(taskRunService.countRunningTasks());
         stats.setTodayExecutions(taskRunService.countTodayExecutions());
         
-        // 5. 计算成功率
+        // 计算成功率（无执行记录时为0）
         if (taskRunStats.getTotal() > 0) {
             stats.setSuccessRate((double) taskRunStats.getSuccess() / taskRunStats.getTotal() * 100);
         } else {
@@ -85,15 +82,14 @@ public class DashboardController {
         
         vo.setStats(stats);
         
-        // 6. 获取最近任务执行记录（同时查询task_run和callback_job_run）
+        // 最近执行记录（同时查询task_run和callback_job_run）
         List<TaskRunVO> recentTaskRuns = getRecentTaskRuns(10);
         vo.setRecentTasks(recentTaskRuns);
         
-        // 7. 生成图表数据（最近7天）
+        // 最近7天图表数据与任务类型分布
         List<DashboardVO.ChartData> chartData = generateChartData();
         vo.setChartData(chartData);
         
-        // 8. 生成任务类型分布统计
         List<DashboardVO.TaskTypeData> taskTypeDistribution = generateTaskTypeDistribution();
         vo.setTaskTypeDistribution(taskTypeDistribution);
         
@@ -112,39 +108,36 @@ public class DashboardController {
         List<TaskRunVO> result = new ArrayList<>();
         
         try {
-            // 1. 查询脚本执行记录（task_run）
+            // 查询脚本执行记录（task_run）
             List<TaskRun> scriptRuns = taskRunService.listRecentRuns(limit);
             
-            // 2. 查询回调执行记录（callback_job_run）
+            // 查询回调执行记录（callback_job_run）
             LambdaQueryWrapper<CallbackJobRun> wrapper = new LambdaQueryWrapper<>();
             wrapper.orderByDesc(CallbackJobRun::getCreateTime)
                     .last("limit " + limit);
             List<CallbackJobRun> callbackRuns = callbackJobRunService.list(wrapper);
 
             
-            // 3. 合并两种执行记录
+            // 合并两种记录
             List<TaskRunVO> allRuns = new ArrayList<>();
             
-            // 处理脚本执行记录
             for (TaskRun run : scriptRuns) {
                 TaskRunVO vo = convertTaskRunToTaskRunVO(run, "script");
                 allRuns.add(vo);
             }
             
-            // 处理回调执行记录
             for (com.sjdt.scheduler.domain.po.CallbackJobRun run : callbackRuns) {
                 TaskRunVO vo = convertCallbackJobRunToTaskRunVO(run);
                 allRuns.add(vo);
             }
             
-            // 4. 按创建时间降序排序
+            // 按创建时间降序排序后取前limit条
             allRuns.sort((a, b) -> {
                 LocalDateTime timeA = a.getCreateTime() != null ? a.getCreateTime() : LocalDateTime.MIN;
                 LocalDateTime timeB = b.getCreateTime() != null ? b.getCreateTime() : LocalDateTime.MIN;
                 return timeB.compareTo(timeA);
             });
             
-            // 5. 返回前limit条
             result = allRuns.stream().limit(limit).collect(Collectors.toList());
             
         } catch (Exception e) {
@@ -159,7 +152,6 @@ public class DashboardController {
      * 需要关联查询Task获取真实的任务类型
      */
     private TaskRunVO convertTaskRunToTaskRunVO(TaskRun taskRun, String sourceType) {
-        // 通过taskId查询关联的任务信息，获取真实的类型
         String executeType = sourceType;
         String scriptType = null;
         
@@ -195,7 +187,6 @@ public class DashboardController {
      * 将CallbackJobRun转换为TaskRunVO格式
      */
     private TaskRunVO convertCallbackJobRunToTaskRunVO(CallbackJobRun run) {
-        // 通过taskId查询关联的任务信息
         String executeType = "callback";
         String scriptType = null;
         
@@ -254,7 +245,7 @@ public class DashboardController {
     private List<DashboardVO.TaskTypeData> generateTaskTypeDistribution() {
         List<DashboardVO.TaskTypeData> taskTypes = new ArrayList<>();
         
-        // 统计定时任务和一次性任务
+        // 统计启用中的定时任务与一次性任务
         long cronTasks = taskService.lambdaQuery()
                 .eq(com.sjdt.scheduler.domain.po.Task::getTaskType, "cron")
                 .eq(com.sjdt.scheduler.domain.po.Task::getStatus, "active")
@@ -268,7 +259,6 @@ public class DashboardController {
         long totalTasks = cronTasks + onceTasks;
         
         if (totalTasks > 0) {
-            // Cron定时任务
             DashboardVO.TaskTypeData cronData = new DashboardVO.TaskTypeData();
             cronData.setType("cron");
             cronData.setLabel("Cron定时任务");
@@ -276,7 +266,6 @@ public class DashboardController {
             cronData.setPercentage((double) cronTasks / totalTasks * 100);
             taskTypes.add(cronData);
             
-            // 一次性任务
             DashboardVO.TaskTypeData onceData = new DashboardVO.TaskTypeData();
             onceData.setType("once");
             onceData.setLabel("一次性任务");
@@ -284,7 +273,6 @@ public class DashboardController {
             onceData.setPercentage((double) onceTasks / totalTasks * 100);
             taskTypes.add(onceData);
         } else {
-            // 如果没有任务，返回空数据
             DashboardVO.TaskTypeData emptyData = new DashboardVO.TaskTypeData();
             emptyData.setType("none");
             emptyData.setLabel("暂无任务");

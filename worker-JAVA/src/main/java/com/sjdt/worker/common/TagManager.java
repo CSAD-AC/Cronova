@@ -75,7 +75,6 @@ public class TagManager {
 
     /** 按优先级加载标签 */
     public List<String> loadTags() {
-        // 1. 环境变量
         String envTags = System.getenv("WORKER_TAGS");
         if (envTags != null && !envTags.isBlank()) {
             List<String> tags = splitTags(envTags);
@@ -84,17 +83,14 @@ public class TagManager {
                 return tags;
             }
         }
-        // 2. .env 文件
         List<String> fromDotEnv = loadFromDotEnv();
         if (!fromDotEnv.isEmpty()) {
             return fromDotEnv;
         }
-        // 3. local_config.json
         List<String> fromLocal = loadFromLocalConfig();
         if (!fromLocal.isEmpty()) {
             return fromLocal;
         }
-        // 4. 默认空
         log.info("[TagManager] 未配置 Worker 标签，将使用空标签（不限制任务匹配）");
         return List.of();
     }

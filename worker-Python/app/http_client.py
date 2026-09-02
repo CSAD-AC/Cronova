@@ -25,21 +25,17 @@ class HttpClient:
             headers = {}
             # 排除注册请求和AKSK验证请求，其他POST请求添加认证头
             if url != Config.WORKER_REGISTER_URL and url != Config.AKSK_VALIDATE_URL:
-                # 生成时间戳
                 timestamp = AuthUtils.get_timestamp()
-                # 生成签名
                 from urllib.parse import urlparse
                 parsed_url = urlparse(url)
                 url_path = parsed_url.path  # 例如：/api/worker/heartbeat/worker_xxx
-                # 传入请求方法（POST）和路径生成签名
                 signature = AuthUtils.generate_signature(
                     timestamp=timestamp,
                     json_data=json_data,
-                    params=params,  # 新增：传入查询参数
+                    params=params,
                     method="POST",
                     url_path=url_path
                 )
-                # 添加认证头
                 headers = {
                     "X-Access-Key": Config.ACCESS_KEY,
                     "X-Timestamp": timestamp,

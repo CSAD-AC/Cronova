@@ -14,32 +14,11 @@ logger = get_logger(__name__)
 
 
 """
- Gunicorn 任务控制机制说明：
-
- 本服务采用Gunicorn停止机制来确保任务控制的完整性和可靠性：
-
- 1. **正常停止机制**：
-    - 停止时，Gunicorn会等待当前正在处理的请求完成后再停止服务
-    - 这确保了所有已接收的任务请求都能得到完整处理
-    - 超时时间可配置（默认30秒），超时后强制终止
-
- 2. **强制终止机制**：
-    - 强制终止时，立即停止所有任务进程，不等待
-    - 使用场景：系统紧急关闭或任务出现异常情况
-
- 3. **批量操作**：
-    - pause_all_tasks(): 暂停所有任务
-    - shutdown_all_tasks(): 关闭所有任务
-    - resume_all_tasks(): 恢复所有暂停的任务
-
- 4. **信号处理**：
-   - SIGTERM: 关闭
-   - SIGUSR1: 暂停
-   - SIGUSR2: 恢复任务
-   - SIGCONT: 继续进程
-
- 这种机制确保了任务控制的安全性和可靠性，避免了任务中断导致的数据丢失或状态不一致。
- """
+Gunicorn 任务控制机制：
+- 正常停止：等待请求处理完（默认30s），超时后强制终止；强制终止：立即停止，不等待
+- 信号约定：SIGTERM=关闭、SIGUSR1=暂停、SIGUSR2=恢复、SIGCONT=继续
+- 批量操作：pause_all_tasks / shutdown_all_tasks / resume_all_tasks
+"""
 
 
 class TaskService:
@@ -73,11 +52,7 @@ class TaskService:
             SystemUtils.decrement_running_tasks()
             
     def stop_task(self, stop_message: TaskStopMessage) -> bool:
-        """停止指定任务
-        
-        Args:
-            stop_message: 停止任务消息
-        """
+        """停止指定任务"""
         try:
             # 获取操作前状态
             before_status = task_instance_manager.get_status(stop_message.taskRunId)
@@ -95,12 +70,9 @@ class TaskService:
             # 使用Gunicorn停止机制
             logger.info("通过Gunicorn管理器停止任务，taskRunId：%s，确保请求完整处理", stop_message.taskRunId)
             
-            # 1. 首先设置Gunicorn接收关闭信号，但不立即执行
-            gunicorn_manager.set_max_wait_time(30)  # 设置最大等待时间30秒
+            # 设置超时等待上限30秒；超时停止须强制终止（force=True），否则会等进程自然结束导致超时停止失败
+            gunicorn_manager.set_max_wait_time(30)
             
-            # 2. 正常停止该任务进程
-            # 修改：如果是超时强制停止，应该使用force=True，否则会等待进程自然结束，导致超时停止失败
-            # 这里的 reason 是 "任务执行超时，系统强制停止"
             is_timeout_stop = stop_message.reason and "超时" in stop_message.reason
             force_stop = is_timeout_stop
             
@@ -193,14 +165,7 @@ class TaskService:
             return False
     
     def pause_all_tasks(self, wait_for_completion: bool = False) -> bool:
-        """暂停所有运行中的任务
-        
-        Args:
-            wait_for_completion: 是否等待所有任务完成后再暂停
-            
-        Returns:
-            bool: 是否成功启动暂停流程
-        """
+        """暂停所有运行中的任务（可选等待完成后暂停）"""
         try:
             logger.info("启动Gunicorn暂停所有任务，等待完成模式：%s", wait_for_completion)
             
@@ -220,11 +185,7 @@ class TaskService:
             return False
     
     def resume_all_tasks(self) -> bool:
-        """恢复所有暂停的任务
-        
-        Returns:
-            bool: 是否成功启动恢复流程
-        """
+        """恢复所有暂停的任务"""
         try:
             logger.info("启动恢复所有暂停的任务")
             
@@ -350,11 +311,7 @@ class TaskService:
             return False
     
     def shutdown_all_tasks(self) -> bool:
-        """关闭所有运行中的任务
-        
-        Returns:
-            bool: 是否成功启动关闭流程
-        """
+        """关闭所有运行中的任务"""
         try:
             logger.info("启动Gunicorn关闭所有任务")
             
@@ -379,11 +336,7 @@ class TaskService:
             return False
     
     def get_gunicorn_status(self) -> dict:
-        """获取 Gunicorn 管理器状态
-        
-        Returns:
-            dict: Gunicorn 管理器状态信息
-        """
+        """获取 Gunicorn 管理器状态"""
         try:
             return gunicorn_manager.get_status()
         except Exception as e:

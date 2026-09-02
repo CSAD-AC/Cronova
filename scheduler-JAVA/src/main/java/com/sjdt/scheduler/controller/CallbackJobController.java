@@ -46,9 +46,7 @@ public class CallbackJobController {
     }
 
     /**
-     * 创建回调任务配置
-     * 注意：这个接口现在主要保留用于独立创建回调配置
-     * 通常建议通过TaskCreateDTO一次性创建任务和回调配置
+     * 创建回调任务配置（独立创建场景；通常随任务创建接口一并创建）
      */
     @PostMapping
     @Operation(summary = "创建回调任务配置", description = "创建一个新的回调任务配置，通常建议通过任务创建接口一并创建")

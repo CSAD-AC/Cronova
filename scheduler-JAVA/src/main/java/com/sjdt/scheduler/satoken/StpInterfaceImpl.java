@@ -16,6 +16,7 @@ public class StpInterfaceImpl implements StpInterface {
     @Autowired
     private RoleMapper roleMapper;
 
+    /** 权限统一放行（返回 "*"）：当前仅依赖角色做鉴权 */
     @Override
     public List<String> getPermissionList(Object o, String s) {
         return List.of("*");

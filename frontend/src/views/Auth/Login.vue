@@ -4,7 +4,6 @@
     <div class="glow glow-1" />
     <div class="glow glow-2" />
 
-    <!-- 右上角主题切换 -->
     <div class="theme-corner">
       <ThemeToggle />
     </div>

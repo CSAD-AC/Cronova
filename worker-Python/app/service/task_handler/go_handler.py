@@ -28,9 +28,7 @@ class GoHandler(BaseHandler):
         return "go"
 
     def handle(self, task: TaskExecuteMessage) -> bool:
-        """
-        异步处理Go任务（执行二进制文件）
-        """
+        """异步处理Go任务（执行二进制文件）"""
         try:
             logger.info("开始异步执行Go二进制任务，任务ID：%s", task.taskId)
             
@@ -154,6 +152,7 @@ class GoHandler(BaseHandler):
             logger.info("开始运行二进制程序，超时时间：%d秒", timeout_seconds)
 
             env = {**os.environ, **task.to_shard_env()}
+            # start_new_session：独立进程组，便于整组暂停/终止（SIGSTOP/killpg）
             process = subprocess.Popen(
                 [temp_bin_path],
                 stdout=subprocess.PIPE,
@@ -328,10 +327,7 @@ class GoHandler(BaseHandler):
             logger.error("Go日志上传失败: %s", str(e))
 
     def _monitor_process_status(self, process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, log_queue):
-        """
-        状态监控线程 - 只负责 wait，不再 read stdout
-        从共享队列收集日志，构建 errorMessage
-        """
+        """状态监控线程：只 wait 进程，从共享队列收集日志构建 errorMessage"""
         try:
             # 等待进程完成
             exit_code = process.wait()
@@ -413,12 +409,7 @@ class GoHandler(BaseHandler):
                 producer.shutdown()
 
     def _validate_dependencies(self, task: TaskExecuteMessage, task_run_id: str):
-        """
-        验证Worker环境是否满足任务依赖要求
-        :param task: 任务消息
-        :param task_run_id: 任务运行ID
-        :raises Exception: 依赖不满足时抛出异常
-        """
+        """验证Worker环境是否满足任务依赖要求，不满足时抛异常"""
         from app.utils.env_utils import EnvUtils
         
         script_tags = task.script.tags if task.script else []

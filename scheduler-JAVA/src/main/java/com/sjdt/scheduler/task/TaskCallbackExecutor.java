@@ -114,7 +114,6 @@ public class TaskCallbackExecutor {
         } catch (Exception e) {
             log.error("执行HTTP回调任务时发生异常，任务ID: {}, 配置ID: {}", taskId, configId, e);
             updateCallbackRunRecordOnError(runRecord, requestId, e.getMessage(), startTime);
-            // 同步更新 TaskRun 状态并触发重试
             updateTaskRunStatus(taskRunId, TaskRunStatus.failed, e.getMessage(), (int)(System.currentTimeMillis() - startTime));
             checkAndTriggerTaskRetry(message);
         }
@@ -288,13 +287,11 @@ public class TaskCallbackExecutor {
             log.info("回调执行记录已更新，请求ID: {}, 状态: {}, 状态码: {}, 耗时: {}ms",
                 requestId, runRecord.getStatus(), result.getStatusCode(), durationMs);
 
-            // 更新关联的 TaskRun 状态
             updateTaskRunStatus(message.getTaskRunId(), result.isSuccess() ? TaskRunStatus.success : TaskRunStatus.failed, 
                     result.getErrorMessage(), durationMs);
 
             updateCallbackConfigStatistics(message, result);
 
-            // 如果失败，检查并触发任务级重试
             if (!result.isSuccess()) {
                 checkAndTriggerTaskRetry(message);
             }

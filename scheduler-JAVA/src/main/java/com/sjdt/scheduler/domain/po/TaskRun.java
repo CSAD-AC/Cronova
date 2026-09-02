@@ -31,7 +31,7 @@ public class TaskRun implements Serializable {
     @TableId(value = "id", type = IdType.ASSIGN_UUID)
     private String id;
 
-    /** 关联的任务 ID（task.taskId） */
+    /** 关联的任务 ID */
     private String taskId;
 
     /** 实际执行该任务的 Worker ID */

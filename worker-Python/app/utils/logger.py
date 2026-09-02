@@ -97,7 +97,7 @@ class UnifiedLogger:
         if self.logger.handlers:
             return
 
-        # 只创建控制台 handler（移除文件写入功能）
+        # 只创建控制台 handler
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(level)
 
@@ -131,7 +131,7 @@ class UnifiedLogger:
 # 全局便捷实例（推荐使用方式）
 _default_logger = UnifiedLogger(level=logging.INFO).logger
 
-# 导出常用方法，使用体验像 loguru
+# 导出常用方法
 debug = _default_logger.debug
 info = _default_logger.info
 warning = _default_logger.warning

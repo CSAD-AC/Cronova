@@ -12,6 +12,7 @@ class IPUtils:
         """获取本机内网IP"""
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # UDP 连接不实际发包，仅用于获取本机出口 IP
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
         finally:

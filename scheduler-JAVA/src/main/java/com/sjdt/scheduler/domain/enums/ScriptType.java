@@ -6,7 +6,6 @@ import lombok.Getter;
 
 /**
  * 脚本类型枚举
- * 表示任务的脚本类型
  * 注意：HTTP回调任务由 callbackConfigId 字段标识，不使用此枚举
  */
 @Getter

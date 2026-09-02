@@ -18,7 +18,7 @@ import java.util.UUID;
  * <ul>
  *     <li><b>锁解决吞吐</b>：SET NX EX 保证同一时刻只有一个实例抢到锁，减少无谓竞争；</li>
  *     <li><b>正确性由数据库 CAS 兜底</b>：即使锁过期失效、双实例同时扫描同一行，
- *         next_trigger_time 的乐观锁条件也只允许一个 UPDATE 成功（见 {@code CronTaskScheduler.trigger()}）。</li>
+ *         next_trigger_time 的乐观锁条件也只允许一个 UPDATE 成功。</li>
  * </ul>
  * 关键实现点：
  * <ul>

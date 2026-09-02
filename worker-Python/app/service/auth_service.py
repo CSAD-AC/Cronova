@@ -17,7 +17,6 @@ class AuthService:
         if not response:
             return False
 
-        # 解析响应
         try:
             validate_resp = AKSKValidateResponse(**response)
             # 处理data字段为None的情况

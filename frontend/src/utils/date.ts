@@ -14,8 +14,7 @@ dayjs.extend(timezone)
 export function formatDateTime(date: string | Date | undefined | null, format = 'YYYY-MM-DD HH:mm:ss'): string {
   if (!date) return '-'
   
-  // 如果是字符串且包含Z或T，dayjs会自动识别为UTC
-  // 显式指定从UTC转换到本地时区（北京时间）
+  // 含 Z/T 的字符串 dayjs 自动识别为 UTC，此处显式转回本地时区（北京时间）
   return dayjs.utc(date).tz('Asia/Shanghai').format(format)
 }
 

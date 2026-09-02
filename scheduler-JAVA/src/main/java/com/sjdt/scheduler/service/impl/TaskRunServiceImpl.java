@@ -53,10 +53,8 @@ public class TaskRunServiceImpl extends ServiceImpl<TaskRunMapper, TaskRun> impl
     public ITaskRunService.TaskRunStats countByStatusAndTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
         ITaskRunService.TaskRunStats stats = new ITaskRunService.TaskRunStats();
         
-        // 统计总执行次数
         stats.setTotal(countExecutionsByTimeRange(startTime, endTime));
         
-        // 按状态统计
         stats.setSuccess(countByStatusAndTimeRange(startTime, endTime, TaskRunStatus.success));
         stats.setFailure(countByStatusAndTimeRange(startTime, endTime, TaskRunStatus.failed));
         stats.setPending(countByStatusAndTimeRange(startTime, endTime, TaskRunStatus.pending));

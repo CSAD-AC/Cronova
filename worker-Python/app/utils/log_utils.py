@@ -3,29 +3,16 @@ from app.utils.logger import logger as unified_logger
 
 
 def setup_logger():
-    """设置日志配置 - 保持向后兼容
-    
-    注意：现在只使用控制台输出，不再写入文件
-    """
-    # 为特定模块设置日志级别
-    # 减少心跳和状态更新的日志输出
+    """设置日志配置（仅控制台输出）"""
+    # 降低心跳/状态模块与 apscheduler 的日志级别，减少噪音
     logging.getLogger('app.service.report_service').setLevel(logging.WARNING)
-    # 减少apscheduler的日志输出
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
     
     return unified_logger
 
 
 def get_logger(name=None):
-    """
-    获取日志器 - 保持向后兼容
-    
-    Args:
-        name (str, optional): 日志器名称. 如果为None，返回统一日志器
-        
-    Returns:
-        logging.Logger: 日志器对象
-    """
+    """获取统一日志器（name 参数保留以兼容调用方）"""
     return unified_logger
 
 

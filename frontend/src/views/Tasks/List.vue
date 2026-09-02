@@ -205,12 +205,10 @@ const filteredTasks = computed(() => {
     )
   }
   
-  // 任务类型筛选
   if (filterForm.taskType) {
     result = result.filter(task => task.taskType === filterForm.taskType)
   }
   
-  // 状态筛选
   if (filterForm.status) {
     result = result.filter(task => task.status === filterForm.status)
   }

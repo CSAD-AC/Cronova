@@ -41,12 +41,7 @@ class Config:
     HOST = None  # 本机主机名
     IP = None  # 本机IP
 
-    # Worker标签配置（支持多种来源）
-    # 1. 环境变量 WORKER_TAGS（最高优先级）
-    # 2. .env 文件 WORKER_TAGS
-    # 3. 配置文件 local_config.json
-    # 4. 默认值（空列表）
-    # 格式: ["python:3.9", "java:11"]
+    # Worker标签：来源优先级 环境变量 > .env 文件 > local_config.json > 默认值；格式 ["python:3.9", "java:11"]
     WORKER_TAGS: List[str] = []
 
     # Worker标签解析（只需要 name，用于任务依赖匹配）

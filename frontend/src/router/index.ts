@@ -86,6 +86,7 @@ const router = createRouter({
   ],
 })
 
+// 登录守卫：未登录访问受保护页跳登录页；已登录访问登录页则回仪表盘
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   

@@ -452,8 +452,7 @@ async function fetchTaskRuns() {
     
     let combinedRuns: any[] = []
     
-    // 3. 过滤脚本任务记录：只保留 executeType 为 'script' 的任务记录
-    // 因为 callback 类型的任务也会在 task_run 表产生 pending 记录，需要排除掉，只看 callback_job_runs 表的记录
+    // 3. 只保留脚本任务记录：回调任务也会在 task_run 表产生 pending 记录，需排除
     if (Array.isArray(scriptRuns)) {
       const filteredScriptRuns = scriptRuns.filter(run => {
         const type = taskTypeMap.value.get(run.taskId)
@@ -793,10 +792,8 @@ function removeKeyboardListener() {
 // 监听全屏状态变化，自动管理ESC键监听器
 watch(isFullscreen, (newValue, oldValue) => {
   if (newValue && !oldValue) {
-    // 进入全屏模式，添加ESC键监听
     addKeyboardListener()
   } else if (!newValue && oldValue) {
-    // 退出全屏模式，移除ESC键监听
     removeKeyboardListener()
   }
 })

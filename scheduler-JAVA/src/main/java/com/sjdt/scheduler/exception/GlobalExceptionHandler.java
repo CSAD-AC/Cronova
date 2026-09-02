@@ -96,8 +96,8 @@ public class GlobalExceptionHandler {
     }
 
     /**
-    * 处理请求方式异常
-    */
+     * 处理请求方式异常
+     */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<Result<?>> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
         return new ResponseEntity<>(Result.error(ErrorCodeEnum.METHOD_NOT_ALLOWED), HttpStatus.METHOD_NOT_ALLOWED);

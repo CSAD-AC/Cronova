@@ -515,20 +515,15 @@ public class CallbackJobRunController {
             throw new IllegalArgumentException("Path cannot be empty");
         }
 
-        // 统一逻辑：优先使用配置的 BUCKET_NAME
-        // 如果路径以 BUCKET_NAME/ 开头，则剥离它
+        // 统一使用配置的桶名：路径以"桶名/"开头时剥离桶名前缀，兼容旧数据中带桶名的路径
         String objectName = path;
         if (path.startsWith(BUCKET_NAME + "/")) {
             objectName = path.substring(BUCKET_NAME.length() + 1);
         } else if (path.contains("/")) {
-            // 如果路径中包含 / 且不是以配置的桶名开头，尝试检查第一部分是否是其他桶名（兼容旧数据）
             int firstSlashIndex = path.indexOf('/');
             String potentialBucket = path.substring(0, firstSlashIndex);
-            // 这里我们强制使用配置的 BUCKET_NAME，但如果解析出的桶名看起来合理且不同，记录警告
             if (!potentialBucket.equals(BUCKET_NAME)) {
                 log.warn("检测到路径中的桶名 {} 与配置的 {} 不一致，尝试使用配置的桶名", potentialBucket, BUCKET_NAME);
-                // 某些情况下可能需要使用 potentialBucket，但根据用户要求，我们应统一使用 task-engine
-                // objectName = path.substring(firstSlashIndex + 1);
             }
         }
 

@@ -10,11 +10,7 @@ logger = get_logger(__name__)
 
 
 class GunicornManager:
-    """Gunicorn 优雅暂停管理器
-    
-    基于 Gunicorn 信号处理机制实现任务的优雅暂停和恢复
-    支持多种暂停策略：立即暂停、等待当前任务完成、渐进式暂停等
-    """
+    """Gunicorn 优雅暂停/恢复管理器（基于信号机制）"""
     
     def __init__(self):
         self._pause_signals_received: Set[str] = set()
@@ -23,7 +19,6 @@ class GunicornManager:
         self._graceful_pause_enabled = True
         self._max_pause_wait_time = 30  # 最大等待时间（秒）
         
-        # 注册信号处理器
         self._register_signal_handlers()
         
         logger.info("GunicornManager 初始化完成，支持优雅暂停机制")
@@ -58,7 +53,6 @@ class GunicornManager:
             logger.info("接收到 SIGCONT 信号，恢复任务执行")
             self._handle_graceful_resume()
         
-        # 注册信号处理器
         signal.signal(signal.SIGTERM, handle_sigterm)
         signal.signal(signal.SIGUSR1, handle_sigusr1)
         signal.signal(signal.SIGUSR2, handle_sigusr2)
@@ -82,7 +76,7 @@ class GunicornManager:
                 logger.info("没有运行中的任务，直接暂停")
                 return
             
-            # 策略1：立即暂停所有任务（发送 SIGSTOP）
+            # 立即暂停所有任务（SIGSTOP）
             for task_run_id in list(running_tasks.keys()):
                 try:
                     process_manager.pause_process(task_run_id)
@@ -180,8 +174,7 @@ class GunicornManager:
         try:
             if wait_for_completion:
                 logger.info("开始等待所有任务完成，然后进行优雅暂停")
-                # 这里可以添加等待逻辑，比如检查任务状态
-                # 简化实现：直接发送暂停信号
+                # 简化实现：不等待任务完成，直接发送暂停信号
                 os.kill(os.getpid(), signal.SIGUSR1)
             else:
                 logger.info("立即开始优雅暂停所有任务")

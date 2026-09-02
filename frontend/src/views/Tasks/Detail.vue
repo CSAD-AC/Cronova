@@ -503,7 +503,6 @@ function toggleFullscreen() {
   // 如果进入全屏模式，更新显示内容并添加ESC键监听
   if (isFullscreen.value) {
     filteredLogContent.value = filterLogs()
-    // 添加ESC键监听
     addKeyboardListener()
   } else {
     // 退出全屏时移除监听并清空内容
@@ -516,7 +515,6 @@ function toggleFullscreen() {
  * ESC键退出全屏
  */
 function handleKeydown(event: KeyboardEvent) {
-  // 只在全屏模式下响应ESC键
   if (event.key === 'Escape' && isFullscreen.value) {
     isFullscreen.value = false
     filteredLogContent.value = ''
@@ -537,10 +535,8 @@ function removeKeyboardListener() {
 // 监听全屏状态变化，自动管理ESC键监听器
 watch(isFullscreen, (newValue, oldValue) => {
   if (newValue && !oldValue) {
-    // 进入全屏模式，添加ESC键监听
     addKeyboardListener()
   } else if (!newValue && oldValue) {
-    // 退出全屏模式，移除ESC键监听
     removeKeyboardListener()
   }
 })
@@ -649,7 +645,7 @@ async function fetchTask() {
     
     // 如果有cron表达式，自动获取中文描述（适用于所有任务类型）
     if (task.value?.cronExpr && task.value?.taskType === 'cron') {
-      cronDescription.value = '' // 先清空
+      cronDescription.value = ''
       try {
         // 先尝试从回调配置获取（如果存在）
         if (task.value?.executeType === 'callback' && task.value?.callbackConfig?.id) {

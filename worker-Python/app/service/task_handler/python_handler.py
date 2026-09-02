@@ -30,9 +30,7 @@ class PythonHandler(BaseHandler):
         return "python"
 
     def handle(self, task: TaskExecuteMessage) -> bool:
-        """
-        异步处理Python任务
-        """
+        """异步处理Python任务"""
         try:
             logger.info("开始异步执行Python脚本，任务ID：%s", task.taskId)
             
@@ -178,6 +176,7 @@ class PythonHandler(BaseHandler):
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
 
             env = {**os.environ, **task.to_shard_env()}
+            # start_new_session：独立进程组，便于整组暂停/终止（SIGSTOP/killpg）
             process = subprocess.Popen(
                 ['python3', temp_script_path],
                 stdout=subprocess.PIPE,
@@ -378,10 +377,7 @@ class PythonHandler(BaseHandler):
     def _monitor_process_status(self, process, task: TaskExecuteMessage, task_run_id: str, 
                              start_time: datetime, log_bucket: str, log_object: str, 
                              temp_script_path: str, log_queue):
-        """
-        状态监控线程 - 只负责 wait，不再 read stdout
-        从共享队列收集日志，构建 errorMessage
-        """
+        """状态监控线程：只 wait 进程，从共享队列收集日志构建 errorMessage"""
         try:
             logger.info("启动状态监控线程，taskRunId: %s", task_run_id)
             
@@ -505,12 +501,7 @@ class PythonHandler(BaseHandler):
                 producer.shutdown()
 
     def _validate_dependencies(self, task: TaskExecuteMessage, task_run_id: str):
-        """
-        验证Worker环境是否满足任务依赖要求
-        :param task: 任务消息
-        :param task_run_id: 任务运行ID
-        :raises Exception: 依赖不满足时抛出异常
-        """
+        """验证Worker环境是否满足任务依赖要求，不满足时抛异常"""
         from app.utils.env_utils import EnvUtils
         
         # 获取脚本的依赖标签

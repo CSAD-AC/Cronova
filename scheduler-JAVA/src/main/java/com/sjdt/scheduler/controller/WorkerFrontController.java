@@ -70,11 +70,10 @@ public class WorkerFrontController {
                     String heartbeatKey = RedisKey.getWorkerHeartbeatKey(worker.getId());
                     String infoKey = RedisKey.getWorkerInfoKey(worker.getId());
                     
-                    // 1. 实时在线状态
                     boolean isAlive = Boolean.TRUE.equals(redisTemplate.hasKey(heartbeatKey));
                     workerVO.setStatus(isAlive ? WorkerStatus.online.name() : WorkerStatus.offline.name());
                     
-                    // 2. 实时负载信息
+                    // 实时负载信息
                     Map<Object, Object> info = redisTemplate.opsForHash().entries(infoKey);
                     if (info != null && !info.isEmpty()) {
                         if (info.containsKey("cpuUsage")) {
@@ -96,7 +95,6 @@ public class WorkerFrontController {
                         }
                     }
                     
-                    // 3. 设置标签信息
                     workerVO.setTags(workerTagsMap.get(worker.getId()));
                     
                     return workerVO;
@@ -159,11 +157,9 @@ public class WorkerFrontController {
         String heartbeatKey = RedisKey.getWorkerHeartbeatKey(id);
         String infoKey = RedisKey.getWorkerInfoKey(id);
         
-        // 1. 实时在线状态
         boolean isAlive = redisTemplate.hasKey(heartbeatKey);
         workerVO.setStatus(isAlive ? WorkerStatus.online.name() : WorkerStatus.offline.name());
         
-        // 2. 实时负载信息
         Map<Object, Object> info = redisTemplate.opsForHash().entries(infoKey);
         if (!info.isEmpty()) {
             if (info.containsKey("cpuUsage")) {
@@ -185,7 +181,7 @@ public class WorkerFrontController {
             }
         }
         
-        // 3. 获取Worker的标签信息
+        // 获取Worker的标签信息
         try {
             Result<List<Integer>> tagIdsResult = workerTagService.getTagIdsByWorkerId(id);
             if (tagIdsResult != null && tagIdsResult.getData() != null) {

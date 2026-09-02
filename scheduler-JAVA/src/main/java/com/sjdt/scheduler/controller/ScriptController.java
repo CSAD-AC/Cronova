@@ -52,7 +52,6 @@ public class ScriptController {
     @Operation(summary = "获取脚本列表", description = "获取所有脚本的列表")
     public Result<List<ScriptVO>> listScripts() {
         List<Script> scripts = scriptService.list();
-        // 转换Script为ScriptVO
         List<ScriptVO> scriptVOs = scripts.stream()
                 .map(script -> ScriptVO.builder()
                         .id(script.getId())

@@ -12,7 +12,7 @@ public class HttpClientConfig {
     public RestTemplate restTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);  // 连接超时 5 秒
-        factory.setReadTimeout(60000);    // 读取超时 30 秒
+        factory.setReadTimeout(60000);    // 读取超时 60 秒
         return new RestTemplate(factory);
     }
 }

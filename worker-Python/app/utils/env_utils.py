@@ -5,16 +5,11 @@ from typing import List, Dict, Optional
 class EnvUtils:
     @staticmethod
     def get_all_installed_packages() -> List[Dict[str, str]]:
-        """
-        获取所有已安装的包及其版本信息
-        :return: 包含包名、版本的字典列表
-        """
+        """获取所有已安装的包及其版本信息"""
         packages_info = []
         try:
-            # 获取所有已安装的包
             installed_packages = importlib.metadata.distributions()
             for pkg in installed_packages:
-                # 获取包的元数据
                 name = pkg.metadata.get('Name')
                 version = pkg.version
                 if name and version:
@@ -32,15 +27,10 @@ class EnvUtils:
 
     @staticmethod
     def get_installed_packages(target_packages: List[str]) -> List[Dict[str, str]]:
-        """
-        获取指定包的版本信息
-        :param target_packages: 需要检测的包名列表
-        :return: 包含包名、版本、操作符的字典列表
-        """
+        """获取指定包的版本信息"""
         packages_info = []
         for pkg_name in target_packages:
             try:
-                # 获取包版本
                 version = importlib.metadata.version(pkg_name)
                 packages_info.append({
                     "name": pkg_name,
@@ -54,21 +44,13 @@ class EnvUtils:
     @staticmethod
     def check_package_version(package_name: str, required_version: Optional[str] = None, 
                              operator: Optional[str] = None) -> tuple[bool, str]:
-        """
-        检查指定包的版本是否满足要求
-        :param package_name: 包名
-        :param required_version: 要求的版本
-        :param operator: 版本比较操作符（如 >=, ==, <=, >, <）
-        :return: (是否满足要求, 当前版本信息)
-        """
+        """检查指定包版本是否满足要求"""
         try:
-            # 获取当前版本
             current_version = importlib.metadata.version(package_name)
             
             if not required_version or not operator:
                 return True, current_version
             
-            # 比较版本
             if EnvUtils._compare_versions(current_version, required_version, operator):
                 return True, current_version
             else:
@@ -79,13 +61,7 @@ class EnvUtils:
 
     @staticmethod
     def _compare_versions(current: str, required: str, operator: str) -> bool:
-        """
-        比较版本号
-        :param current: 当前版本
-        :param required: 要求版本
-        :param operator: 操作符
-        :return: 是否满足要求
-        """
+        """按操作符比较版本号"""
         try:
             from packaging import version
             current_v = version.parse(current)
