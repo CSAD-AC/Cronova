@@ -146,6 +146,14 @@
               </el-form-item>
             </el-col>
         </el-row>
+        <el-row v-if="formData.executeType === 'script'" :gutter="24">
+            <el-col :span="16">
+              <el-form-item label="分片数量" prop="shardTotal">
+                <el-input-number v-model="formData.shardTotal" :min="0" :max="100" />
+                <span class="form-tip">片 (0/1不分片；&gt;1时并发分片执行，脚本按 hash(主键)%总分片数 切分数据)</span>
+              </el-form-item>
+            </el-col>
+        </el-row>
         
         <el-divider content-position="left">调度配置</el-divider>
         
@@ -287,6 +295,8 @@ const formData = reactive({
   secretKey: '',
   retryCount: 3,
   retryIntervalSeconds: 60,
+  // 分片总数：0/1 不分片；>1 分片并发投递（仅脚本任务生效）
+  shardTotal: 0,
 })
 
 const rules: FormRules = {
@@ -484,6 +494,11 @@ async function handleSubmit() {
         timeoutSeconds: formData.timeoutSeconds,
         retryCount: formData.retryCount,
         retryIntervalSeconds: formData.retryIntervalSeconds,
+      }
+
+      // 分片数量：仅脚本任务传递（回调任务不分片）
+      if (formData.executeType === 'script') {
+        requestBody.shardTotal = formData.shardTotal
       }
 
       // 根据执行类型添加特定字段

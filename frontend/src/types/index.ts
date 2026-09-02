@@ -119,6 +119,8 @@ export interface Task {
   targetWorker?: string
   status?: TaskStatus
   executeType?: ExecuteType
+  /** 分片总数（NULL/0/1 = 不分片） */
+  shardTotal?: number
   createdBy?: string
   createTime?: string
   updateTime?: string
@@ -137,6 +139,8 @@ export interface TaskVO {
   timeoutSeconds?: number
   retryCount?: number
   retryIntervalSeconds?: number
+  /** 分片总数（NULL/0/1 = 不分片，>1 时分片并发投递） */
+  shardTotal?: number
   targetWorker?: string
   status: TaskStatus
   executeType?: ExecuteType
@@ -157,6 +161,8 @@ export interface TaskCreateDTO {
   cronExpr?: string
   status?: TaskStatus
   timeoutSeconds?: number
+  /** 分片总数（0/1 = 不分片，>1 时分片并发投递；仅脚本任务生效） */
+  shardTotal?: number
   targetWorker?: string
 }
 
@@ -171,6 +177,8 @@ export interface TaskUpdateDTO {
   cronExpr?: string
   status?: TaskStatus
   timeoutSeconds?: number
+  /** 分片总数（0/1 = 不分片，>1 时分片并发投递；仅脚本任务生效） */
+  shardTotal?: number
   targetWorker?: string
 }
 
@@ -185,6 +193,12 @@ export interface TaskRun {
   durationMs?: number
   errorMessage?: string
   createTime?: string
+  /** 分片序号（从0开始；NULL = 历史数据未写分片字段） */
+  shardIndex?: number
+  /** 本批分片总数（1 = 非分片任务） */
+  shardTotal?: number
+  /** 同一次触发的分片批次ID */
+  shardBatchId?: string
 }
 
 export type TaskRunStatus = 'pending' | 'running' | 'paused' | 'success' | 'failed' | 'timeout'

@@ -4,7 +4,6 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 
 const API_BASE_URL = "/"
-// const API_BASE_URL = "http://localhost:8085"
 
 const request = axios.create({
   baseURL: API_BASE_URL,

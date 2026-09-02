@@ -146,6 +146,14 @@
               </el-form-item>
             </el-col>
         </el-row>
+        <el-row v-if="formData.executeType === 'script'" :gutter="24">
+            <el-col :span="16">
+              <el-form-item label="分片数量" prop="shardTotal">
+                <el-input-number v-model="formData.shardTotal" :min="0" :max="100" />
+                <span class="form-tip">片 (修改仅影响下次触发；运行中批次按原片数结算)</span>
+              </el-form-item>
+            </el-col>
+        </el-row>
         
         <el-divider content-position="left">调度配置</el-divider>
         
@@ -281,6 +289,8 @@ const formData = reactive({
   secretKey: '',
   retryCount: 3,
   retryIntervalSeconds: 60,
+  // 分片总数：0/1 不分片；>1 分片并发投递（仅脚本任务生效）
+  shardTotal: 0,
 })
 
 const rules: FormRules = {
@@ -436,6 +446,8 @@ async function fetchTask() {
       timeoutSeconds: task.timeoutSeconds || 180,
       retryCount: task.retryCount !== undefined ? task.retryCount : 3,
       retryIntervalSeconds: task.retryIntervalSeconds || 60,
+      // 分片总数：历史任务可能为 NULL，统一回填 0（不分片）
+      shardTotal: (task as any).shardTotal !== undefined && (task as any).shardTotal !== null ? (task as any).shardTotal : 0,
       taskType: task.taskType,
       cronExpr: task.cronExpr || '',
       status: task.status || 'active',
@@ -494,6 +506,11 @@ async function handleSubmit() {
         timeoutSeconds: formData.timeoutSeconds,
         retryCount: formData.retryCount,
         retryIntervalSeconds: formData.retryIntervalSeconds,
+      }
+
+      // 分片数量：仅脚本任务传递（回调任务不分片）
+      if (formData.executeType === 'script') {
+        updateData.shardTotal = formData.shardTotal
       }
 
       // 根据执行类型添加特定字段

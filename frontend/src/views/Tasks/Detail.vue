@@ -77,6 +77,13 @@
               <div class="desc-label">超时时间</div>
               <div class="desc-value sjdt-mono">{{ task?.timeoutSeconds }}秒</div>
             </div>
+            <div v-if="task?.executeType === 'script'" class="desc-item">
+              <div class="desc-label">分片数量</div>
+              <div class="desc-value">
+                <span v-if="shardTotal && shardTotal > 1" class="type-chip chip-shard">{{ shardTotal }} 片</span>
+                <span v-else class="empty-text">不分片</span>
+              </div>
+            </div>
             <div class="desc-item">
               <div class="desc-label">目标执行器</div>
               <div class="desc-value">{{ task?.targetWorker || '自动匹配' }}</div>
@@ -147,6 +154,14 @@
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
                 <StatusTag :status="row.status" />
+              </template>
+            </el-table-column>
+            <el-table-column label="分片" width="110">
+              <template #default="{ row }">
+                <span v-if="row.shardTotal && row.shardTotal > 1" class="sjdt-mono time-text">
+                  {{ row.shardIndex + 1 }} / {{ row.shardTotal }}
+                </span>
+                <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
             <el-table-column prop="workerId" label="执行器" min-width="110">
@@ -345,6 +360,9 @@ const taskRuns = ref<TaskRun[]>([])
 const healthCheckLoading = ref(false)
 const cronDescription = ref('')
 const scriptName = ref('')
+
+/** 任务配置的分片总数（NULL/0/1 = 不分片） */
+const shardTotal = computed(() => (task.value as any)?.shardTotal || 0)
 
 // 执行历史相关数据
 const runsLoading = ref(false)
@@ -1061,6 +1079,11 @@ onUnmounted(() => {
 .chip-once {
   background: var(--sjdt-pending-soft);
   color: var(--sjdt-pending);
+}
+
+.chip-shard {
+  background: var(--sjdt-accent-soft);
+  color: var(--sjdt-accent);
 }
 
 .empty-text {
