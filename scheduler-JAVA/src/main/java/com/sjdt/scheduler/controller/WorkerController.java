@@ -184,8 +184,7 @@ public class WorkerController {
         
         String heartbeatKey = RedisKey.getWorkerHeartbeatKey(workerId);
         
-        // 1. 检查 Redis 中是否存在心跳键
-        // 如果不存在，说明 Worker 可能是新启动或从离线状态恢复
+        // 心跳键缺失说明 Worker 刚启动或从离线恢复，同步激活数据库状态为在线
         if (!redisTemplate.hasKey(heartbeatKey)) {
             log.info("检测到心跳键缺失，尝试激活 Worker 状态为在线 | WorkerID: {}", workerId);
             Worker worker = workerMapper.selectById(workerId);
@@ -198,10 +197,9 @@ public class WorkerController {
             }
         }
 
-        // 2. 写入/刷新 Redis 存活键
+        // 刷新心跳存活键，并更新 Hash 中的最后心跳时间
         redisTemplate.opsForValue().set(heartbeatKey, "online", 30, TimeUnit.SECONDS);
         
-        // 3. 同时更新 Redis Hash 中的最后心跳时间
         String infoKey = RedisKey.getWorkerInfoKey(workerId);
         redisTemplate.opsForHash().put(infoKey, "lastHeartbeat", LocalDateTime.now().toString());
         
@@ -429,7 +427,9 @@ public class WorkerController {
 
             if ("running".equals(taskStatus.getStatus())) {
                 taskRun.setDurationMs(taskStatus.getDurationMs());
-                
+                // 刷新 run 级心跳，供执行超时判断
+                taskRun.setLastHeartbeatTime(LocalDateTime.now());
+
                 if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
                     taskRun.setWorkerId(taskStatus.getWorkerId());
                     log.info("更新任务Worker ID，TaskRunID: {}, WorkerID: {}", taskRunId, taskStatus.getWorkerId());

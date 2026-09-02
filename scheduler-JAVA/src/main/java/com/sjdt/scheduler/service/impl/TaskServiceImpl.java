@@ -145,7 +145,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             throw new IllegalArgumentException("任务不存在，ID: " + taskUpdateDTO.getId());
         }
 
-        // 处理 requiredTags 转换
         if (taskUpdateDTO.getRequiredTags() != null) {
             try {
                 String requiredTagsJson = objectMapper.writeValueAsString(taskUpdateDTO.getRequiredTags());
@@ -158,7 +157,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         // 更新基本信息（排除createdBy和createTime，不排除status以允许状态更新）
         BeanUtils.copyProperties(taskUpdateDTO, task, "id", "createdBy", "createTime", "requiredTags");
         
-        // 如果请求中包含状态更新，则更新状态
         if (taskUpdateDTO.getStatus() != null) {
             task.setStatus(taskUpdateDTO.getStatus());
         }
@@ -169,7 +167,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         task.setUpdateTime(LocalDateTime.now());
         this.updateById(task);
 
-        // 处理回调配置
         if (task.getExecuteType() == ExecuteType.callback && taskUpdateDTO.getCallbackConfig() != null) {
             updateOrCreateCallbackConfig(task, taskUpdateDTO.getCallbackConfig());
         }
@@ -184,13 +181,11 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         );
 
         if (config != null) {
-            // 更新现有配置
             BeanUtils.copyProperties(configDTO, config, "id", "taskId", "createdBy", "createTime");
             config.setUpdateTime(LocalDateTime.now());
             callbackJobConfigMapper.updateById(config);
             log.info("回调配置更新成功，配置ID：{}", config.getId());
         } else {
-            // 创建新配置（如果之前没有）
             CallbackJobConfig newConfig = CallbackJobConfig.builder()
                     .taskId(task.getId())
                     .callbackUrl(configDTO.getCallbackUrl())
@@ -425,7 +420,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             throw new IllegalArgumentException("Script not found with id: " + task.getScriptId());
         }
 
-        // 调试日志：输出脚本信息
         String rootPath = getRootPath(script);
         log.info("脚本信息 - ID: {}, name: {}, path: {}, isDirectory: {}, parentId: {}, rootPath: {}",
                 script.getId(), script.getName(), script.getPath(), script.getIsDirectory(), script.getParentId(), rootPath);
@@ -519,24 +513,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     }
 
     private void publishCallbackTask(Task task, int retryNum, int delaySeconds) {
-        // 如果有延时，通过 MQ 延时消息发送给自己（模拟延时）
-        // 但目前系统回调是直接由调度器执行的，所以如果要支持延时重试，
-        // 最好是发送一个延时消息到 MQ，然后由另一个消费者处理
-        // 为了保持简单且符合当前架构，我们检查 delaySeconds
+        // 回调任务当前由调度器同步执行；延时重试统一由 TaskResultConsumer 异步触发，不走 MQ 延时消息
         if (delaySeconds > 0) {
-            // 这里我们需要一个专门处理延时回调的消息模型和消费者
-            // 或者直接让 publishTaskWithRetryAndDelay 被 MQ 消费者调用
-            // 目前为了快速实现且不引入太多新组件，我们在 TaskResultConsumer 中异步处理
-            // 如果用户要求使用 MQ 延时消息，我们需要确保所有重试都走 MQ
-            // 脚本任务已经走 MQ 了，回调任务目前是同步执行
-            
-            // 如果回调任务也想利用 MQ 的延时能力，我们需要发送消息到 MQ
-            // 暂且认为用户希望脚本任务利用 MQ 延时，回调任务可以保持现状或也改造成 MQ 驱动
-            // 为了统一，我们保持目前的 publishCallbackTask 逻辑，但如果需要重试延时，
-            // 可以在 publishCallbackTask 内部实现异步或者让 TaskResultConsumer 触发。
-            
-            // 这里我们采取折中方案：回调任务的重试如果也需要延时，暂时在 TaskResultConsumer 异步处理
-            // 而脚本任务则利用 MQ 的原生延时级别。
         }
 
         CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
@@ -606,6 +584,11 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             log.error("重新发布任务失败，TaskRun不存在: {}", taskRunId);
             return;
         }
+
+        // 重置计时基准：超时重发视为一次新的执行尝试
+        taskRun.setStartTime(LocalDateTime.now());
+        taskRun.setLastHeartbeatTime(LocalDateTime.now());
+        taskRunMapper.updateById(taskRun);
 
         Task task = this.getById(taskRun.getTaskId());
         if (task == null) {
@@ -702,7 +685,6 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
             return scriptPath.substring(0, lastSlash);
         }
         
-        // 没有目录，返回根路径
         return "/";
     }
 }

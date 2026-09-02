@@ -12,6 +12,7 @@ import com.sjdt.scheduler.service.ShardSettlementService;
 import com.sjdt.scheduler.service.TaskProducerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +24,14 @@ import java.util.List;
  * 任务超时监控器
  * 定时扫描运行中的任务，检查是否超过设定的超时时间
  * 如果超时，则标记为失败并尝试重试
+ * <p>
+ * 超时阈值见 application.yml 的 sjdt.timeout.*：
+ * <ol>
+ *   <li>派发超时 {@code dispatch-seconds}：run 保持 pending 超过该值判定派发失败；</li>
+ *   <li>执行超时：总时长超过 {@code execution-max-seconds}（任务级 timeoutSeconds 可覆盖），
+ *       或超过 {@code execution-heartbeat-seconds} 无状态上报。</li>
+ * </ol>
+ * 超时后发送停止消息、标记 timeout 并触发重试。
  */
 @Slf4j
 @Component
@@ -33,6 +42,18 @@ public class TaskTimeoutMonitor {
     private final ITaskService taskService;
     private final TaskProducerService taskProducerService;
     private final ShardSettlementService shardSettlementService;
+
+    /** 派发超时（秒） */
+    @Value("${sjdt.timeout.dispatch-seconds:60}")
+    private int dispatchTimeoutSeconds;
+
+    /** 执行总时长上限（秒） */
+    @Value("${sjdt.timeout.execution-max-seconds:3600}")
+    private int executionMaxSeconds;
+
+    /** 无心跳阈值（秒） */
+    @Value("${sjdt.timeout.execution-heartbeat-seconds:30}")
+    private int executionHeartbeatSeconds;
 
     @Autowired
     public TaskTimeoutMonitor(TaskRunMapper taskRunMapper, TaskMapper taskMapper,
@@ -85,42 +106,44 @@ public class TaskTimeoutMonitor {
         }
 
         if (taskRun.getStatus() == TaskRunStatus.pending) {
-            // 检查派发超时：如果任务在 pending 状态停留太久（例如超过 120 秒执行器仍未领用）
+            // 派发超时：pending 停留超过阈值，说明执行器未领用
             long pendingSeconds = Duration.between(taskRun.getCreateTime(), now).getSeconds();
-            if (pendingSeconds > 120) { // 默认 120 秒派发超时
-                log.warn("任务派发超时（执行器未领用），TaskRunID: {}, TaskID: {}, 已等待: {}s", 
-                        taskRun.getId(), task.getId(), pendingSeconds);
-                
+            if (pendingSeconds > dispatchTimeoutSeconds) {
+                log.warn("任务派发超时（执行器未领用），TaskRunID: {}, TaskID: {}, 已等待: {}s, 限制: {}s",
+                        taskRun.getId(), task.getId(), pendingSeconds, dispatchTimeoutSeconds);
+
                 handleTimeoutRetry(task, taskRun, "任务派发超时（执行器未响应）");
             }
             return;
         }
 
-        // 以下是针对 running 状态的执行超时检查
-        Integer timeoutSeconds = task.getTimeoutSeconds();
-        if (timeoutSeconds == null || timeoutSeconds <= 0) {
+        // 执行超时：总时长上限，任务级 timeoutSeconds 优先，否则用全局默认
+        long maxDurationSeconds = (task.getTimeoutSeconds() != null && task.getTimeoutSeconds() > 0)
+                ? task.getTimeoutSeconds() : executionMaxSeconds;
+
+        LocalDateTime start = taskRun.getStartTime() != null ? taskRun.getStartTime() : taskRun.getCreateTime();
+
+        // 总时长超时（从 run 开始时间起累计）
+        long durationSeconds = Duration.between(start, now).getSeconds();
+        if (durationSeconds > maxDurationSeconds) {
+            log.warn("任务执行超时(总时长)，TaskRunID: {}, TaskID: {}, 已运行: {}s, 限制: {}s",
+                    taskRun.getId(), task.getId(), durationSeconds, maxDurationSeconds);
+
+            sendStopMessage(taskRun, "任务执行超时(总时长限制)，系统强制停止");
+            handleTimeoutRetry(task, taskRun, "任务执行超时(总时长: " + maxDurationSeconds + "s)");
             return;
         }
 
-        // 计算运行时长，优先使用 lastHeartbeatTime
-        LocalDateTime lastActiveTime = taskRun.getLastHeartbeatTime();
-        if (lastActiveTime == null) {
-            lastActiveTime = taskRun.getStartTime();
-        }
-        if (lastActiveTime == null) {
-            lastActiveTime = taskRun.getCreateTime();
-        }
+        // 无心跳超时：lastHeartbeatTime 由 Worker 的状态上报刷新
+        LocalDateTime heartbeat = taskRun.getLastHeartbeatTime() != null
+                ? taskRun.getLastHeartbeatTime() : start;
+        long inactiveSeconds = Duration.between(heartbeat, now).getSeconds();
+        if (inactiveSeconds > executionHeartbeatSeconds) {
+            log.warn("任务执行超时(无心跳)，TaskRunID: {}, TaskID: {}, 已: {}s 无状态上报, 限制: {}s",
+                    taskRun.getId(), task.getId(), inactiveSeconds, executionHeartbeatSeconds);
 
-        long inactiveSeconds = Duration.between(lastActiveTime, now).getSeconds();
-        if (inactiveSeconds > timeoutSeconds) {
-            log.warn("任务执行超时(无心跳)，TaskRunID: {}, TaskID: {}, 已由于: {}s 无响应, 限制: {}s", 
-                    taskRun.getId(), task.getId(), inactiveSeconds, timeoutSeconds);
-
-            // 1. 发送停止消息给 Worker (尽力而为)
-            sendStopMessage(taskRun, "任务执行超时，系统强制停止");
-
-            // 2. 处理超时重试
-            handleTimeoutRetry(task, taskRun, "任务执行超时 (限制: " + timeoutSeconds + "s)");
+            sendStopMessage(taskRun, "任务执行超时(无心跳)，系统强制停止");
+            handleTimeoutRetry(task, taskRun, "任务执行超时(无心跳: " + executionHeartbeatSeconds + "s)");
         }
     }
 
