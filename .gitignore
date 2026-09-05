@@ -68,3 +68,8 @@ worker-JAVA/task_instances/
 ### 本地测试脚本（模拟Worker黑盒验证，不入库）###
 scripts-tests/
 
+### 本地构建脚本与执行器运行时日志（不入库）###
+build.ps1
+worker-Python/*.log
+worker-JAVA/*.log
+
