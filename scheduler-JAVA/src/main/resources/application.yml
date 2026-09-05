@@ -24,9 +24,9 @@ spring:
     enabled: true
     # 迁移脚本位置
     locations: classpath:db/migration
-    # 存量库（schema 非空）自动基线，避免启动即失败
+    # V1 为当前全量 schema（含分片三列），属重构基线；新库自动建全量
     baseline-on-migrate: true
-    # V1 为当前全量 schema（含阶段一列），存量库视为已应用，只跑 V2 及以上增量
+    # 存量库（schema 非空）视为已按 V1 基线，避免启动即失败
     baseline-version: 1
 # MyBatis-Plus 通用配置
 mybatis-plus:

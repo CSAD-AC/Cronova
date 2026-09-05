@@ -57,11 +57,6 @@ CREATE TABLE `scripts` (
                            INDEX idx_parent_id (`parent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='脚本表';
 
-INSERT INTO scripts(`id`, `name`, `path`, `is_directory`, `main_file`, `parent_id`) VALUES
-    ('26b60f9bf737a189804e0e7284276b9f', 'test1', 'task-engine/scripts/76d49f5f-e2b0-4a3a-8938-e9c1e4247101/', 1, NULL, NULL),
-    ('005d3c6684c957078e66748b5001afeb', 'main.py', 'task-engine/scripts/76d49f5f-e2b0-4a3a-8938-e9c1e4247101/main.py', 0, NULL, '26b60f9bf737a189804e0e7284276b9f'),
-    ('c4a37fd513081b2f97cd504eba4a70ea', 'test.py', 'task-engine/scripts/76d49f5f-e2b0-4a3a-8938-e9c1e4247101/test.py', 0, NULL, '26b60f9bf737a189804e0e7284276b9f');
-
 -- 标签表（用于 Docker 镜像标签和任务匹配）
 DROP TABLE IF EXISTS tags;
 CREATE TABLE tags (
@@ -152,9 +147,6 @@ CREATE TABLE tasks (
                        INDEX idx_due (status, task_type, next_trigger_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务定义表（支持脚本执行和HTTP回调）';
 
-INSERT INTO tasks(`id`, `name`, `description`, `execute_type`, `script_type`, `script_id`, `task_type`, `cron_expr`, `timeout_seconds`, `retry_count`, `retry_interval_seconds`, `target_worker`, `required_tags`, `status`, `created_by`) VALUES
-    ('d83d5ba5716a8282d439883132a37bc3', '测试', '测试任务', 'script', 'python', '005d3c6684c957078e66748b5001afeb', 'once', NULL, 180, 3, 60, NULL, NULL, 'active', 'system');
-
 -- 任务运行实例表
 DROP TABLE IF EXISTS task_run;
 CREATE TABLE task_run (
@@ -184,6 +176,9 @@ CREATE TABLE task_log (
                           run_id          VARCHAR(64) NOT NULL COMMENT '关联 task_run.id',
                           stdout_path     VARCHAR(256) COMMENT 'stdout 日志 MinIO 路径',
                           stderr_path     VARCHAR(256) COMMENT 'stderr 日志 MinIO 路径',
+                          shard_batch_id  VARCHAR(64) COMMENT '分片批次ID（同批次分片共享；非分片任务为 N=1 批次）',
+                          shard_index     INT NULL COMMENT '分片序号（0 起；非分片任务为 0）',
+                          shard_total     INT NULL COMMENT '分片总数（非分片任务为 1）',
                           create_time      TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务日志表（仅存 MinIO 路径）';
 
