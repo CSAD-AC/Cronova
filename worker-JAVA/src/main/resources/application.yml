@@ -42,6 +42,15 @@ worker:
   # 执行并发度（任务线程池）
   executor-threads: 12
 
+  # 日志管道（CFL 标准化 / 可灰度关闭）
+  log-pipeline:
+    # CFL 行级标准化（false 则透传原始输出）
+    normalize-lines: ${LOG_PIPELINE_NORMALIZE:true}
+    # errorMessage 尾部行数（环形缓冲容量）
+    error-tail-lines: ${LOG_PIPELINE_ERROR_TAIL_LINES:1000}
+    # 增量上传间隔（毫秒）
+    flush-interval-ms: ${LOG_PIPELINE_FLUSH_INTERVAL_MS:5000}
+
 logging:
   level:
     root: INFO

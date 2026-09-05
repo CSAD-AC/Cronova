@@ -35,6 +35,11 @@ public class TaskExecuteMessage {
     private String targetWorkerId;
     private Integer timeoutSeconds;
 
+    /** 分片身份（日志聚合用；非分片任务为 null / 1） */
+    private Integer shardIndex;
+    private Integer shardTotal;
+    private String shardBatchId;
+
     public int timeoutSecondsOrDefault() {
         return timeoutSeconds != null && timeoutSeconds > 0 ? timeoutSeconds : 300;
     }

@@ -7,10 +7,13 @@ import com.sjdt.worker.model.TaskExecuteMessage;
 import com.sjdt.worker.model.TaskResultMessage;
 import com.sjdt.worker.service.ProcessManager;
 import com.sjdt.worker.service.TaskInstanceManager;
+import com.sjdt.worker.service.Cfl;
+import com.sjdt.worker.service.TaskLogPipeline;
 import com.sjdt.worker.service.TaskResultPublisher;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -121,7 +124,7 @@ public abstract class AbstractProcessHandler implements TaskHandler {
             download = downloadScript(task);
 
             String logBucket = properties.getMinio().getBucket();
-            String logObject = "task-logs/" + task.getTaskId() + "/" + runId + ".log";
+            String logObject = buildLogObject(task, runId);
 
             instanceManager.updateStatus(runId, "running",
                     Map.of("log_bucket", logBucket, "log_object", logObject));
@@ -130,6 +133,14 @@ public abstract class AbstractProcessHandler implements TaskHandler {
             log.info("执行命令：{}，超时时间：{}秒", command, task.timeoutSecondsOrDefault());
 
             ProcessBuilder pb = new ProcessBuilder(wrapWithSetsid(command));
+            // 注入分片身份到子进程环境变量，与 Python 执行器的 shard_env() 对齐；
+            // 业务脚本据此只处理归属当前片的记录（hash(主键) % SJDT_SHARD_TOTAL == SJDT_SHARD_INDEX）
+            pb.environment().put("SJDT_SHARD_TOTAL", String.valueOf(shardTotal(task)));
+            pb.environment().put("SJDT_SHARD_INDEX", String.valueOf(shardIndex(task)));
+            pb.environment().put("SJDT_SHARD_BATCH_ID", task.getShardBatchId() != null ? task.getShardBatchId() : "");
+            // 强制 Python 子进程以 UTF-8 输出，避免 Windows 下 GBK 编码被按 UTF-8 误读导致日志乱码
+            pb.environment().put("PYTHONIOENCODING", "utf-8");
+            pb.environment().put("PYTHONUTF8", "1");
             pb.directory(Path.of(download.workDir()).toFile());
             pb.redirectErrorStream(true);
             Process process = pb.start();
@@ -140,7 +151,7 @@ public abstract class AbstractProcessHandler implements TaskHandler {
                     process, pid, task, startTime, logBucket, logObject, download.entryPath()));
 
             localLog = Path.of(download.workDir(), runId + ".log");
-            StreamResult stream = streamAndWait(process, localLog, logBucket, logObject);
+            StreamResult stream = streamAndWait(process, task, runId, localLog, logBucket, logObject);
 
             finishResult(task, startTime, logBucket, logObject, stream);
         } catch (Exception e) {
@@ -172,6 +183,11 @@ public abstract class AbstractProcessHandler implements TaskHandler {
             } else {
                 object = rest;
             }
+        }
+        // 兼容 path 自带 bucket 前缀（如 task-engine/scripts/xxx.py）：剥离首段 bucket，
+        // 与目录分支及 Python minio_utils 的解析一致，避免下载时对象名多包一层 bucket 导致 key 不存在
+        if (object.startsWith(bucket + "/")) {
+            object = object.substring(bucket.length() + 1);
         }
 
         String rootPath = script.getRootPath();
@@ -267,40 +283,114 @@ public abstract class AbstractProcessHandler implements TaskHandler {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
-    /** 流式读取 stdout（镜像到容器日志 + 本地文件），周期上传 MinIO，等待进程退出 */
-    private StreamResult streamAndWait(Process process, Path localLog, String logBucket, String logObject) throws Exception {
-        StringBuilder output = new StringBuilder();
+    /** 分片总数：未设置分片时按 1（单分片），避免注入 "null" 破坏脚本解析 */
+    private int shardTotal(TaskExecuteMessage task) {
+        return task.getShardTotal() != null ? task.getShardTotal() : 1;
+    }
+
+    /** 分片序号：未设置时按 0 */
+    private int shardIndex(TaskExecuteMessage task) {
+        return task.getShardIndex() != null ? task.getShardIndex() : 0;
+    }
+
+    /** 构造任务日志对象名（含分片维度，方案 4.5）；非分片任务为 `task-logs/{taskId}/{runId}.log` */
+    private static String buildLogObject(TaskExecuteMessage task, String runId) {
+        Integer shardTotal = task.getShardTotal();
+        if (shardTotal != null && shardTotal > 1) {
+            String batchId = task.getShardBatchId() != null ? task.getShardBatchId() : "batch";
+            Integer shardIndex = task.getShardIndex() != null ? task.getShardIndex() : 0;
+            return "task-logs/" + task.getTaskId() + "/" + batchId + "/" + shardIndex + "-" + runId + ".log";
+        }
+        return "task-logs/" + task.getTaskId() + "/" + runId + ".log";
+    }
+
+    /** 流式读取 stdout（镜像到容器日志 + 本地文件），CFL 归一并周期增量追加 MinIO（log + .idx），等待进程退出 */
+    private StreamResult streamAndWait(Process process, TaskExecuteMessage task, String runId,
+                                       Path localLog, String logBucket, String logObject) throws Exception {
+        boolean normalize = properties.getLogPipeline().isNormalizeLines();
+        // 尾部环形缓冲：只保留最近 N 行（配置）
+        TaskLogPipeline pipeline = new TaskLogPipeline(properties.getLogPipeline().getErrorTailLines());
+        // CFL 归一化器（shard 字段可选；非分片任务省略）
+        Cfl cfl = new Cfl(task.getShardIndex(), task.getShardTotal());
+        Path localIdx = Path.of(localLog.toString() + ".idx");
+
         long start = System.currentTimeMillis();
         long lastUpload = start;
+        // 崩溃恢复：远端对象大小 = 已上传字节数（本地文件是其前缀）
+        long uploadedOffset = 0;
+        long idxOffset = 0;
+        try {
+            long size = minioStorage.stat(logBucket, logObject);
+            if (size > 0) {
+                uploadedOffset = size;
+            }
+            long idxSize = minioStorage.stat(logBucket, logObject + ".idx");
+            if (idxSize > 0) {
+                idxOffset = idxSize;
+            }
+        } catch (Exception ignore) {
+            // stat 失败（如 MinIO 暂不可用）不阻断任务，从 0 开始
+        }
+        pipeline.setUploadedOffset(uploadedOffset);
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                output.append(line).append('\n');
-                // 镜像到容器 stdout（Docker 日志可见）
-                System.out.println(line);
-                appendLocalLog(localLog, line);
+                if (normalize) {
+                    // CFL 归一化：新条目重写头行，续行原样落盘，并产出 .idx 记录
+                    Cfl.Entry entry = cfl.process(line, System.currentTimeMillis());
+                    if (entry != null) {
+                        String header = cfl.formatHeader(entry) + "\n";
+                        long offsetBefore = Files.exists(localLog) ? Files.size(localLog) : 0;
+                        appendLocalLog(localLog, cfl.formatHeader(entry));
+                        appendIdx(localIdx, entry.tsMillis, offsetBefore, entry.levelAbbr());
+                        pipeline.add(header);
+                        System.out.println(header.stripTrailing());
+                    } else {
+                        appendLocalLog(localLog, line);
+                        pipeline.add(line + "\n");
+                        System.out.println(line);
+                    }
+                } else {
+                    // 透传原始输出（灰度关闭 CFL）
+                    appendLocalLog(localLog, line);
+                    pipeline.add(line + "\n");
+                    System.out.println(line);
+                }
 
                 long now = System.currentTimeMillis();
                 long elapsedSec = (now - start) / 1000;
                 long intervalMs = elapsedSec < 10 ? 1000 : (elapsedSec < 60 ? 3000 : 5000);
                 if (now - lastUpload >= intervalMs) {
-                    uploadLog(localLog, logBucket, logObject);
+                    long newOffset = appendLog(localLog, logBucket, logObject, pipeline.getUploadedOffset());
+                    if (newOffset >= 0) {
+                        pipeline.setUploadedOffset(newOffset);
+                    }
+                    if (normalize) {
+                        idxOffset = appendLog(localIdx, logBucket, logObject + ".idx", idxOffset);
+                    }
                     lastUpload = now;
                 }
             }
         }
 
         int exitCode = process.waitFor();
-        log.info("进程已退出，taskRunId=?, exitCode={}", exitCode);
+        log.info("进程已退出，taskRunId={}, exitCode={}", runId, exitCode);
 
-        // 最终日志上传并清理本地缓存
+        // 最终日志追加，仅追加成功才清理本地缓存（失败保留，避免日志丢失）
         if (Files.exists(localLog)) {
-            uploadLog(localLog, logBucket, logObject);
-            Files.deleteIfExists(localLog);
+            long newOffset = appendLog(localLog, logBucket, logObject, pipeline.getUploadedOffset());
+            if (newOffset >= 0) {
+                Files.deleteIfExists(localLog);
+            }
         }
-        return new StreamResult(exitCode, output.toString());
+        if (normalize && Files.exists(localIdx)) {
+            idxOffset = appendLog(localIdx, logBucket, logObject + ".idx", idxOffset);
+            Files.deleteIfExists(localIdx);
+        }
+        // StreamResult 只携带尾部日志（已截断）
+        return new StreamResult(exitCode, pipeline.errorTail(1000));
     }
 
     private void appendLocalLog(Path localLog, String line) {
@@ -313,16 +403,30 @@ public abstract class AbstractProcessHandler implements TaskHandler {
         }
     }
 
-    private void uploadLog(Path localLog, String logBucket, String logObject) {
+    /** 追加 .idx 记录（JSONL：{"t":毫秒,"o":字节偏移,"l":级别缩写}） */
+    private void appendIdx(Path localIdx, long tsMillis, long offset, String levelAbbr) {
         try {
-            if (Files.exists(localLog)) {
-                byte[] content = Files.readAllBytes(localLog);
-                if (content.length > 0) {
-                    minioStorage.upload(logBucket, logObject, content);
-                }
-            }
+            Files.createDirectories(localIdx.getParent());
+            String rec = "{\"t\":" + tsMillis + ",\"o\":" + offset + ",\"l\":\"" + levelAbbr + "\"}\n";
+            Files.writeString(localIdx, rec, StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (Exception e) {
-            log.warn("日志上传失败，obj={}, err={}", logObject, e.getMessage());
+            log.warn("写入本地 .idx 失败：{}", e.getMessage());
+        }
+    }
+
+    /** 增量追加 [uploadedOffset, 文件末尾) 的新增字节；成功返回新偏移，失败返回 -1（本地文件保留） */
+    private long appendLog(Path localLog, String logBucket, String logObject, long uploadedOffset) {
+        try (InputStream in = Files.newInputStream(localLog)) {
+            long skipped = in.skip(uploadedOffset);
+            byte[] data = in.readAllBytes();
+            if (data.length > 0) {
+                return minioStorage.append(logBucket, logObject, data, uploadedOffset);
+            }
+            return skipped;
+        } catch (Exception e) {
+            log.warn("日志追加失败，本地文件保留，obj={}, err={}", logObject, e.getMessage());
+            return -1;
         }
     }
 
@@ -351,6 +455,9 @@ public abstract class AbstractProcessHandler implements TaskHandler {
                 .durationMs(durationMs)
                 .errorMessage(errorMessage)
                 .logPath(logBucket + "/" + logObject)
+                .shardIndex(task.getShardIndex())
+                .shardTotal(task.getShardTotal())
+                .shardBatchId(task.getShardBatchId())
                 .build();
 
         resultPublisher.publish(result);

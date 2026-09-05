@@ -35,4 +35,9 @@ public class TaskResultMessage {
     private Long durationMs;
     private String errorMessage;
     private String logPath;
+
+    /** 分片身份（日志聚合用；非分片任务为 null） */
+    private Integer shardIndex;
+    private Integer shardTotal;
+    private String shardBatchId;
 }

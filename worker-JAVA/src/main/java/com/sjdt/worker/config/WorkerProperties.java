@@ -40,11 +40,24 @@ public class WorkerProperties {
     /** 任务执行线程池大小 */
     private int executorThreads = 12;
 
+    /** 日志管道配置 */
+    private final LogPipeline logPipeline = new LogPipeline();
+
     /** RocketMQ 配置 */
     private final Mq mq = new Mq();
 
     /** MinIO 配置 */
     private final Minio minio = new Minio();
+
+    @Data
+    public static class LogPipeline {
+        /** CFL 行级标准化（false 则透传原始输出） */
+        private boolean normalizeLines = true;
+        /** errorMessage 尾部行数（环形缓冲容量） */
+        private int errorTailLines = 1000;
+        /** 增量上传间隔（毫秒） */
+        private int flushIntervalMs = 5000;
+    }
 
     @Data
     public static class Mq {

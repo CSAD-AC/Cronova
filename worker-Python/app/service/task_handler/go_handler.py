@@ -9,7 +9,8 @@ from app.model.task import TaskExecuteMessage, TaskResultMessage
 from app.service.task_handler.base_handler import BaseHandler
 from app.service.process_manager import process_manager
 from app.service.task_instance_manager import task_instance_manager
-from app.utils.minio_utils import minio_upload_file, get_minio_client
+from app.utils.minio_utils import append_log, get_minio_client
+from app.service.task_log_pipeline import TaskLogPipeline, build_log_object
 from app.config import Config
 from rocketmq.client import Producer, Message
 from app.utils.log_utils import get_logger
@@ -140,7 +141,7 @@ class GoHandler(BaseHandler):
 
             # 3. 准备日志存储
             log_bucket = Config.MINIO_BUCKET_NAME
-            log_object = f"task-logs/{task.taskId}/{task_run_id}.log"
+            log_object = build_log_object(task, task_run_id)
             
             # 4. 更新任务状态为运行中
             task_instance_manager.update_status(task_run_id, "running",
@@ -175,22 +176,29 @@ class GoHandler(BaseHandler):
             }
             process_manager.add_process(task_run_id, process_info)
             
-            # 7. 创建日志共享队列
-            import queue
-            log_queue = queue.Queue()
-            
+            # 7. 创建日志管道（本地落盘 + 增量上传 + 尾部环形缓冲 + CFL 标准化）
+            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
+            pipeline = TaskLogPipeline(
+                log_bucket, log_object, local_log_path,
+                normalize=Config.LOG_PIPELINE_NORMALIZE,
+                shard_index=task.shardIndex,
+                shard_total=task.shardTotal,
+                tail_lines=Config.LOG_PIPELINE_ERROR_TAIL_LINES,
+            )
+            logger.info("日志管道已创建，本地文件：%s，taskRunId: %s", local_log_path, task_run_id)
+
             # 8. 启动日志监控线程（唯一 stdout 消费者）
             log_thread = threading.Thread(
                 target=self._monitor_log_output,
-                args=(process, log_bucket, log_object, task_run_id, log_queue),
+                args=(process, log_bucket, log_object, task_run_id, pipeline),
                 daemon=True
             )
             log_thread.start()
             
-            # 9. 启动状态监控线程（只负责 wait，不再 read stdout）
+            # 9. 启动状态监控线程（只负责 wait，从管道取尾部缓冲）
             status_thread = threading.Thread(
                 target=self._monitor_process_status,
-                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, log_queue),
+                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, pipeline),
                 daemon=True
             )
             status_thread.start()
@@ -199,158 +207,31 @@ class GoHandler(BaseHandler):
             logger.error("异步Go任务执行失败（%s）：%s", task.taskId, str(e), exc_info=True)
             self._handle_task_error(task, task_run_id, str(e), start_time)
 
-    def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str, log_queue):
-        """
-        日志监控线程 - 唯一 stdout 消费者
-        将日志放入共享队列，由状态线程处理上传
-        """
+    def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str, pipeline: TaskLogPipeline):
+        """日志监控线程 - 唯一 stdout 消费者，委托 TaskLogPipeline 采集/上传"""
         try:
-            import sys
-            import time
-            from io import BytesIO
-            from app.utils.minio_utils import minio_upload_file
-            
-            local_log_path = f"/tmp/task_{task_run_id}_logs.txt"
-            start_time = time.time()
-            last_upload_time = start_time
-            
-            def get_upload_interval(elapsed):
-                if elapsed < 10:
-                    return 1
-                elif elapsed < 60:
-                    return 3
-                else:
-                    return 5
-            
-            while True:
-                line = process.stdout.readline()
-                
-                # 检查进程是否已退出
-                process_exited = process.poll() is not None
-                
-                # 如果没有输出且进程已退出，退出循环
-                if not line:
-                    if process_exited:
-                        break
-                    else:
-                        # 进程还没退出，但没有输出（可能缓冲区空），继续等待
-                        time.sleep(0.01)
-                        continue
-                
-                if line:
-                    # 同时输出到容器stdout（Docker日志中可见）
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
-                    
-                    # 写入本地文件
-                    with open(local_log_path, 'a', encoding='utf-8') as f:
-                        f.write(line)
-                    
-                    # 放入共享队列
-                    log_queue.put(line)
-                    
-                    # 定时上传日志到MinIO（实时更新日志）
-                    current_time = time.time()
-                    elapsed = current_time - start_time
-                    interval = get_upload_interval(elapsed)
-                    
-                    if current_time - last_upload_time >= interval:
-                        try:
-                            with open(local_log_path, 'r', encoding='utf-8') as f:
-                                content = f.read()
-                            if content:
-                                log_buffer = BytesIO(content.encode('utf-8'))
-                                minio_upload_file(log_bucket, log_object, log_buffer, len(content))
-                                logger.debug("定时日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
-                        except Exception as e:
-                            logger.error("定时日志上传失败: %s", str(e))
-                        last_upload_time = current_time
-                    
-                    # 如果进程已退出，发送结束信号
-                    if process_exited:
-                        log_queue.put(None)  # 发送结束信号
-                        break
-            
+            logger.info("启动日志监控线程，taskRunId: %s", task_run_id)
+            # 阻塞读取 + 增量上传 + 收尾，直到进程退出
+            pipeline.stream(process)
             logger.info("日志监控完成，taskRunId: %s", task_run_id)
-            
-            # 删除本地日志缓存前，确保本地文件的最终内容已上传
-            if os.path.exists(local_log_path):
-                try:
-                    with open(local_log_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    if content:
-                        from io import BytesIO
-                        from app.utils.minio_utils import minio_upload_file
-                        log_buffer = BytesIO(content.encode('utf-8'))
-                        minio_upload_file(log_bucket, log_object, log_buffer, len(content))
-                        logger.info("最终日志上传成功，bucket: %s, obj: %s", log_bucket, log_object)
-                except Exception as e:
-                    logger.error("最终日志上传失败: %s", str(e))
-                
-                # 上传完成后删除本地缓存
-                os.remove(local_log_path)
-                logger.info("本地日志缓存已删除，taskRunId: %s", task_run_id)
         except Exception as e:
             logger.error("Go任务日志监控异常: %s", str(e))
 
-    def _upload_partial_log_with_retry(self, bucket: str, obj: str, content: str, local_log_path: str, max_retries: int = 3):
-        """带重试机制的日志追加上传"""
-        for attempt in range(max_retries):
-            try:
-                self._append_log_to_minio(bucket, obj, content)
-                return  # 成功则返回
-            except Exception as e:
-                logger.error("Go日志上传失败（尝试 %d/%d），taskRunId: %s，错误: %s", 
-                           attempt + 1, max_retries, obj.split('/')[-1].split('.')[0], str(e))
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(2 ** attempt)
-                else:
-                    logger.error("Go日志上传最终失败，将仅保存在本地: %s", local_log_path)
-
-    def _append_log_to_minio(self, bucket: str, obj: str, content: str):
-        from io import BytesIO
-        try:
-            minio_client = get_minio_client()
-            try:
-                existing_obj = minio_client.get_object(bucket, obj)
-                existing_content = existing_obj.read().decode('utf-8')
-                existing_obj.close()
-                existing_obj.release_conn()
-                combined_content = existing_content + content
-                log_buffer = BytesIO(combined_content.encode('utf-8'))
-            except Exception:
-                log_buffer = BytesIO(content.encode('utf-8'))
-            
-            minio_upload_file(bucket, obj, log_buffer, log_buffer.getbuffer().nbytes)
-        except Exception as e:
-            logger.error("Go日志上传失败: %s", str(e))
-
-    def _monitor_process_status(self, process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, log_queue):
-        """状态监控线程：只 wait 进程，从共享队列收集日志构建 errorMessage"""
+    def _monitor_process_status(self, process, task, task_run_id, start_time, log_bucket, log_object, temp_bin_path, pipeline):
+        """状态监控线程：只 wait 进程，从管道尾部缓冲构建 errorMessage（不全量缓存）"""
         try:
             # 等待进程完成
             exit_code = process.wait()
             
-            # 从队列收集所有日志
-            all_output_parts = []
-            while True:
-                try:
-                    line = log_queue.get(timeout=1)
-                    if line is None:  # 结束信号
-                        break
-                    all_output_parts.append(line)
-                except:
-                    break
-            
-            all_output = ''.join(all_output_parts)
+            # 从管道取尾部日志（环形缓冲，限制 1000 字符）
+            all_output = pipeline.error_tail(1000)
             
             end_time = datetime.utcnow()
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
             
             error_message = None
             if exit_code != 0:
-                error_message = all_output[:1000] if all_output else f"退出码：{exit_code}"
+                error_message = all_output if all_output else f"退出码：{exit_code}"
             
             result = TaskResultMessage(
                 workerId=Config.WORKER_ID,
@@ -362,7 +243,10 @@ class GoHandler(BaseHandler):
                 endTime=end_time.isoformat() + "Z",
                 durationMs=duration_ms,
                 errorMessage=error_message,
-                logPath=f"{log_bucket}/{log_object}"
+                logPath=f"{log_bucket}/{log_object}",
+                shardIndex=task.shardIndex,
+                shardTotal=task.shardTotal,
+                shardBatchId=task.shardBatchId
             )
             
             self._send_task_result(result)

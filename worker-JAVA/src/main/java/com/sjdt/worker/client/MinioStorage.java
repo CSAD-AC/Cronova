@@ -2,12 +2,20 @@ package com.sjdt.worker.client;
 
 import com.sjdt.worker.config.WorkerProperties;
 import io.minio.BucketExistsArgs;
+import io.minio.ComposeObjectArgs;
+import io.minio.ComposeSource;
+import io.minio.CopyObjectArgs;
+import io.minio.CopySource;
 import io.minio.GetObjectArgs;
 import io.minio.ListObjectsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import io.minio.Result;
+import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
+import io.minio.errors.ErrorResponseException;
 import io.minio.messages.Item;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -85,6 +93,91 @@ public class MinioStorage {
             throw new RuntimeException("MinIO 上传失败, bucket=" + bucket + ", obj=" + objectName, e);
         }
     }
+
+    /** 查询对象大小（字节）；对象不存在时返回 -1 */
+    public long stat(String bucket, String objectName) {
+        try {
+            StatObjectResponse stat = client.statObject(StatObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName)
+                    .build());
+            return stat.size();
+        } catch (ErrorResponseException e) {
+            if (e.errorResponse() != null && "NoSuchKey".equals(e.errorResponse().code())) {
+                return -1;
+            }
+            throw new RuntimeException("MinIO stat 失败, bucket=" + bucket + ", obj=" + objectName, e);
+        } catch (Exception e) {
+            throw new RuntimeException("MinIO stat 失败, bucket=" + bucket + ", obj=" + objectName, e);
+        }
+    }
+
+    /**
+     * 增量追加日志字节到对象，返回追加后的最终对象大小（existingSize + content.length）。
+     * <p>
+     * 机制（与 Python 执行器一致，传输量 O(N)）：
+     * 1. 新增字节上传到 {object}.tail（覆盖写）；
+     * 2. 合并到最终对象：对象不存在 → copy；< 5MB → 读回拼接覆盖；≥ 5MB → Compose(经临时对象) 再 copy 回。
+     */
+    public long append(String bucket, String objectName, byte[] content, long existingSize) {
+        try {
+            ensureBucket(bucket);
+            String tail = objectName + ".tail";
+            // 1. 上传本次增量到 tail（覆盖写）
+            client.putObject(PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(tail)
+                    .stream(new ByteArrayInputStream(content), content.length, -1)
+                    .build());
+            // 2. 合并到最终对象
+            if (existingSize <= 0) {
+                client.copyObject(CopyObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .source(CopySource.builder().bucket(bucket).object(tail).build())
+                        .build());
+            } else if (existingSize < MIN_COMPOSE_SOURCE_SIZE) {
+                // 早期（<5MB）：读回拼接覆盖（数据量小，成本可忽略）
+                byte[] existing;
+                try (InputStream in = client.getObject(GetObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .build())) {
+                    existing = in.readAllBytes();
+                }
+                byte[] combined = new byte[existing.length + content.length];
+                System.arraycopy(existing, 0, combined, 0, existing.length);
+                System.arraycopy(content, 0, combined, existing.length, content.length);
+                client.putObject(PutObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .stream(new ByteArrayInputStream(combined), combined.length, -1)
+                        .build());
+            } else {
+                // 已 ≥5MB：compose 到临时对象再 copy 回（S3 要求除最后一段外各源 ≥5MB，tail 是末段，合法）
+                String tmp = objectName + ".cmp";
+                client.composeObject(ComposeObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(tmp)
+                        .sources(java.util.List.of(
+                                ComposeSource.builder().bucket(bucket).object(objectName).build(),
+                                ComposeSource.builder().bucket(bucket).object(tail).build()))
+                        .build());
+                client.copyObject(CopyObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectName)
+                        .source(CopySource.builder().bucket(bucket).object(tmp).build())
+                        .build());
+                client.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(tmp).build());
+            }
+            return existingSize + content.length;
+        } catch (Exception e) {
+            throw new RuntimeException("MinIO 追加失败, bucket=" + bucket + ", obj=" + objectName, e);
+        }
+    }
+
+    /** S3 ComposeObject 要求除最后一段外各源 ≥ 5MB */
+    private static final long MIN_COMPOSE_SOURCE_SIZE = 5 * 1024 * 1024L;
 
     /** 读取单文件为字节数组 */
     public byte[] download(String bucket, String objectName) {

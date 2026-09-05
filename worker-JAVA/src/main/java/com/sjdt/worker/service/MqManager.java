@@ -44,6 +44,9 @@ public class MqManager {
     private volatile DefaultMQPushConsumer taskConsumer;
     private volatile DefaultMQPushConsumer controlConsumer;
 
+    /** Worker 本次启动时刻（毫秒）：用于丢弃重启前已产生的历史重放消息，避免重启时瞬发残余指令 */
+    private final long workerStartMs = System.currentTimeMillis();
+
     public MqManager(WorkerProperties properties,
                      WorkerContext workerContext,
                      ObjectMapper objectMapper,
@@ -84,6 +87,9 @@ public class MqManager {
                 @Override
                 public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext ctx) {
                     for (MessageExt msg : msgs) {
+                        if (isStaleReplay(msg)) {
+                            continue; // 启动前的历史重放消息，跳过不执行
+                        }
                         if (!handleTaskMessage(msg)) {
                             return ConsumeConcurrentlyStatus.RECONSUME_LATER;
                         }
@@ -117,6 +123,9 @@ public class MqManager {
                 @Override
                 public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext ctx) {
                     for (MessageExt msg : msgs) {
+                        if (isStaleReplay(msg)) {
+                            continue; // 启动前的历史重放消息，跳过不执行
+                        }
                         handleControlMessage(msg);
                     }
                     return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
@@ -128,6 +137,20 @@ public class MqManager {
         } catch (Exception e) {
             log.error("控制消费者启动失败，group={}", group, e);
         }
+    }
+
+    /**
+     * 判断消息是否为 Worker 本次启动之前就存在的历史重放消息。
+     * <p>
+     * RocketMQ 在消费者重启（尤其广播模式 offset 存本地、容器重建后丢失）时
+     * 会补拉/重放启动前积压的旧消息。为避免 worker 一重启就瞬发大量残余指令，
+     * 对 broker 存储时间早于本次启动时间的消息直接跳过。
+     *
+     * @param msg 待判定的消息
+     * @return true=属于重启前的历史重放，应跳过
+     */
+    private boolean isStaleReplay(MessageExt msg) {
+        return msg.getStoreTimestamp() < workerStartMs;
     }
 
     private boolean handleTaskMessage(MessageExt msg) {

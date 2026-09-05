@@ -34,6 +34,11 @@ class Config:
     MINIO_SECURE = os.getenv("MINIO_SECURE", "False").lower() == "true"
     MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "task-engine")  # 统一使用 task-engine bucket
 
+    # 日志管道配置（CFL 标准化 / 可灰度关闭）
+    LOG_PIPELINE_NORMALIZE = os.getenv("LOG_PIPELINE_NORMALIZE", "true").lower() == "true"  # CFL 行级标准化（关闭则透传原始输出）
+    LOG_PIPELINE_ERROR_TAIL_LINES = int(os.getenv("LOG_PIPELINE_ERROR_TAIL_LINES", "1000"))  # errorMessage 尾部行数（环形缓冲容量）
+    LOG_PIPELINE_FLUSH_INTERVAL_MS = int(os.getenv("LOG_PIPELINE_FLUSH_INTERVAL_MS", "5000"))  # 增量上传间隔（毫秒）
+
     # Worker动态信息
     WORKER_ID = None  # 注册后由调度器返回
     ACCESS_KEY = None  # 注册后由调度器返回

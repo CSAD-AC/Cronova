@@ -109,6 +109,10 @@ class TaskResultMessage(BaseModel):
     durationMs: int  # 执行耗时（毫秒）
     errorMessage: Optional[str] = None  # 错误信息（可选）
     logPath: Optional[str] = None  # MinIO日志路径
+    # 分片身份（日志聚合用；非分片任务为 None）
+    shardIndex: Optional[int] = None  # 分片序号
+    shardTotal: Optional[int] = None  # 分片总数
+    shardBatchId: Optional[str] = None  # 分片批次ID
 
     def to_json(self) -> str:
         """转换为JSON字符串"""

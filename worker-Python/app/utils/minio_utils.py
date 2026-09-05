@@ -1,13 +1,20 @@
 import io
 import os
+import threading
 from minio import Minio
+from minio.api import ComposeSource, CopySource
 from minio.error import S3Error
 from uuid import uuid4
 from app.config import Config
 
+# MinIO 客户端与已确认存储桶的模块级单例（避免高频上传时反复建连/探测桶）
+_client = None
+_client_lock = threading.Lock()
+_known_buckets = set()
+_bucket_lock = threading.Lock()
 
-def get_minio_client() -> Minio:
-    """获取MinIO客户端实例"""
+
+def _build_client() -> Minio:
     try:
         return Minio(
             # 全部使用 Config 配置（环境变量作为兜底）
@@ -20,18 +27,39 @@ def get_minio_client() -> Minio:
         raise Exception(f"MinIO客户端初始化失败：{str(e)}")
 
 
+def get_minio_client() -> Minio:
+    """获取MinIO客户端实例（进程级单例，线程安全）"""
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                _client = _build_client()
+    return _client
+
+
+def _ensure_bucket(minio_client: Minio, bucket_name: str) -> None:
+    """确认存储桶存在（每个桶只在进程生命周期内探测/创建一次）"""
+    if bucket_name in _known_buckets:
+        return
+    with _bucket_lock:
+        if bucket_name in _known_buckets:
+            return
+        try:
+            if not minio_client.bucket_exists(bucket_name):
+                minio_client.make_bucket(bucket_name)
+        except S3Error as e:
+            # 忽略桶已存在的错误，继续执行
+            if e.code != 'BucketAlreadyOwnedByYou':
+                raise
+        _known_buckets.add(bucket_name)
+
+
 def minio_upload_file(bucket_name: str, file_name: str, file_content: io.BytesIO, file_length: int) -> None:
     """上传文件到MinIO"""
     minio_client = get_minio_client()
     try:
-        # 检查并创建存储桶
-        if not minio_client.bucket_exists(bucket_name):
-            try:
-                minio_client.make_bucket(bucket_name)
-            except S3Error as e:
-                # 忽略桶已存在的错误，继续执行
-                if e.code != 'BucketAlreadyOwnedByYou':
-                    raise
+        # 确认并创建存储桶（进程内一次）
+        _ensure_bucket(minio_client, bucket_name)
         # 上传文件
         minio_client.put_object(
             bucket_name=bucket_name,
@@ -43,6 +71,53 @@ def minio_upload_file(bucket_name: str, file_name: str, file_content: io.BytesIO
         raise Exception(f"MinIO文件上传失败：{str(e)}")
     except Exception as e:
         raise Exception(f"文件上传异常：{str(e)}")
+
+
+def append_log(bucket_name: str, object_name: str, data: bytes, existing_size: int) -> int:
+    """增量追加日志字节到对象，返回追加后的最终对象大小。
+
+    机制（Python / Java 两端一致，传输量 O(N)）：
+    1. 新增字节上传到 {object}.tail（覆盖写，只含本次增量）；
+    2. 合并到最终对象 {object}：
+       - 最终对象不存在 → tail copy 为最终对象；
+       - 最终对象 < 5MB → 读回拼接覆盖（早期小对象，成本可忽略）；
+       - 最终对象 ≥ 5MB → Compose([object, tail] -> 临时对象) 再 copy 回，
+         规避“compose 目标==源”的边界问题，全程服务器端操作、不重传数据。
+    调用方维护已上传偏移（返回值即新偏移）。失败向上抛出，调用方负责保留本地文件。
+    """
+    minio_client = get_minio_client()
+    _ensure_bucket(minio_client, bucket_name)
+    tail = object_name + ".tail"
+    # 1. 上传本次增量到 tail（覆盖写）
+    minio_client.put_object(bucket_name, tail, io.BytesIO(data), len(data))
+    # 2. 合并到最终对象
+    if existing_size <= 0:
+        # 首次：tail 即最终对象
+        minio_client.copy_object(bucket_name, object_name, CopySource(bucket_name, tail))
+    elif existing_size < MIN_COMPOSE_SOURCE_SIZE:
+        # 早期（<5MB）：读回拼接覆盖（数据量小，成本可忽略）
+        resp = minio_client.get_object(bucket_name, object_name)
+        try:
+            existing = resp.read()
+        finally:
+            resp.close()
+            resp.release_conn()
+        combined = existing + data
+        minio_client.put_object(bucket_name, object_name, io.BytesIO(combined), len(combined))
+    else:
+        # 已 ≥5MB：compose 到临时对象再 copy 回（S3 要求除最后一段外各源 ≥5MB，tail 是末段，合法）
+        tmp = object_name + ".cmp"
+        minio_client.compose_object(
+            bucket_name, tmp,
+            [ComposeSource(bucket_name, object_name), ComposeSource(bucket_name, tail)],
+        )
+        minio_client.copy_object(bucket_name, object_name, CopySource(bucket_name, tmp))
+        minio_client.remove_object(bucket_name, tmp)
+    return existing_size + len(data)
+
+
+# S3 ComposeObject 要求除最后一段外各源 ≥ 5MB
+MIN_COMPOSE_SOURCE_SIZE = 5 * 1024 * 1024
 
 
 def get_minio_file_object(bucket_name: str, file_name: str) -> io.BytesIO:
