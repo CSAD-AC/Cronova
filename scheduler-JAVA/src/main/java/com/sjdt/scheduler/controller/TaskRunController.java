@@ -1,18 +1,22 @@
 package com.sjdt.scheduler.controller;
 
 import com.sjdt.scheduler.common.Result;
+import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskPauseMessage;
 import com.sjdt.scheduler.domain.message.TaskResumeMessage;
 import com.sjdt.scheduler.domain.message.TaskStopMessage;
 import com.sjdt.scheduler.domain.po.TaskLog;
 import com.sjdt.scheduler.domain.po.TaskRun;
 import com.sjdt.scheduler.domain.vo.LogFileInfo;
+import com.sjdt.scheduler.domain.vo.LogOffsetResult;
 import com.sjdt.scheduler.mapper.TaskLogMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
 import com.sjdt.scheduler.service.TaskControlProducerService;
 import io.minio.GetObjectArgs;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
+import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -221,6 +226,152 @@ public class TaskRunController {
             log.error("获取日志文件信息失败，TaskRunID: {}", taskRunId, e);
             return Result.error(500, "Failed to get log file info");
         }
+    }
+
+    /**
+     * 增量获取任务运行日志（offset 协议）
+     * 按字节偏移读取 [offset, offset+limit) 区间，返回 nextOffset 供前端轮询。
+     */
+    @GetMapping("/{taskRunId}/log")
+    @Operation(summary = "增量获取任务运行日志", description = "按字节偏移增量读取日志，前端轮询")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "获取成功"),
+        @ApiResponse(responseCode = "404", description = "任务运行实例不存在")
+    })
+    public Result<LogOffsetResult> getTaskRunLog(
+            @Parameter(description = "任务运行实例ID", required = true) @PathVariable String taskRunId,
+            @Parameter(description = "字节偏移（首次为0）") @RequestParam(defaultValue = "0") long offset,
+            @Parameter(description = "读取长度上限（字节），默认64KB，最大1MB") @RequestParam(defaultValue = "65536") int limit) {
+        log.info("收到增量获取任务运行日志请求，TaskRunID: {}, offset: {}, limit: {}", taskRunId, offset, limit);
+        try {
+            TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+            if (taskRun == null) {
+                log.warn("任务运行实例不存在，TaskRunID: {}", taskRunId);
+                return Result.error(404, "TaskRun not found");
+            }
+
+            List<TaskLog> taskLogs = taskLogMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TaskLog>()
+                            .eq(TaskLog::getRunId, taskRunId)
+                            .orderByDesc(TaskLog::getCreateTime)
+            );
+            TaskLog taskLog = taskLogs.isEmpty() ? null : taskLogs.get(0);
+
+            // 日志记录尚未落库（任务刚提交）：返回空内容与未终止标记，前端继续轮询
+            if (taskLog == null || taskLog.getStdoutPath() == null || taskLog.getStdoutPath().isBlank()) {
+                return successOffsetResult(offset, 0, 0, 0, isTerminal(taskRun.getStatus()));
+            }
+
+            String bucket = defaultBucketName != null ? defaultBucketName : "task-engine";
+            String object = taskLog.getStdoutPath();
+            if (object.contains("/")) {
+                int firstSlashIndex = object.indexOf('/');
+                String firstPart = object.substring(0, firstSlashIndex);
+                if (firstPart.equals(bucket)) {
+                    object = object.substring(firstSlashIndex + 1);
+                }
+            }
+
+            boolean finalized = isTerminal(taskRun.getStatus());
+
+            // 对象当前大小（日志对象尚未创建时按"空日志"处理，前端继续轮询）
+            long size;
+            try {
+                StatObjectResponse stat = minioClient.statObject(
+                        StatObjectArgs.builder().bucket(bucket).object(object).build());
+                size = stat.size();
+            } catch (Exception e) {
+                log.debug("日志对象尚未创建，TaskRunID: {}, object: {}", taskRunId, object);
+                return successOffsetResult(offset, 0, Math.max(0, offset), 0, finalized);
+            }
+
+            int maxLimit = Math.min(Math.max(limit, 0), 1024 * 1024);
+
+            // 偏移失效：对象被重建/截断（如分片合并、保留窗口清理），通知前端从头重读
+            if (offset > size) {
+                LogOffsetResult result = new LogOffsetResult();
+                result.setContent("");
+                result.setOffset(offset);
+                result.setNextOffset(0);
+                result.setSize(size);
+                result.setTruncatedHeadBytes(size);
+                result.setFinalized(finalized);
+                return Result.success(result);
+            }
+
+            long from = Math.max(0, offset);
+            long to = Math.min(size, from + maxLimit);
+            if (from >= to) {
+                // 已读到当前末尾：返回空内容，偏移停在 size，等待新数据或任务终止
+                return successOffsetResult(offset, size, size, 0, finalized);
+            }
+
+            int len = (int) (to - from);
+            byte[] data;
+            try (InputStream in = minioClient.getObject(GetObjectArgs.builder()
+                    .bucket(bucket).object(object).offset(from).length((long) len).build())) {
+                data = in.readNBytes(len);
+            }
+            String content = decodeUtf8(data);
+            long nextOffset = from + content.getBytes(StandardCharsets.UTF_8).length;
+            LogOffsetResult result = new LogOffsetResult();
+            result.setContent(content);
+            result.setOffset(offset);
+            result.setNextOffset(nextOffset);
+            result.setSize(size);
+            result.setTruncatedHeadBytes(0);
+            result.setFinalized(finalized);
+            return Result.success(result);
+        } catch (Exception e) {
+            log.error("增量获取任务运行日志失败，TaskRunID: {}", taskRunId, e);
+            return Result.error(500, "Failed to get task run log");
+        }
+    }
+
+    private static Result<LogOffsetResult> successOffsetResult(long offset, long nextOffset, long size,
+                                                       long truncatedHeadBytes, boolean finalized) {
+        LogOffsetResult result = new LogOffsetResult();
+        result.setContent("");
+        result.setOffset(offset);
+        result.setNextOffset(nextOffset);
+        result.setSize(size);
+        result.setTruncatedHeadBytes(truncatedHeadBytes);
+        result.setFinalized(finalized);
+        return Result.success(result);
+    }
+
+    /** 任务是否已终止（终止后前端停止轮询） */
+    private boolean isTerminal(TaskRunStatus status) {
+        return status == TaskRunStatus.success
+                || status == TaskRunStatus.failed
+                || status == TaskRunStatus.timeout;
+    }
+
+    /** UTF-8 解码并丢弃末尾不完整多字节序列（避免跨 chunk 截断产生乱码） */
+    private static String decodeUtf8(byte[] bytes) {
+        int end = bytes.length;
+        while (end > 0) {
+            byte b = bytes[end - 1];
+            if (b >= 0) {
+                break; // ASCII 完整
+            }
+            // 找到末尾多字节序列的头部，判断是否完整
+            int start = end - 1;
+            while (start > 0 && (bytes[start] & 0xC0) == 0x80) {
+                start--;
+            }
+            int header = bytes[start] & 0xFF;
+            int expected;
+            if ((header & 0xE0) == 0xC0) expected = 2;
+            else if ((header & 0xF0) == 0xE0) expected = 3;
+            else if ((header & 0xF8) == 0xF0) expected = 4;
+            else expected = 1;
+            if (end - start >= expected) {
+                break; // 序列完整
+            }
+            end = start; // 截掉末尾不完整序列（下个 chunk 会带来其后续字节）
+        }
+        return new String(bytes, 0, end, StandardCharsets.UTF_8);
     }
 
     /**

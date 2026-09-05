@@ -182,6 +182,9 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
                 if (existingLog != null) {
                     existingLog.setStdoutPath(resultMessage.getLogPath());
                     existingLog.setStderrPath(resultMessage.getLogPath());
+                    existingLog.setShardBatchId(resultMessage.getShardBatchId());
+                    existingLog.setShardIndex(resultMessage.getShardIndex());
+                    existingLog.setShardTotal(resultMessage.getShardTotal());
                     taskLogMapper.updateById(existingLog);
                     log.info("任务日志记录更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
                 } else {
@@ -189,6 +192,9 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
                             .runId(resultMessage.getTaskRunId())
                             .stdoutPath(resultMessage.getLogPath())
                             .stderrPath(resultMessage.getLogPath())
+                            .shardBatchId(resultMessage.getShardBatchId())
+                            .shardIndex(resultMessage.getShardIndex())
+                            .shardTotal(resultMessage.getShardTotal())
                             .createTime(LocalDateTime.now())
                             .build();
                     taskLogMapper.insert(taskLog);

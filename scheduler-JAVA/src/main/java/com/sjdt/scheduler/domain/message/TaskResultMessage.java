@@ -51,4 +51,9 @@ public class TaskResultMessage implements Serializable {
     
     /** 日志文件MinIO路径 */
     private String logPath;
+
+    /** 分片身份（日志聚合用；非分片任务为 null） */
+    private Integer shardIndex;
+    private Integer shardTotal;
+    private String shardBatchId;
 }

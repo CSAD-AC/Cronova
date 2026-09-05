@@ -457,6 +457,9 @@ public class WorkerController {
                             .runId(taskRunId)
                             .stdoutPath(taskStatus.getLogPath())
                             .stderrPath(taskStatus.getLogPath())
+                            .shardBatchId(taskStatus.getShardBatchId())
+                            .shardIndex(taskStatus.getShardIndex())
+                            .shardTotal(taskStatus.getShardTotal())
                             .createTime(LocalDateTime.now())
                             .build();
                     taskLogMapper.insert(newTaskLog);
@@ -464,6 +467,9 @@ public class WorkerController {
                 } else {
                     existingTaskLog.setStdoutPath(taskStatus.getLogPath());
                     existingTaskLog.setStderrPath(taskStatus.getLogPath());
+                    existingTaskLog.setShardBatchId(taskStatus.getShardBatchId());
+                    existingTaskLog.setShardIndex(taskStatus.getShardIndex());
+                    existingTaskLog.setShardTotal(taskStatus.getShardTotal());
                     taskLogMapper.updateById(existingTaskLog);
                     log.debug("更新任务日志路径，TaskRunID: {}, LogPath: {}", taskRunId, taskStatus.getLogPath());
                 }

@@ -164,6 +164,45 @@ public class TaskDispatchService {
     }
 
     /**
+     * 分片专属路由：把各分片均匀分散到候选 Worker，避免并行派发时全部选中同一台。
+     * <p>
+     * 通用 {@link #dispatch} 的 LEAST_LOAD 在分片批量并行投递时，会在同一负载快照上
+     * 每片都选中"负载最低"的那一台，导致分片全挤到单机、失去并行意义。
+     * 分片场景改为：按片序号轮询 {@code candidates[shardIndex % N]}，在不超过 Worker 数时
+     * 尽量一片一台；仅当任务显式指定 {@code target_worker} 时，才尊重钉死配置（全片到该 Worker）。
+     *
+     * @param task        任务定义
+     * @param message     待发送的分片任务消息
+     * @param shardIndex  本片序号（0 起）
+     * @param delaySeconds 延时秒数
+     * @return true=已投递；false=无匹配 Worker，park（交派发超时监控兜底）
+     */
+    private boolean dispatchShard(Task task, TaskExecuteMessage message, int shardIndex, int delaySeconds) {
+        // 钉死 Worker：尊重用户显式指定（与通用 dispatch 语义一致，全片到同一台）
+        if (task.getTargetWorker() != null && !task.getTargetWorker().isBlank()) {
+            return dispatch(task, message, delaySeconds);
+        }
+        List<WorkerSnapshot> candidates = workerRegistry.onlineWorkers();
+        if (candidates.isEmpty()) {
+            log.warn("无在线Worker，分片{} park", shardIndex);
+            return false;
+        }
+        Set<String> requiredTags = parseRequiredTags(task.getRequiredTags());
+        if (requiredTags != null && !requiredTags.isEmpty()) {
+            List<WorkerSnapshot> tagged = workerRegistry.filterByTags(candidates, requiredTags);
+            if (tagged.isEmpty()) {
+                log.warn("无匹配标签{}的在线Worker，分片{} park", requiredTags, shardIndex);
+                return false;
+            }
+            candidates = tagged;
+        }
+        // 按片序号轮询分散，充分并行利用多 Worker
+        WorkerSnapshot selected = candidates.get(shardIndex % candidates.size());
+        send(message, selected.id(), delaySeconds);
+        return true;
+    }
+
+    /**
      * 分片触发派发：shard_total &gt; 0 的任务一次触发生成 N 条 run + N 条 Tag 定向消息
      * <p>
      * 关键设计决策：shardTotal 固定（绝不动态缩片）——分片数不随在线 Worker 数漂移，
@@ -253,7 +292,7 @@ public class TaskDispatchService {
                     .shardBatchId(batchId)
                     .build();
 
-            boolean dispatched = dispatch(task, shardMessage, delaySeconds);
+            boolean dispatched = dispatchShard(task, shardMessage, shardIndex, delaySeconds);
             if (dispatched) {
                 log.info("分片已定向派发，任务ID: {}, 批次: {}, 分片: {}/{}, 运行ID: {}",
                         task.getId(), batchId, shardIndex, shardTotal - 1, run.getId());

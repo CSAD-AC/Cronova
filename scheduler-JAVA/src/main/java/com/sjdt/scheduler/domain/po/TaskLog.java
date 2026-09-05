@@ -39,6 +39,15 @@ public class TaskLog implements Serializable {
     /** stderr 日志在 MinIO 中的路径 */
     private String stderrPath;
 
+    /** 分片批次ID（同一 shardBatchId 的所有分片共享；非分片任务也可为 N=1 批次） */
+    private String shardBatchId;
+
+    /** 分片序号（0 起；非分片任务为 0） */
+    private Integer shardIndex;
+
+    /** 分片总数（非分片任务为 1） */
+    private Integer shardTotal;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 
