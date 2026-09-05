@@ -33,9 +33,14 @@ export const taskRunApi = {
   getLogFileInfo: (taskRunId: string) => {
     return get<LogFileInfo>(`/api/task-run/${taskRunId}/log/info`)
   },
-  
+
   getLogs: (taskRunId: string) => {
     return get<string>(`/api/task-run/${taskRunId}/log`)
+  },
+
+  /** 增量获取任务日志（offset 协议） */
+  getLogRange: (taskRunId: string, offset: number, limit = 65536) => {
+    return get<LogOffsetResult>(`/api/task-run/${taskRunId}/log`, { offset, limit })
   },
   
   downloadLog: (taskRunId: string): Promise<Blob> => {
@@ -54,4 +59,14 @@ export interface LogFileInfo {
   objectName: string
   fileName: string
   signedUrl?: string
+}
+
+/** 日志偏移读取结果（增量拉取协议） */
+export interface LogOffsetResult {
+  content: string
+  offset: number
+  nextOffset: number
+  size: number
+  truncatedHeadBytes: number
+  finalized: boolean
 }

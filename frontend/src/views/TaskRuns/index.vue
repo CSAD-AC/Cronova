@@ -240,6 +240,51 @@
             </div>
           </div>
         </el-tab-pane>
+
+        <!-- 分片任务的分片日志聚合视图 -->
+        <el-tab-pane v-if="isShardTask(currentRun)" label="分片日志" name="shardLogs">
+          <div class="shard-log-layout">
+            <!-- 左侧片列表 -->
+            <div class="shard-log-sidebar">
+              <div v-if="shardInfoLoading" class="log-loading">加载片信息...</div>
+              <div v-else>
+                <div class="shard-side-title">片列表（{{ shardShards.length }}）</div>
+                <div v-for="s in shardShards" :key="s.index"
+                     class="shard-side-item" :class="{ active: selectedShardIndex === s.index }"
+                     @click="toggleShardFilter(s.index)">
+                  <el-tag size="small" :type="stateTagType(s.state)">片{{ s.index }}</el-tag>
+                  <span class="shard-side-state">{{ s.state }}</span>
+                  <span class="shard-side-dur">{{ s.durationMs ? formatDuration(s.durationMs) : '-' }}</span>
+                </div>
+              </div>
+            </div>
+            <!-- 右侧聚合日志流 -->
+            <div class="shard-log-main">
+              <div class="log-header">
+                <span class="log-title">分片日志（按时间排序）</span>
+                <div class="log-toolbar">
+                  <el-select v-model="shardLevelFilter" placeholder="全部级别" size="small" clearable style="width:120px">
+                    <el-option v-for="l in allLogLevels" :key="l" :label="l" :value="l" />
+                  </el-select>
+                  <el-button size="small" @click="resetShardCursor">刷新</el-button>
+                  <el-switch v-model="shardFollow" active-text="Follow" size="small" />
+                </div>
+              </div>
+              <div class="shard-log-body">
+                <div v-if="shardLogLoading" class="log-loading">加载日志中...</div>
+                <div v-else-if="!shardLogEntries.length" class="log-loading">暂无分片日志</div>
+                <div v-else class="shard-log-stream">
+                  <div v-for="(e, i) in shardLogEntries" :key="i" class="shard-line">
+                    <span class="shard-tag" :style="{ color: shardColor(e.shard) }">片{{ e.shard }}</span>
+                    <span class="shard-level" :style="{ color: levelColor(e.level) }">{{ e.level }}</span>
+                    <span class="shard-ts">{{ e.ts }}</span>
+                    <span class="shard-msg">{{ e.lines.join('\n') }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
         
         <!-- 回调任务的请求记录 -->
         <el-tab-pane v-if="isCallbackTask(currentRun?.taskId)" label="请求记录" name="request">
@@ -344,6 +389,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search, View, Document, Download, Loading, Delete, VideoPause, VideoPlay, Warning, FullScreen, Filter, ArrowDown, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { taskRunApi, taskApi, workerApi, minioApi, callbackJobRunApi } from '@/services'
+import { shardBatchApi, type ShardLogEntry, type ShardInfo } from '@/services/shardBatch'
 import type { TaskRun, TaskVO, WorkerVO } from '@/types'
 import { ElMessageBox } from 'element-plus'
 import { formatDateTime, formatDuration } from '@/utils/date'
@@ -382,6 +428,24 @@ const loadingLog = ref(false)
 const downloadingLog = ref(false)
 const currentLogContent = ref('')
 const currentLogContentHtml = ref('')  // 处理后的HTML内容
+// 日志增量拉取状态（offset 协议）
+let logPollTimer: number | null = null
+let logNextOffset = 0
+let logFinalized = false
+let loadedLogRunId = ''
+
+// 分片日志聚合状态
+const shardInfoLoading = ref(false)
+const shardLogLoading = ref(false)
+const shardShards = ref<ShardInfo[]>([])
+const shardLogEntries = ref<ShardLogEntry[]>([])
+const shardLogCursor = ref('')
+const shardFollow = ref(true)
+const shardLevelFilter = ref('')
+const selectedShardIndex = ref<number | null>(null)
+const shardSettled = ref(false)
+let shardPollTimer: number | null = null
+const SHARD_PALETTE = ['#4FC3F7', '#66BB6A', '#FFB74D', '#EF5350', '#AB47BC', '#26C6DA', '#FFA726', '#7E57C2']
 const taskTypeMap = ref<Map<string, string>>(new Map()) // 存储任务类型：'script' | 'callback'
 
 // 全屏和筛选功能相关数据
@@ -657,6 +721,8 @@ async function viewDetail(row: TaskRun) {
 function handleTabChange(tabName: string) {
   if (tabName === 'logs' && currentRun.value && isScriptTask(currentRun.value.taskId)) {
     loadLogContent(currentRun.value.id)
+  } else if (tabName === 'shardLogs' && currentRun.value && isShardTask(currentRun.value)) {
+    loadShardLogs()
   } else if (tabName === 'request' && currentRun.value && isCallbackTask(currentRun.value.taskId)) {
     loadRequestContent(currentRun.value.id)
   } else if (tabName === 'response' && currentRun.value && isCallbackTask(currentRun.value.taskId)) {
@@ -697,11 +763,17 @@ function processLogContent(content: string): string {
       
       const color = levelColors[level?.toUpperCase() || ''] || '#FFFFFF'
       
+      // 所有字段先 HTML 转义再拼装，防止日志内容注入脚本（XSS）
+      const ts = escapeHtml(timestamp || '')
+      const lv = escapeHtml(level || '')
+      const loc = escapeHtml(location || '')
+      const msg = escapeHtml(message || '')
+      
       // 构建带颜色的HTML
-      return `<span style="color: ${color};">${timestamp}</span>` +
-             ` | <span style="color: ${color}; font-weight: bold;">${level}</span>` +
-             ` | <span style="color: #B0BEC5;">${location}</span>` +
-             ` - <span style="color: ${color};">${message}</span>`
+      return `<span style="color: ${color};">${ts}</span>` +
+             ` | <span style="color: ${color}; font-weight: bold;">${lv}</span>` +
+             ` | <span style="color: #B0BEC5;">${loc}</span>` +
+             ` - <span style="color: ${color};">${msg}</span>`
     }
     
     // 2. 匹配包含异常信息的行
@@ -884,16 +956,68 @@ function clearAllLevels() {
 
 
 
+/** 增量拉取一块日志并拼接到当前内容（truncatedHeadBytes>0 时从头重读） */
+async function fetchLogChunk(taskRunId: string) {
+  const data = await taskRunApi.getLogRange(taskRunId, logNextOffset, 65536)
+  if (!data) return
+  if (data.truncatedHeadBytes > 0) {
+    // 偏移失效：对象被重建/截断（如分片合并、保留窗口清理），从头重读
+    currentLogContent.value = data.content || ''
+    currentLogContentHtml.value = processLogContent(currentLogContent.value || '暂无日志内容')
+  } else if (data.content) {
+    currentLogContent.value += data.content
+    currentLogContentHtml.value = processLogContent(currentLogContent.value || '暂无日志内容')
+  } else if (!currentLogContent.value) {
+    currentLogContentHtml.value = processLogContent('暂无日志内容')
+  }
+  logNextOffset = data.nextOffset
+  if (data.finalized) {
+    logFinalized = true
+    stopLogPolling()
+  }
+}
+
+function startLogPolling(taskRunId: string) {
+  stopLogPolling()
+  logPollTimer = window.setInterval(async () => {
+    // 弹窗已关闭则停止轮询
+    if (!detailDialogVisible.value) {
+      stopLogPolling()
+      return
+    }
+    try {
+      await fetchLogChunk(taskRunId)
+    } catch (e) {
+      console.error('轮询日志失败:', e)
+    }
+  }, 3000)
+}
+
+function stopLogPolling() {
+  if (logPollTimer !== null) {
+    clearInterval(logPollTimer)
+    logPollTimer = null
+  }
+}
+
 async function loadLogContent(taskRunId: string) {
+  // 已完整加载过同一 run 的日志则直接复用，避免重复全量拉取
+  if (loadedLogRunId === taskRunId && logFinalized && currentLogContent.value) {
+    return
+  }
   loadingLog.value = true
   try {
-    // 首先获取 MinIO 文件信息
-    const logFileInfo = await taskRunApi.getLogFileInfo(taskRunId)
-    
-    // 使用 MinIO API 下载文件
-    const logText = await minioApi.downloadTextFile(logFileInfo)
-    currentLogContent.value = logText || '暂无日志信息'
-    currentLogContentHtml.value = processLogContent(logText || '暂无日志信息')
+    currentLogContent.value = ''
+    currentLogContentHtml.value = ''
+    loadedLogRunId = taskRunId
+    logFinalized = false
+    logNextOffset = 0
+    stopLogPolling()
+    await fetchLogChunk(taskRunId)
+    // 任务未终止则轮询增量
+    if (!logFinalized) {
+      startLogPolling(taskRunId)
+    }
   } catch (error) {
     console.error('加载日志失败:', error)
     const errorText = '日志加载失败，请重试或手动下载'
@@ -904,6 +1028,123 @@ async function loadLogContent(taskRunId: string) {
     loadingLog.value = false
   }
 }
+
+// ------------------------------------------------------------------ 分片日志
+
+/** 是否为分片任务（shardTotal>1） */
+function isShardTask(run: any): boolean {
+  return !!run && (run.shardTotal || 0) > 1
+}
+
+/** 片色（稳定映射） */
+function shardColor(shard: number): string {
+  return SHARD_PALETTE[Math.abs(shard) % SHARD_PALETTE.length] || '#CBD5E1'
+}
+
+/** 级别色（护眼配色） */
+function levelColor(level: string): string {
+  const map: Record<string, string> = {
+    'DEBUG': '#4FC3F7', 'INFO': '#66BB6A', 'WARN': '#FFB74D', 'WARNING': '#FFB74D',
+    'ERROR': '#EF5350', 'CRITICAL': '#AB47BC'
+  }
+  return map[level?.toUpperCase() || ''] || '#CBD5E1'
+}
+
+/** 状态 → el-tag 类型 */
+function stateTagType(state: string): 'success' | 'danger' | 'warning' | 'info' {
+  if (state === 'success') return 'success'
+  if (state === 'failed' || state === 'timeout') return 'danger'
+  if (state === 'running' || state === 'pending') return 'warning'
+  return 'info'
+}
+
+async function loadShardLogs() {
+  const batchId = currentRun.value?.shardBatchId
+  if (!batchId) return
+  stopShardPolling()
+  shardInfoLoading.value = true
+  shardLogLoading.value = true
+  shardLogEntries.value = []
+  shardLogCursor.value = ''
+  shardSettled.value = false
+  try {
+    const info = await shardBatchApi.getShardInfo(batchId)
+    shardShards.value = info.shards || []
+    shardSettled.value = !!info.settled
+  } catch (e) {
+    console.error('加载分片信息失败:', e)
+    shardShards.value = []
+  } finally {
+    shardInfoLoading.value = false
+  }
+  await fetchShardChunk()
+  if (shardFollow.value && !shardSettled.value) {
+    startShardPolling()
+  }
+}
+
+async function fetchShardChunk() {
+  const batchId = currentRun.value?.shardBatchId
+  if (!batchId) return
+  try {
+    const res = await shardBatchApi.getShardLogs(batchId, {
+      cursor: shardLogCursor.value,
+      level: shardLevelFilter.value || undefined,
+      shard: selectedShardIndex.value ?? undefined
+    })
+    // 游标为空或设备分片时重置为本次返回，追加 entries
+    shardLogEntries.value = res.entries || []
+    shardLogCursor.value = res.cursor || ''
+    shardSettled.value = !!res.settled
+    if (res.settled) {
+      stopShardPolling()
+    }
+  } catch (e) {
+    console.error('获取分片日志失败:', e)
+  } finally {
+    shardLogLoading.value = false
+  }
+}
+
+function startShardPolling() {
+  stopShardPolling()
+  shardPollTimer = window.setInterval(async () => {
+    if (!detailDialogVisible.value) {
+      stopShardPolling()
+      return
+    }
+    try {
+      await fetchShardChunk()
+    } catch (e) {
+      console.error('轮询分片日志失败:', e)
+    }
+  }, 3000)
+}
+
+function stopShardPolling() {
+  if (shardPollTimer !== null) {
+    clearInterval(shardPollTimer)
+    shardPollTimer = null
+  }
+}
+
+function resetShardCursor() {
+  shardLogCursor.value = ''
+  shardLogEntries.value = []
+  shardLogLoading.value = true
+  fetchShardChunk().then(() => {
+    if (shardFollow.value && !shardSettled.value) {
+      startShardPolling()
+    }
+  })
+}
+
+/** 点击片列表：切换单片过滤（再点取消） */
+function toggleShardFilter(idx: number) {
+  selectedShardIndex.value = selectedShardIndex.value === idx ? null : idx
+  resetShardCursor()
+}
+
 
 async function loadRequestContent(taskRunId: string) {
   loadingRequest.value = true
@@ -952,28 +1193,9 @@ async function previewLog(row: TaskRun) {
   
   currentRun.value = row
   activeTab.value = 'logs'
-  currentLogContent.value = ''
-  currentLogContentHtml.value = ''
   detailDialogVisible.value = true
   
-  loadingLog.value = true
-  try {
-    // 首先获取 MinIO 文件信息
-    const logFileInfo = await taskRunApi.getLogFileInfo(row.id)
-    
-    // 使用 MinIO API 下载文件
-    const logText = await minioApi.downloadTextFile(logFileInfo)
-    currentLogContent.value = logText || '暂无日志信息'
-    currentLogContentHtml.value = processLogContent(logText || '暂无日志信息')
-  } catch (error) {
-    console.error('预览日志失败:', error)
-    const errorText = '日志加载失败，请重试或手动下载'
-    currentLogContent.value = errorText
-    currentLogContentHtml.value = processLogContent(errorText)
-    ElMessage.error('加载日志失败')
-  } finally {
-    loadingLog.value = false
-  }
+  await loadLogContent(row.id)
 }
 
 async function downloadLog(row: TaskRun) {
@@ -1174,6 +1396,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   removeKeyboardListener()
+  stopLogPolling()
+  stopShardPolling()
 })
 </script>
 
@@ -1289,6 +1513,97 @@ onUnmounted(() => {
   word-wrap: break-word;
   word-break: break-all;
   background: transparent;
+}
+
+/* ---------- 分片日志 ---------- */
+.shard-log-layout {
+  display: flex;
+  gap: 12px;
+  height: 500px;
+}
+.shard-log-sidebar {
+  width: 220px;
+  border: 1px solid #1F2E47;
+  border-radius: 6px;
+  background: #0B1220;
+  padding: 8px;
+  overflow: auto;
+}
+.shard-side-title {
+  font-size: 12px;
+  color: #94A3B8;
+  margin-bottom: 8px;
+}
+.shard-side-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.shard-side-item:hover {
+  background: #16233A;
+}
+.shard-side-item.active {
+  background: #1E3A5F;
+}
+.shard-side-state {
+  font-size: 12px;
+  color: #CBD5E1;
+  flex: 1;
+}
+.shard-side-dur {
+  font-size: 12px;
+  color: #64748B;
+}
+.shard-log-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.shard-log-body {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #1F2E47;
+  border-radius: 6px;
+  background: #0B1220;
+  padding: 12px;
+}
+.shard-log-stream {
+  font-family: var(--sjdt-mono);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.shard-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.shard-tag {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-size: 11px;
+  min-width: 42px;
+}
+.shard-level {
+  flex-shrink: 0;
+  font-weight: 600;
+  min-width: 62px;
+}
+.shard-ts {
+  flex-shrink: 0;
+  color: #64748B;
+  font-size: 11px;
+}
+.shard-msg {
+  color: #E2EAF4;
 }
 
 /* 滚动条样式 */
