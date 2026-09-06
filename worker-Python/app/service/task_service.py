@@ -1,7 +1,5 @@
-from app.model.task import TaskExecuteMessage, TaskStopMessage, TaskPauseMessage, TaskResumeMessage, TaskDeleteMessage
+﻿from app.model.task import TaskExecuteMessage, TaskStopMessage, TaskPauseMessage, TaskResumeMessage, TaskDeleteMessage
 from app.utils.system_utils import SystemUtils
-from app.utils.redis_utils import acquire_run_claim
-from app.config import Config
 from app.service.task_handler.python_handler import PythonHandler
 from app.service.task_handler.java_handler import JavaHandler
 from app.service.task_handler.go_handler import GoHandler
@@ -37,13 +35,6 @@ class TaskService:
     def process_task(self, task: TaskExecuteMessage) -> bool:
         """处理任务"""
         try:
-            # 幂等执行权抢占（SETNX）：MQ 为 at-least-once，同一 run 只允许真正执行一次，
-            # 重复投递的消息因抢占失败直接 ACK 但不重复跑。TTL = 任务超时 + 60s，覆盖整个执行窗口。
-            claim_ttl = (task.timeoutSeconds or 60) + 60
-            if not acquire_run_claim(task.taskRunId, Config.WORKER_ID, claim_ttl):
-                logger.info("runId 已被认领（重复消息），跳过执行：%s", task.taskRunId)
-                return True
-
             logger.info("处理任务：%s，脚本类型：%s", task.taskId, task.scriptType)
             SystemUtils.increment_running_tasks()
 

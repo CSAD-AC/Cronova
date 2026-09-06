@@ -1,6 +1,5 @@
 package com.sjdt.worker.service;
 
-import com.sjdt.worker.common.WorkerContext;
 import com.sjdt.worker.handler.TaskHandler;
 import com.sjdt.worker.model.TaskControlMessage;
 import com.sjdt.worker.model.TaskExecuteMessage;
@@ -14,10 +13,6 @@ import java.util.stream.Collectors;
 
 /**
  * 任务服务：按脚本类型分发执行 + 处理控制指令（停止/暂停/恢复/强制终止/删除）
- * <p>
- * 执行入口先经 {@link RunClaimService} 做 SETNX 执行权抢占（幂等兜底）：
- * MQ 为 at-least-once，同一 run 重复投递的消息因抢占失败直接 ACK 不重复执行
- * （与 worker-Python 的 process_task 行为对齐）。
  */
 @Slf4j
 @Service
@@ -27,34 +22,20 @@ public class TaskService {
     private final ProcessManager processManager;
     private final TaskInstanceManager instanceManager;
     private final TaskStatusReporter statusReporter;
-    private final RunClaimService runClaimService;
-    private final WorkerContext workerContext;
 
     public TaskService(List<TaskHandler> handlers,
                        ProcessManager processManager,
                        TaskInstanceManager instanceManager,
-                       TaskStatusReporter statusReporter,
-                       RunClaimService runClaimService,
-                       WorkerContext workerContext) {
+                       TaskStatusReporter statusReporter) {
         this.handlerMap = handlers.stream()
                 .collect(Collectors.toMap(TaskHandler::supportType, Function.identity()));
         this.processManager = processManager;
         this.instanceManager = instanceManager;
         this.statusReporter = statusReporter;
-        this.runClaimService = runClaimService;
-        this.workerContext = workerContext;
     }
 
-    /** 处理任务执行消息（幂等抢占后提交到对应 handler，立即 ACK） */
+    /** 处理任务执行消息（提交到对应 handler，立即 ACK） */
     public boolean processTask(TaskExecuteMessage task) {
-        // 幂等执行权抢占（SETNX）：同一 run 只允许真正执行一次，
-        // 重复投递的消息因抢占失败直接 ACK 但不重复跑。TTL = 任务超时 + 60，覆盖整个执行窗口。
-        int claimTtl = (task.getTimeoutSeconds() != null ? task.getTimeoutSeconds() : 60) + 60;
-        if (!runClaimService.acquireRunClaim(task.getTaskRunId(), workerContext.getWorkerId(), claimTtl)) {
-            log.info("runId 已被认领（重复消息），跳过执行：{}", task.getTaskRunId());
-            return true;
-        }
-
         TaskHandler handler = handlerMap.get(task.getScriptType());
         if (handler == null) {
             log.error("不支持的任务类型：{}，taskId={}", task.getScriptType(), task.getTaskId());
