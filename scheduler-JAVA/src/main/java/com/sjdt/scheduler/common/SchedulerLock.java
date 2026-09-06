@@ -13,6 +13,8 @@ import java.util.UUID;
  * 基于 Redis SETNX + Lua 校验释放的分布式锁
  * <p>
  * 用途：调度集群中"每轮只有一个实例真正扫描"，避免多实例空转竞争。
+ * 上层入口是 {@link SchedulerLocked} 注解 + {@link SchedulerLockedAspect} 切面，
+ * 业务定时任务不再直接调用本类。
  * <p>
  * 两层防重的分工：
  * <ul>
@@ -23,14 +25,12 @@ import java.util.UUID;
  * 关键实现点：
  * <ul>
  *     <li>value 放实例 token（UUID）+ Lua 校验后删除：防止实例 A 锁超时易主后，A 的 finally 误删 B 的锁；</li>
- *     <li>TTL 由调用方传入，调度场景约定「略小于扫描周期」——宁可偶尔双扫，也不因死锁永久停摆。</li>
+ *     <li>TTL 由调用方（切面）传入，调度场景约定「略小于扫描周期」——宁可偶尔双扫，也不因死锁永久停摆。</li>
  * </ul>
  */
 @Slf4j
 @Component
 public class SchedulerLock {
-
-    private static final String LOCK_KEY = RedisKey.SCHEDULER_LOCK_SCAN;
 
     /** 释放锁的 Lua 脚本：仅当持有者仍是本实例 token 时才删除 */
     private static final String UNLOCK_LUA = """
@@ -50,28 +50,34 @@ public class SchedulerLock {
     }
 
     /**
-     * 尝试获取锁（SET key token NX EX ttl）
+     * 使用指定 key 尝试获取锁（SET key token NX EX ttl）
+     * <p>
+     * 供调度集群中多个不同职责的定时任务（心跳检查 / 超时监控 / 排队推进等）各自独立加锁，
+     * 避免多实例对同一扫描逻辑重复执行。不同职责使用不同 key，互相不影响加解锁归属。
      *
-     * @param ttl 锁自动过期时间；建议略小于调用方的扫描周期
+     * @param lockKey 锁的 Redis key（不同职责使用不同 key）
+     * @param ttl     锁自动过期时间；建议略小于调用方的扫描周期
      * @return true 表示本实例获得锁
      */
-    public boolean tryLock(Duration ttl) {
+    public boolean tryLock(String lockKey, Duration ttl) {
         try {
-            return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, token, ttl));
+            return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, token, ttl));
         } catch (Exception e) {
-            log.error("获取调度锁异常", e);
-            return false; // 锁不可用时降级为"本轮不扫描"，避免并发触发；正确性由 CAS 兜底
+            log.error("获取调度锁异常，key: {}", lockKey, e);
+            return false; // 锁不可用时降级为"本轮不扫描"，避免并发触发
         }
     }
 
     /**
-     * 释放锁（Lua 校验 token 后删除，防止误删其他实例持有的锁）
+     * 释放指定 key 的锁（Lua 校验 token 后删除，防止误删其他实例持有的锁）
+     *
+     * @param lockKey 锁的 Redis key
      */
-    public void unlock() {
+    public void unlock(String lockKey) {
         try {
-            redisTemplate.execute(unlockScript, List.of(LOCK_KEY), token);
+            redisTemplate.execute(unlockScript, List.of(lockKey), token);
         } catch (Exception e) {
-            log.error("释放调度锁异常", e);
+            log.error("释放调度锁异常，key: {}", lockKey, e);
         }
     }
 }

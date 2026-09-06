@@ -1,6 +1,8 @@
 package com.sjdt.scheduler.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sjdt.scheduler.common.RedisKey;
+import com.sjdt.scheduler.common.SchedulerLocked;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
 import com.sjdt.scheduler.domain.message.TaskStopMessage;
 import com.sjdt.scheduler.domain.po.Task;
@@ -68,11 +70,15 @@ public class TaskTimeoutMonitor {
 
     /**
      * 每30秒执行一次超时检查
+     * <p>
+     * @SchedulerLocked 分布式锁串行化多实例：同一时刻只有一个实例做超时判定，
+     * 避免重复发 STOP / 重复标记超时（锁 TTL 按周期自动推导为 24s）。
      */
     @Scheduled(fixedRate = 30000)
+    @SchedulerLocked(RedisKey.SCHEDULER_LOCK_TIMEOUT)
     public void checkTimeoutTasks() {
         log.debug("开始执行任务超时检查...");
-        
+
         // 查询所有处于 running 或 pending 状态的任务实例
         List<TaskRun> activeTaskRuns = taskRunMapper.selectList(
                 new LambdaQueryWrapper<TaskRun>()
