@@ -10,8 +10,12 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
@@ -21,6 +25,15 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * RocketMQ 生产/消费集成测试（真实连接 MQ，不走 Spring 上下文）
+ * <p>
+ * 验证 TASK_EXECUTE 主题的 Tag 定向投递（阶段二核心行为的黑盒验证）。
+ * 属于<b>环境依赖型</b>测试：需要 RocketMQ name server 可达
+ * （地址取环境变量 MQ_NAMESRV_ADDR，未设置回退 127.0.0.1:9876）。
+ * 启动前用 TCP 探测做环境守卫——MQ 不可达时整类用例标记 SKIPPED（黄色跳过），
+ * 而非误报 FAILURE；MQ 在位（如 Docker 中间件已启动）时正常执行。
+ */
 class RocketMQTest {
 
     // MQ 地址通过环境变量 MQ_NAMESRV_ADDR 注入，未设置时回退本地默认（真实地址见 .env，不入库）
@@ -29,6 +42,43 @@ class RocketMQTest {
     private static final String TOPIC = "TASK_EXECUTE";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * 环境守卫：name server 任一地址 TCP 可达才执行，否则整类跳过。
+     * RocketMQ 地址可能分号分隔多个（host1:port;host2:port），逐个探测。
+     */
+    @BeforeAll
+    static void requireNameServerReachable() {
+        boolean reachable = false;
+        for (String addr : NAMESRV_ADDR.split(";")) {
+            if (isReachable(addr.trim())) {
+                reachable = true;
+                break;
+            }
+        }
+        Assumptions.assumeTrue(reachable,
+                "RocketMQ name server 不可达，跳过集成测试（启动 MQ 后重跑，或经 MQ_NAMESRV_ADDR 指定地址）: "
+                        + NAMESRV_ADDR);
+    }
+
+    /**
+     * TCP 探测地址可达性（1 秒超时，探测失败视为不可达）。
+     *
+     * @param hostPort host:port 形式的地址
+     * @return true=可建立 TCP 连接
+     */
+    private static boolean isReachable(String hostPort) {
+        String[] parts = hostPort.split(":");
+        if (parts.length != 2) {
+            return false;
+        }
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(parts[0], Integer.parseInt(parts[1])), 1000);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     /**
      * 测试：公共任务（TASK_EXECUTE:PUBLIC_TASK）
