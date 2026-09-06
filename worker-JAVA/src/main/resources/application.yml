@@ -3,6 +3,16 @@
 # 所有可变项通过环境变量注入（.env 文件 / Docker env），未设置时回退默认值。
 # 环境变量清单见仓库根 .env.example（E 阶段约定）。
 # =====================================================================
+
+# Redis（幂等执行权抢占用；键名与调度器 / worker-Python 同一组，地址经 .env 注入）
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:1}
+      password: ${REDIS_PASSWORD:}
+
 worker:
   # 调度器地址
   scheduler-base-url: ${SCHEDULER_BASE_URL:http://localhost:8085}
