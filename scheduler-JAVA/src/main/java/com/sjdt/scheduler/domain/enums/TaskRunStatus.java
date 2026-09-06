@@ -13,7 +13,9 @@ public enum TaskRunStatus {
     paused("paused", "暂停"),
     success("success", "成功"),
     failed("failed", "失败"),
-    timeout("timeout", "超时");
+    timeout("timeout", "超时"),
+    queued("queued", "排队中"),
+    skipped("skipped", "被阻塞丢弃");
 
     /**
      * 存在数据库/对外传输的字面值

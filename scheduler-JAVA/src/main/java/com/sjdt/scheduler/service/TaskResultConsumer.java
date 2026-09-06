@@ -46,15 +46,20 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
     /** 分片结算服务 */
     private final ShardSettlementService shardSettlementService;
 
+    /** 终态赋值器（状态机单向迁移，防迟到结果覆盖新状态） */
+    private final TaskRunFinalizer taskRunFinalizer;
+
     @Autowired
     public TaskResultConsumer(TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper,
                               ITaskService taskService, TaskMapper taskMapper,
-                              ShardSettlementService shardSettlementService) {
+                              ShardSettlementService shardSettlementService,
+                              TaskRunFinalizer taskRunFinalizer) {
         this.taskRunMapper = taskRunMapper;
         this.taskLogMapper = taskLogMapper;
         this.taskService = taskService;
         this.taskMapper = taskMapper;
         this.shardSettlementService = shardSettlementService;
+        this.taskRunFinalizer = taskRunFinalizer;
     }
 
     /**
@@ -92,16 +97,16 @@ public class TaskResultConsumer implements RocketMQListener<TaskResultMessage> {
         log.debug("TaskRun对象构建完成，ID: {}", taskRun.getId());
         log.info("TaskRun对象构建完成, 开始时间为{}, 结束时间为{} ", taskRun.getStartTime(), taskRun.getEndTime());
 
-        // 保存或更新任务执行结果（避免重复键异常）
-        log.info("保存任务执行结果，TaskRunID: {}, Status: {}", taskRun.getId(), taskRun.getStatus());
-        try {
-            taskRunMapper.insertOrUpdate(taskRun);
-            log.info("任务执行结果保存成功，TaskRunID: {}", taskRun.getId());
-        } catch (Exception e) {
-            log.error("任务执行结果保存失败，TaskRunID: {}, Error: {}", taskRun.getId(), e.getMessage(), e);
+        // 条件更新状态机（步骤28）：只允许 pending/running -> 终态单向迁移。
+        // 若 run 已被超时监控 / 故障转移 / 其他结果推进为终态，条件更新将更新 0 行，
+        // 视为迟到/重复结果直接丢弃，不覆盖已推进的状态、不重复触发结算与重试。
+        boolean terminalWritten = taskRunFinalizer.tryAdvanceToTerminal(taskRun);
+        if (!terminalWritten) {
+            log.info("迟到/重复结果，run已处于终态，丢弃。TaskRunID: {}, Status: {}", taskRun.getId(), taskRun.getStatus());
             return;
         }
-        
+        log.info("任务执行结果保存成功，TaskRunID: {}, Status: {}", taskRun.getId(), taskRun.getStatus());
+
         saveTaskLog(resultMessage);
 
         // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）

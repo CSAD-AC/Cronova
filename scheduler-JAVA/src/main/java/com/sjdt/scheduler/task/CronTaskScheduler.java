@@ -10,11 +10,11 @@ import com.sjdt.scheduler.domain.message.CallbackJobExecuteMessage;
 import com.sjdt.scheduler.domain.message.TaskExecuteMessage;
 import com.sjdt.scheduler.domain.po.*;
 import com.sjdt.scheduler.mapper.CallbackJobConfigMapper;
-import com.sjdt.scheduler.mapper.ScriptMapper;
 import com.sjdt.scheduler.mapper.TaskMapper;
 import com.sjdt.scheduler.mapper.TaskRunMapper;
-import com.sjdt.scheduler.service.IScriptService;
+import com.sjdt.scheduler.service.BlockStrategyService;
 import com.sjdt.scheduler.service.ITaskService;
+import com.sjdt.scheduler.service.ScriptMessageBuilder;
 import com.sjdt.scheduler.service.TaskDispatchService;
 import com.sjdt.scheduler.util.CronNextTimeUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -68,10 +68,10 @@ public class CronTaskScheduler {
     private TaskCallbackExecutor taskCallbackExecutor;
 
     @Autowired
-    private ScriptMapper scriptMapper;
+    private ScriptMessageBuilder scriptMessageBuilder;
 
     @Autowired
-    private IScriptService scriptService;
+    private BlockStrategyService blockStrategyService;
 
     @Autowired
     private com.sjdt.scheduler.service.ShardSettlementService shardSettlementService;
@@ -161,6 +161,17 @@ public class CronTaskScheduler {
             return;
         }
 
+        // 阻塞策略（仅脚本任务、非分片路径）：控制"同一任务上一轮未跑完"时的本轮处置
+        if (task.getExecuteType() == ExecuteType.script) {
+            BlockStrategyService.Decision decision = blockStrategyService.evaluate(task);
+            if (decision == BlockStrategyService.Decision.QUEUED
+                    || decision == BlockStrategyService.Decision.SKIPPED) {
+                // 已建排队/丢弃记录，本轮不派发（SERIAL 由 QueuedRunDispatcher 推进；DISCARD_LATER 丢弃）
+                return;
+            }
+            // COVER_EARLY 已停旧放行、PROCEED 无阻塞 -> 正常派发本轮
+        }
+
         String taskRunId = createTaskRun(task);
 
         if (task.getExecuteType() == ExecuteType.callback) {
@@ -179,7 +190,7 @@ public class CronTaskScheduler {
      */
     private void executeShardedScriptTask(Task task, int shardTotal) {
         try {
-            TaskExecuteMessage template = buildScriptMessage(task, null);
+            TaskExecuteMessage template = scriptMessageBuilder.buildScriptMessage(task, null);
             taskDispatchService.dispatchSharded(task, template, shardTotal, 0, 0);
         } catch (Exception e) {
             log.error("分片脚本任务派发失败，任务ID: {}, 分片数: {}", task.getId(), shardTotal, e);
@@ -219,13 +230,13 @@ public class CronTaskScheduler {
     private void executeScriptTask(Task task, String taskRunId) {
         try {
             TaskRun run = taskRunMapper.selectById(taskRunId);
-            TaskExecuteMessage message = buildScriptMessage(task, taskRunId);
-            if (run != null) {
-                // N=1 特例：非分片任务的消息同样携带分片身份，Worker 端统一注入 SJDT_SHARD_* 环境变量
-                message.setShardIndex(run.getShardIndex() != null ? run.getShardIndex() : 0);
-                message.setShardTotal(run.getShardTotal() != null ? run.getShardTotal() : 1);
-                message.setShardBatchId(run.getShardBatchId());
+            if (run == null) {
+                log.warn("运行记录不存在，无法派发，任务ID: {}, 运行ID: {}", task.getId(), taskRunId);
+                return;
             }
+
+            // 构造消息（自动携带 run 的分片身份）并走统一派发入口
+            TaskExecuteMessage message = scriptMessageBuilder.buildScriptMessage(task, run);
 
             // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
             boolean dispatched = taskDispatchService.dispatch(task, message, 0);
@@ -243,40 +254,28 @@ public class CronTaskScheduler {
     }
 
     /**
-     * 构造脚本任务的执行消息模板
+     * 派发一个已推进到的 pending 运行实例（SERIAL 排队推进用，由 QueuedRunDispatcher 触发）
+     * 复用 executeScriptTask 的构造与派发逻辑，保证与常规触发同一入口
      *
-     * @param task 任务对象
-     * @param taskRunId 任务运行实例ID；分片模板传 null（由 dispatchSharded 按片覆写）
-     * @return 任务执行消息
+     * @param taskRunId 已由 QueuedRunDispatcher 推进为 pending 的运行实例ID
      */
-    private TaskExecuteMessage buildScriptMessage(Task task, String taskRunId) {
-        Script script = null;
-        if (task.getScriptId() != null && !task.getScriptId().isEmpty()) {
-            script = scriptMapper.selectById(task.getScriptId());
+    public void dispatchQueuedRun(String taskRunId) {
+        TaskRun run = taskRunMapper.selectById(taskRunId);
+        if (run == null) {
+            log.warn("排队推进的run不存在，跳过派发，RunID: {}", taskRunId);
+            return;
         }
-
-        TaskExecuteMessage.ScriptInfo scriptInfo = TaskExecuteMessage.ScriptInfo.builder()
-            .id(script != null ? script.getId() : null)
-            .name(script != null ? script.getName() : null)
-            .path(script != null ? script.getPath() : null)
-            .isDirectory(script != null ? script.getIsDirectory() : null)
-            .mainFile(script != null ? script.getMainFile() : null)
-            .parentId(script != null ? script.getParentId() : null)
-            .rootPath(getRootPath(script))
-            .build();
-
-        return TaskExecuteMessage.builder()
-            .taskId(task.getId())
-            .taskName(task.getName())
-            .taskRunId(taskRunId)
-            .description(task.getDescription())
-            .scriptType(task.getScriptType() != null ? task.getScriptType().name() : null)
-            .script(scriptInfo)
-            .taskType(TaskType.cron.name())
-            .cronExpr(task.getCronExpr())
-            .targetWorkerId(task.getTargetWorker())
-            .timeoutSeconds(task.getTimeoutSeconds())
-            .build();
+        Task task = taskMapper.selectById(run.getTaskId());
+        if (task == null) {
+            log.warn("排队推进的run对应任务不存在，标记失败，RunID: {}", taskRunId);
+            updateTaskRunStatus(taskRunId, TaskRunStatus.failed, "任务不存在");
+            return;
+        }
+        if (task.getExecuteType() != ExecuteType.script) {
+            log.warn("排队推进仅支持脚本任务，RunID: {}，任务类型: {}", taskRunId, task.getExecuteType());
+            return;
+        }
+        executeScriptTask(task, taskRunId);
     }
 
     /**
@@ -396,35 +395,4 @@ public class CronTaskScheduler {
         }
     }
 
-    /**
-     * 获取脚本的根目录路径
-     * 如果脚本有父目录，则返回父目录的路径；否则返回脚本所在的目录路径
-     */
-    private String getRootPath(Script script) {
-        if (script == null) {
-            return null;
-        }
-        
-        // 如果是目录类型，根目录就是自己的路径
-        if (Boolean.TRUE.equals(script.getIsDirectory())) {
-            return script.getPath();
-        }
-        
-        // 如果有父目录ID，需要查询父目录的路径
-        if (script.getParentId() != null) {
-            Script parentScript = scriptService.getById(script.getParentId());
-            if (parentScript != null) {
-                return parentScript.getPath();
-            }
-        }
-        
-        // 否则返回脚本所在的目录路径（去掉文件名部分）
-        String scriptPath = script.getPath();
-        int lastSlash = scriptPath.lastIndexOf('/');
-        if (lastSlash > 0) {
-            return scriptPath.substring(0, lastSlash);
-        }
-        
-        return "/";
-    }
 }

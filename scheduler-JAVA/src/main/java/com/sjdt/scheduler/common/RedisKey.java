@@ -26,6 +26,24 @@ public class RedisKey {
     public static final String SCHEDULER_LOCK_SCAN = "scheduler:lock:scan";
 
     /**
+     * Worker 心跳检查分布式锁（多实例串行化，避免重复写库/重复转移）
+     * Key: scheduler:lock:heartbeat
+     */
+    public static final String SCHEDULER_LOCK_HEARTBEAT = "scheduler:lock:heartbeat";
+
+    /**
+     * 超时监控分布式锁（多实例串行化，避免重复发 STOP / 重复标记超时）
+     * Key: scheduler:lock:timeout
+     */
+    public static final String SCHEDULER_LOCK_TIMEOUT = "scheduler:lock:timeout";
+
+    /**
+     * SERIAL 排队推进分布式锁（多实例串行化，避免重复派发排队 run）
+     * Key: scheduler:lock:queued
+     */
+    public static final String SCHEDULER_LOCK_QUEUED = "scheduler:lock:queued";
+
+    /**
      * 轮询路由游标 (String类型, INCR)
      * Key: scheduler:route:rr
      * 多调度实例共享的自增计数器，用于 ROUND_ROBIN 策略
