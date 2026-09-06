@@ -139,17 +139,18 @@ public class CronTaskScheduler {
 
         log.info("CAS抢占成功，触发任务，任务ID: {}, 名称: {}, 执行类型: {}",
                 task.getId(), task.getName(), task.getExecuteType());
-        // 抢占成功 -> 派发执行
-        executeTask(task);
+        // 抢占成功 -> 派发执行（携带理论触发点 firedAt，供派发侧计算 trigger_latency_ms）
+        executeTask(task, firedAt);
     }
 
     /**
      * 执行定时任务
      * 根据executeType分发到不同的执行器；shardTotal > 0 的脚本任务走分片派发
      *
-     * @param task 任务对象
+     * @param task        任务对象
+     * @param triggerTime 理论触发时间（CAS 前的 next_trigger_time 旧值；触发延迟统计基准）
      */
-    private void executeTask(Task task) {
+    private void executeTask(Task task, LocalDateTime triggerTime) {
         log.info("开始执行定时任务，任务ID: {}, 任务名称: {}, 执行类型: {}",
             task.getId(), task.getName(), task.getExecuteType());
 
@@ -157,7 +158,7 @@ public class CronTaskScheduler {
         Integer shardTotal = task.getShardTotal();
         if (task.getExecuteType() == ExecuteType.script
                 && shardTotal != null && shardTotal > 0) {
-            executeShardedScriptTask(task, shardTotal);
+            executeShardedScriptTask(task, shardTotal, triggerTime);
             return;
         }
 
@@ -177,7 +178,7 @@ public class CronTaskScheduler {
         if (task.getExecuteType() == ExecuteType.callback) {
             executeCallbackTask(task, taskRunId);
         } else {
-            executeScriptTask(task, taskRunId);
+            executeScriptTask(task, taskRunId, triggerTime);
         }
     }
 
@@ -185,12 +186,14 @@ public class CronTaskScheduler {
      * 分片执行脚本任务
      * 生成一个分片批次ID，为每片建一条 run 并发送一条 Tag 定向消息（复用统一派发入口按路由策略选 Worker）
      *
-     * @param task       任务对象（shardTotal > 0）
-     * @param shardTotal 分片总数
+     * @param task        任务对象（shardTotal > 0）
+     * @param shardTotal  分片总数
+     * @param triggerTime 理论触发时间（写入消息，供派发侧计算各片 trigger_latency_ms）
      */
-    private void executeShardedScriptTask(Task task, int shardTotal) {
+    private void executeShardedScriptTask(Task task, int shardTotal, LocalDateTime triggerTime) {
         try {
             TaskExecuteMessage template = scriptMessageBuilder.buildScriptMessage(task, null);
+            template.setTriggerTime(triggerTime);
             taskDispatchService.dispatchSharded(task, template, shardTotal, 0, 0);
         } catch (Exception e) {
             log.error("分片脚本任务派发失败，任务ID: {}, 分片数: {}", task.getId(), shardTotal, e);
@@ -224,10 +227,11 @@ public class CronTaskScheduler {
      * 执行脚本任务
      * 发送任务消息到RocketMQ（非分片路径，消息统一带 N=1 特例分片身份）
      *
-     * @param task 任务对象
-     * @param taskRunId 任务运行实例ID
+     * @param task        任务对象
+     * @param taskRunId   任务运行实例ID
+     * @param triggerTime 理论触发时间（触发延迟统计基准；排队推进传 NULL 不计入延迟）
      */
-    private void executeScriptTask(Task task, String taskRunId) {
+    private void executeScriptTask(Task task, String taskRunId, LocalDateTime triggerTime) {
         try {
             TaskRun run = taskRunMapper.selectById(taskRunId);
             if (run == null) {
@@ -235,8 +239,9 @@ public class CronTaskScheduler {
                 return;
             }
 
-            // 构造消息（自动携带 run 的分片身份）并走统一派发入口
+            // 构造消息（自动携带 run 的分片身份 + 理论触发时间）并走统一派发入口
             TaskExecuteMessage message = scriptMessageBuilder.buildScriptMessage(task, run);
+            message.setTriggerTime(triggerTime);
 
             // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）
             boolean dispatched = taskDispatchService.dispatch(task, message, 0);
@@ -255,7 +260,8 @@ public class CronTaskScheduler {
 
     /**
      * 派发一个已推进到的 pending 运行实例（SERIAL 排队推进用，由 QueuedRunDispatcher 触发）
-     * 复用 executeScriptTask 的构造与派发逻辑，保证与常规触发同一入口
+     * 复用 executeScriptTask 的构造与派发逻辑，保证与常规触发同一入口；
+     * 排队等待期不属于调度延迟，triggerTime 传 NULL 不计入触发延迟统计
      *
      * @param taskRunId 已由 QueuedRunDispatcher 推进为 pending 的运行实例ID
      */
@@ -275,7 +281,7 @@ public class CronTaskScheduler {
             log.warn("排队推进仅支持脚本任务，RunID: {}，任务类型: {}", taskRunId, task.getExecuteType());
             return;
         }
-        executeScriptTask(task, taskRunId);
+        executeScriptTask(task, taskRunId, null);
     }
 
     /**

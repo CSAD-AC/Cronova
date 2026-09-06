@@ -40,8 +40,54 @@ export interface DashboardStats {
   }[]
 }
 
+/** 调度可观测指标：触发延迟分布（窗口内首轮触发的 run） */
+export interface MetricsLatency {
+  count: number
+  p50Ms: number
+  p95Ms: number
+  p99Ms: number
+  avgMs: number
+  maxMs: number
+}
+
+/** 调度可观测指标：派发情况汇总 */
+export interface MetricsDispatch {
+  totalRuns: number
+  dispatched: number
+  pendingNotDispatched: number
+  parkTimeout: number
+}
+
+/** 调度可观测指标：最近分片批次汇总 */
+export interface ShardBatchSummary {
+  batchId: string
+  taskId: string
+  shardTotal: number
+  finished: number
+  successCount: number
+  failedCount: number
+  lastActiveTime?: string
+}
+
+/** 调度可观测指标（GET /api/dashboard/metrics 返回结构） */
+export interface SchedulerMetrics {
+  windowMinutes: number
+  latency: MetricsLatency
+  dispatch: MetricsDispatch
+  routeDistribution: Record<string, number>
+  workerDistribution: Record<string, number>
+  statusCounts: Record<string, number>
+  schedulerOnline: number
+  recentShardBatches: ShardBatchSummary[]
+}
+
 export const dashboardApi = {
+  /** 获取系统概览统计（卡片/最近执行/类型分布） */
   getStats: () => {
     return get<DashboardStats>('/api/dashboard/stats')
+  },
+  /** 获取调度可观测指标（触发延迟/派发/路由分布/调度实例/分片批次） */
+  getMetrics: (minutes = 60) => {
+    return get<SchedulerMetrics>('/api/dashboard/metrics', { minutes })
   }
 }

@@ -70,6 +70,12 @@ public class TaskRun implements Serializable {
     /** 同一次触发的分片批次ID（同批所有分片共享，用于分片结算） */
     private String shardBatchId;
 
+    /** 实际派发时间（MQ 消息投递成功时刻；NULL=尚未派发或被 park） */
+    private LocalDateTime dispatchTime;
+
+    /** 触发延迟（毫秒）= 派发时间 - 理论触发时间；仅首轮触发（retryNum=0）写入，负值表示扫描窗口内提前派发 */
+    private Long triggerLatencyMs;
+
     /** 创建时间（实例生成时间） */
     private LocalDateTime createTime;
 

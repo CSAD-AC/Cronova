@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.Set;
 
 /**
@@ -63,6 +64,14 @@ public class TaskExecuteMessage implements Serializable {
 
     /** 分片批次ID（同一次触发的所有分片共享；非分片任务为该次run自身的批次ID） */
     private String shardBatchId;
+
+    /**
+     * 理论触发时间（触发延迟统计基准）：
+     * cron 首轮触发 = CAS 前读到的 next_trigger_time 旧值；手动触发 = 当前时间；
+     * 重试/超时重发/故障转移/排队推进 = NULL（重试等待期不计入调度延迟，避免污染指标）。
+     * 派发成功后由 TaskDispatchService 据此计算 trigger_latency_ms 回写 task_run。
+     */
+    private LocalDateTime triggerTime;
 
     /**
      * 脚本信息内部类

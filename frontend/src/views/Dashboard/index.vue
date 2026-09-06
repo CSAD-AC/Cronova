@@ -8,6 +8,8 @@
       <StatCard title="今日执行次数" :value="stats.todayExecutions" :icon="CircleCheck" tone="success" />
       <StatCard title="在线执行器" :value="`${stats.onlineWorkers}/${stats.totalWorkers}`" :icon="Cpu" tone="accent" :pulse="stats.onlineWorkers > 0" />
       <StatCard title="执行成功率" :value="stats.successRate" unit="%" :icon="TrendCharts" tone="primary" />
+      <StatCard title="触发延迟 P99" :value="formatLatency(metrics.latency.p99Ms)" :icon="Timer" tone="pending" />
+      <StatCard title="调度实例在线" :value="metrics.schedulerOnline" :icon="Connection" tone="accent" :pulse="metrics.schedulerOnline > 0" />
     </div>
 
     <div class="panel-grid">
@@ -121,6 +123,97 @@
         </div>
       </div>
 
+      <!-- ============ 调度链路指标：延迟/派发/路由分布/分片批次 ============ -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">调度链路指标</span>
+          <el-select v-model="windowMinutes" size="small" style="width: 96px" @change="fetchMetrics">
+            <el-option label="近15分钟" :value="15" />
+            <el-option label="近1小时" :value="60" />
+            <el-option label="近6小时" :value="360" />
+            <el-option label="近24小时" :value="1440" />
+          </el-select>
+        </div>
+
+        <!-- 触发延迟分位（负值=扫描窗口内提前派发） -->
+        <div class="metric-row">
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.p50Ms) }}</div>
+            <div class="metric-label">P50 延迟</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.p95Ms) }}</div>
+            <div class="metric-label">P95 延迟</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.p99Ms) }}</div>
+            <div class="metric-label">P99 延迟</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.avgMs) }}</div>
+            <div class="metric-label">平均延迟</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ metrics.latency.count }}</div>
+            <div class="metric-label">样本数</div>
+          </div>
+        </div>
+
+        <!-- 派发与状态计数 -->
+        <div class="metric-row">
+          <div class="metric-item">
+            <div class="metric-value st-online sjdt-mono">{{ metrics.dispatch.dispatched }}</div>
+            <div class="metric-label">已派发</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ metrics.dispatch.pendingNotDispatched }}</div>
+            <div class="metric-label">待派发</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value st-offline sjdt-mono">{{ metrics.dispatch.parkTimeout }}</div>
+            <div class="metric-label">park 超时</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ metrics.statusCounts.timeout || 0 }}</div>
+            <div class="metric-label">执行超时</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value sjdt-mono">{{ (metrics.statusCounts.skipped || 0) + (metrics.statusCounts.queued || 0) }}</div>
+            <div class="metric-label">跳过/排队</div>
+          </div>
+        </div>
+
+        <div class="divider" />
+
+        <!-- 路由策略命中分布 -->
+        <div class="section-label">路由策略分布（首轮 {{ metrics.dispatch.totalRuns }} 次）</div>
+        <div class="route-list">
+          <div v-for="(count, strategy) in metrics.routeDistribution" :key="strategy" class="route-item">
+            <div class="route-bar-wrap">
+              <div class="route-bar" :style="{ width: routePercent(count) + '%' }" />
+            </div>
+            <span class="route-name">{{ strategy }}</span>
+            <span class="route-value sjdt-mono">{{ count }}</span>
+          </div>
+          <div v-if="!Object.keys(metrics.routeDistribution).length" class="legend-empty">暂无数据</div>
+        </div>
+
+        <div class="divider" />
+
+        <!-- 最近分片批次 -->
+        <div class="section-label">最近分片批次</div>
+        <div class="batch-list">
+          <div v-for="batch in metrics.recentShardBatches" :key="batch.batchId" class="batch-item">
+            <span class="batch-id sjdt-mono" :title="batch.batchId">{{ batch.batchId.slice(0, 8) }}</span>
+            <span class="batch-shards sjdt-mono">{{ batch.shardTotal }} 片</span>
+            <span class="batch-result sjdt-mono">
+              <span class="st-online">{{ batch.successCount }}</span> / <span class="st-offline">{{ batch.failedCount }}</span>
+            </span>
+          </div>
+          <div v-if="!metrics.recentShardBatches.length" class="legend-empty">暂无分片任务</div>
+        </div>
+      </div>
+
       <!-- ============ 快速操作 ============ -->
       <div class="panel">
         <div class="panel-header">
@@ -190,13 +283,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  List, CircleCheck, Cpu, TrendCharts, ArrowRight, Plus, Upload
+  List, CircleCheck, Cpu, TrendCharts, ArrowRight, Plus, Upload, Timer, Connection
 } from '@element-plus/icons-vue'
 import { useWorkerStore } from '@/stores/worker'
 import { dashboardApi } from '@/services'
+import type { SchedulerMetrics } from '@/services/dashboard'
 import { formatDateTime, formatDuration } from '@/utils/date'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
@@ -219,6 +313,24 @@ const recentTasks = ref<any[]>([])
 
 /** 任务类型分布数据 */
 const taskTypeDistribution = ref<{ type: string; label: string; count: number; percentage: number }[]>([])
+
+/** 调度链路指标（数据来自 dashboardApi.getMetrics，30s 轮询刷新） */
+const metrics = reactive<SchedulerMetrics>({
+  windowMinutes: 60,
+  latency: { count: 0, p50Ms: 0, p95Ms: 0, p99Ms: 0, avgMs: 0, maxMs: 0 },
+  dispatch: { totalRuns: 0, dispatched: 0, pendingNotDispatched: 0, parkTimeout: 0 },
+  routeDistribution: {},
+  workerDistribution: {},
+  statusCounts: {},
+  schedulerOnline: 0,
+  recentShardBatches: [],
+})
+
+/** 调度指标统计窗口（分钟） */
+const windowMinutes = ref(60)
+
+/** 指标轮询定时器句柄 */
+let metricsTimer: ReturnType<typeof setInterval> | null = null
 
 /** 运行详情弹窗可见性 */
 const detailDialogVisible = ref(false)
@@ -264,6 +376,44 @@ const ringStyle = computed(() => {
   })
   return { background: `conic-gradient(${stops.join(', ')})` }
 })
+
+/**
+ * 拉取调度链路指标：触发延迟分位、派发情况、路由分布、调度实例、分片批次
+ * 失败仅打印日志（指标面板展示上一次快照，不阻塞主统计）
+ */
+async function fetchMetrics(): Promise<void> {
+  try {
+    const data = await dashboardApi.getMetrics(windowMinutes.value)
+    Object.assign(metrics, data)
+  } catch (error) {
+    console.error('获取调度指标失败:', error)
+  }
+}
+
+/**
+ * 格式化触发延迟读数：绝对值 <1s 显示毫秒，否则显示秒（保留1位小数）。
+ * 负值代表扫描窗口内提前派发（调度器特性），原样保留符号展示。
+ * @param ms 延迟毫秒数
+ */
+function formatLatency(ms: number): string {
+  const abs = Math.abs(ms)
+  if (abs < 1000) {
+    return `${Math.round(ms)}ms`
+  }
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+/**
+ * 计算路由策略占比（用于分布条宽度）。
+ * @param count 该策略命中的首轮 run 数
+ */
+function routePercent(count: number): number {
+  const total = metrics.dispatch.totalRuns
+  if (!total) {
+    return 0
+  }
+  return Math.min(100, Math.round((count / total) * 100))
+}
 
 /**
  * 拉取仪表盘统计数据：统计卡、最近执行、类型分布
@@ -326,6 +476,16 @@ function goToWorkerDetail(workerId: string): void {
 onMounted(() => {
   workerStore.fetchWorkers({ pageSize: 100 }).catch(() => {})
   fetchDashboardData()
+  // 调度链路指标 30s 轮询（压测/运维观察期间数字持续刷新）
+  fetchMetrics()
+  metricsTimer = setInterval(fetchMetrics, 30_000)
+})
+
+onUnmounted(() => {
+  if (metricsTimer) {
+    clearInterval(metricsTimer)
+    metricsTimer = null
+  }
 })
 </script>
 
@@ -338,9 +498,15 @@ onMounted(() => {
 /* ---------- 统计卡网格 ---------- */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 16px;
   margin-bottom: 20px;
+}
+
+@media (max-width: 1200px) {
+  .stat-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 992px) {
@@ -363,7 +529,7 @@ onMounted(() => {
 }
 
 .bottom-grid {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.2fr 1fr;
   margin-top: 16px;
 }
 
@@ -509,6 +675,115 @@ onMounted(() => {
   font-size: 12px;
   color: var(--sjdt-muted);
   flex-shrink: 0;
+}
+
+/* ---------- 调度链路指标面板 ---------- */
+.metric-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.metric-item {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+
+.metric-value {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--sjdt-text);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--sjdt-muted);
+  margin-top: 2px;
+}
+
+.section-label {
+  font-size: 12px;
+  color: var(--sjdt-muted);
+  margin-bottom: 8px;
+}
+
+.route-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.route-item {
+  display: grid;
+  grid-template-columns: 1fr 110px 40px;
+  gap: 10px;
+  align-items: center;
+}
+
+.route-bar-wrap {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--sjdt-row-stripe);
+  overflow: hidden;
+}
+
+.route-bar {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--sjdt-primary);
+  min-width: 2px;
+  transition: width .3s ease;
+}
+
+.route-name {
+  font-size: 12px;
+  color: var(--sjdt-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-value {
+  font-size: 12px;
+  color: var(--sjdt-muted);
+  text-align: right;
+}
+
+.batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 130px;
+  overflow-y: auto;
+}
+
+.batch-item {
+  display: grid;
+  grid-template-columns: 1fr 60px 70px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.batch-id {
+  color: var(--sjdt-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-shards {
+  color: var(--sjdt-muted);
+}
+
+.batch-result {
+  color: var(--sjdt-muted);
+  text-align: right;
 }
 
 /* ---------- 环形图 ---------- */

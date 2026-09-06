@@ -68,6 +68,15 @@ public class RedisKey {
     public static final String SHARD_SETTLE_PREFIX = "scheduler:shard:settle:";
 
     /**
+     * 调度实例注册表 (ZSet类型)
+     * Key: scheduler:instances
+     * Member: 实例ID（hostname:短UUID）
+     * Score: 最近心跳时间戳（epochMillis），30s 内有心跳视为在线
+     * 每个调度实例独立注册（区别于分布式锁的"集群单实例执行"语义）
+     */
+    public static final String SCHEDULER_INSTANCES = "scheduler:instances";
+
+    /**
      * 生成完整的 Worker 心跳 Key
      */
     public static final String getWorkerHeartbeatKey(String workerId) {

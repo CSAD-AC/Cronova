@@ -453,6 +453,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                     .cronExpr(task.getCronExpr())
                     .targetWorkerId(targetWorkerId)
                     .timeoutSeconds(task.getTimeoutSeconds())
+                    // 首轮触发才计延迟：手动触发基准=当前时间；重试的延迟等待期不计入调度延迟
+                    .triggerTime(retryNum == 0 ? LocalDateTime.now() : null)
                     .build();
             taskDispatchService.dispatchSharded(task, template, taskShardTotal, retryNum, delaySeconds);
             return;
@@ -488,6 +490,8 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .shardIndex(taskRun.getShardIndex())
                 .shardTotal(taskRun.getShardTotal())
                 .shardBatchId(taskRun.getShardBatchId())
+                // 首轮触发才计延迟（基准=当前时间）；重试/单片重试不计入调度延迟
+                .triggerTime(retryNum == 0 && !isShardRetry ? LocalDateTime.now() : null)
                 .build();
 
         // 统一派发入口：路由选 Worker + Tag 定向投递；无可用 Worker 则 park（run 保持 pending）

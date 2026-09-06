@@ -1,5 +1,6 @@
 package com.sjdt.scheduler.service;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjdt.scheduler.domain.enums.TaskRunStatus;
@@ -19,6 +20,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -314,6 +316,36 @@ public class TaskDispatchService {
             taskProducerService.sendTaskWithDelay(message, workerId, RocketMQDelayUtil.getDelayLevel(delaySeconds));
         } else {
             taskProducerService.sendTask(message, workerId);
+        }
+        recordDispatchMetrics(message);
+    }
+
+    /**
+     * 派发成功后回写 run 的可观测指标（不阻塞主流程，失败仅告警）：
+     * <ul>
+     *     <li>{@code dispatch_time}：实际派发时间（park/未派发的 run 保持 NULL，即"未派发"信号）；</li>
+     *     <li>{@code trigger_latency_ms}：派发时间 - 消息携带的理论触发时间；消息未携带（重试/重发/
+     *         排队推进）时不写，避免重试等待期污染调度延迟指标。负值合法：扫描窗口提前量内
+     *         任务可能在理论触发点之前被派发。</li>
+     * </ul>
+     *
+     * @param message 已投递成功的任务执行消息（含 taskRunId 与可选 triggerTime）
+     */
+    private void recordDispatchMetrics(TaskExecuteMessage message) {
+        if (message.getTaskRunId() == null) {
+            return;
+        }
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            Long latencyMs = message.getTriggerTime() != null
+                    ? Duration.between(message.getTriggerTime(), now).toMillis()
+                    : null;
+            taskRunMapper.update(null, new LambdaUpdateWrapper<TaskRun>()
+                    .eq(TaskRun::getId, message.getTaskRunId())
+                    .set(TaskRun::getDispatchTime, now)
+                    .set(latencyMs != null, TaskRun::getTriggerLatencyMs, latencyMs));
+        } catch (Exception e) {
+            log.warn("回写派发指标失败（不影响派发结果），RunID: {}", message.getTaskRunId(), e);
         }
     }
 

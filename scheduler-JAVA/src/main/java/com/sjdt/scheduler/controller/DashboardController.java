@@ -5,19 +5,23 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sjdt.scheduler.common.Result;
 import com.sjdt.scheduler.domain.po.CallbackJobRun;
 import com.sjdt.scheduler.domain.vo.DashboardVO;
+import com.sjdt.scheduler.domain.vo.SchedulerMetricsVO;
 import com.sjdt.scheduler.domain.vo.TaskRunVO;
 import com.sjdt.scheduler.service.ICallbackJobRunService;
 import com.sjdt.scheduler.service.IScriptService;
 import com.sjdt.scheduler.service.ITaskService;
 import com.sjdt.scheduler.service.ITaskRunService;
 import com.sjdt.scheduler.service.IWorkerService;
+import com.sjdt.scheduler.service.MetricsQueryService;
 import com.sjdt.scheduler.domain.po.TaskRun;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -48,6 +52,9 @@ public class DashboardController {
     
     @Autowired
     private ICallbackJobRunService callbackJobRunService;
+
+    @Autowired
+    private MetricsQueryService metricsQueryService;
 
     @GetMapping("/stats")
     @Operation(summary = "获取系统概览统计")
@@ -93,10 +100,28 @@ public class DashboardController {
         List<DashboardVO.TaskTypeData> taskTypeDistribution = generateTaskTypeDistribution();
         vo.setTaskTypeDistribution(taskTypeDistribution);
         
-        log.info("仪表盘数据统计完成，总任务: {}, 总执行: {}, 成功率: {}%", 
+        log.info("仪表盘数据统计完成，总任务: {}, 总执行: {}, 成功率: {}%",
                 stats.getTotalTasks(), stats.getTotalRuns(), stats.getSuccessRate());
-        
+
         return Result.success(vo);
+    }
+
+    /**
+     * 获取调度可观测指标（触发延迟 / 派发 / 路由分布 / 调度实例 / 分片批次）。
+     * 仅统计窗口内首轮触发（retryNum=0）的 run，重试等待期不计入调度延迟。
+     */
+    @GetMapping("/metrics")
+    @Operation(summary = "获取调度可观测指标",
+            description = "窗口内首轮 run 的触发延迟 P50/P95/P99、派发情况、路由策略命中分布、"
+                    + "Worker 执行分布、状态计数、在线调度实例数与最近分片批次")
+    public Result<SchedulerMetricsVO> getMetrics(
+            @Parameter(description = "统计窗口（分钟），默认60，范围1~1440")
+            @RequestParam(defaultValue = "60") int minutes) {
+        SchedulerMetricsVO metrics = metricsQueryService.query(minutes);
+        log.info("调度指标查询完成，窗口: {}分钟, 首轮run: {}, 在线调度实例: {}",
+                metrics.getWindowMinutes(), metrics.getDispatch().getTotalRuns(),
+                metrics.getSchedulerOnline());
+        return Result.success(metrics);
     }
 
     /**
