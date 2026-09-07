@@ -6,16 +6,11 @@ SJDT 任务引擎是一个分布式任务调度系统，支持两种任务类型
 
 | 目录 | 说明 |
 |---|---|
-| `scheduler-JAVA/` | 调度中心（Spring Boot）：任务管理、到期触发、路由派发、结果消费、Worker 管理 |
-| `sjdt_worker/` | Worker 执行器（Python）：脚本任务接收、执行、状态汇报、日志管理 |
+| `scheduler-JAVA/` | 调度中心（Spring Boot）：任务管理、到期触发、路由派发、分片、结果消费、Worker 管理 |
+| `worker-Python/` | Worker 执行器（Python）：脚本任务接收、执行、状态汇报、日志管理 |
 | `worker-JAVA/` | Worker 执行器（Java）：功能对等 Python 执行器，可独立部署并行共存 |
 | `frontend/` | 前端（Vue 3 + Element Plus） |
-| `docs/` | 文档收口目录（架构 / 面试 / 计划 / 开发 / 集成参考 / 踩坑记录） |
 | `examples/` | 各语言回调任务模板示例（java / python / go） |
-
-## 文档索引
-
-详细文档统一收口在 [`docs/README.md`](docs/README.md)：架构方案、面试要点、改造计划、开发启动、各语言集成指南、踩坑记录。
 
 ---
 
@@ -25,11 +20,14 @@ SJDT 任务引擎是一个分布式任务调度系统，支持两种任务类型
 
 ### 核心特性
 
-- **分布式架构**：多执行器部署，水平扩展
-- **定时调度**：基于Cron表达式的精确调度
+- **分布式架构**：调度中心多实例互斥调度，Worker 多执行器部署，水平扩展
+- **定时调度**：基于Cron表达式的精确调度（5s 扫描周期）
 - **双任务模式**：脚本任务 + HTTP回调任务
+- **路由策略**：轮询 / 最少负载 / Tag 定向，MQ Tag 硬定向投递
+- **任务分片**：大数据量任务按分片并行执行，批次聚合结算
+- **阻塞策略**：丢弃后续 / 覆盖先前 / 串行排队
 - **任务控制**：暂停、恢复、停止、强制终止
-- **实时监控**：心跳检测，状态实时上报
+- **实时监控**：心跳检测、状态实时上报、触发延迟/路由分布等调度指标
 - **安全认证**：AK/SK签名认证
 
 ---
@@ -78,11 +76,16 @@ SJDT 任务引擎是一个分布式任务调度系统，支持两种任务类型
 | 子模块 | 功能 |
 |--------|------|
 | **任务管理** | 任务的CRUD、启用/禁用、发布 |
-| **定时调度** | 基于Cron表达式的定时任务触发 |
-| **脚本任务处理** | 通过MQ下发脚本任务到Worker |
+| **定时调度** | 基于Cron表达式的定时任务触发（分布式锁互斥，多实例不重复触发） |
+| **脚本任务处理** | 通过MQ下发脚本任务到Worker（按目标 WorkerID 打 Tag 硬定向） |
+| **路由策略** | 轮询 / 最少负载 / Tag 定向 |
+| **分片派发** | 大任务按 shardTotal 拆片，轮转分布到多 Worker 并行执行，批次聚合结算 |
+| **阻塞策略** | 丢弃后续 / 覆盖先前 / 串行排队（仅非分片任务） |
 | **回调任务处理** | 直接发起HTTP请求调用业务系统 |
-| **结果消费** | 消费任务执行结果，更新数据库 |
-| **Worker管理** | 注册、心跳检测、状态监控 |
+| **结果消费** | 消费任务执行结果，状态单向迁移（迟到结果丢弃） |
+| **超时监控** | 派发超时 / 执行超时兜底与重试 |
+| **排队推进** | 上一轮终态后自动将排队 run 推进派发 |
+| **Worker管理** | 注册、心跳检测、状态监控、离线任务转移 |
 
 **技术栈**：Spring Boot 3.3.6 + MyBatis-Plus + RocketMQ + Redis + MinIO
 
@@ -127,7 +130,7 @@ SJDT 任务引擎是一个分布式任务调度系统，支持两种任务类型
 | 组件 | 用途 | 存储内容 |
 |------|------|----------|
 | **MySQL** | 持久化存储 | 用户、角色、任务定义、运行记录、脚本、标签、回调配置 |
-| **Redis** | 缓存加速 | Worker心跳、Worker负载、任务缓存、脚本缓存 |
+| **Redis** | 缓存与协调 | Worker心跳/负载、分布式锁、轮询路由游标、调度实例注册、分片结算幂等、脚本/AKSK缓存 |
 | **MinIO** | 对象存储 | 脚本文件、任务日志、HTTP回调记录 |
 
 ---
@@ -220,7 +223,7 @@ CronTask ──→ 满足触发条件 ──→ 构建回调请求 ──→ 发
          │          │
          │          ├── 心跳上报 (2秒/次)
          │          ├── 状态上报 (10秒/次)
-         │          ├── MQ消费 (TASK_EXECUTE) ──→ 脚本任务
+         │          ├── MQ消费 (TASK_EXECUTE, 独立消费组 + 按 workerId Tag 订阅) ──→ 脚本任务
          │          └── MQ消费 (TASK_CONTROL) [广播] ──→ 控制指令
          │
          └── POST /api/worker/register ──→ 获取AK/SK
@@ -230,14 +233,17 @@ CronTask ──→ 满足触发条件 ──→ 构建回调请求 ──→ 发
 
 ## 任务状态流转
 
+状态迁移是**单向**的：仅 `pending` / `running` 可推进到终态，终态后迟到到达的执行结果会被丢弃（防止旧结果覆盖新状态）。
+
 ```
-PENDING ──→ RUNNING ──→ SUCCESS/FAILED/TIMEOUT
-   ↑              │
-   │              ├── PAUSE ──→ PAUSED ──→ RESUME ──→ RUNNING
-   │              ├── STOP ──→ 结束
-   │              └── KILL ──→ 结束
+PENDING ──→ RUNNING ──→ SUCCESS / FAILED / TIMEOUT (终态)
+   │           │
+   │           ├── PAUSE ──→ PAUSED ──→ RESUME ──→ RUNNING
+   │           ├── STOP ──→ 结束
+   │           └── KILL ──→ 结束
    │
-   └── 新创建/手动发布/重新分配
+   ├── 触发时上一轮未结束且策略为 SERIAL ──→ QUEUED (排队, 上一轮终态后推进为 PENDING 派发)
+   └── 触发时被阻塞策略拦截 ──→ SKIPPED (丢弃/覆盖, 终态)
 ```
 
 ---
@@ -297,7 +303,7 @@ npm run dev
 **4. 部署Worker**（仅脚本任务需要）
 
 ```bash
-cd sjdt_worker/
+cd worker-Python/
 python main.py
 # 或使用Docker
 cd docker/
@@ -336,6 +342,20 @@ docker-compose up -d
 | `/api/task-run/{taskRunId}/stop` | POST | 停止运行 |
 | `/api/task-run/{taskRunId}/kill` | POST | 强制终止 |
 | `/api/task-run/{taskRunId}` | DELETE | 删除运行实例 |
+
+### 仪表盘
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/dashboard/stats` | GET | 总览统计（任务数/成功率/近7天图表/类型分布） |
+| `/api/dashboard/metrics` | GET | 调度链路指标：触发延迟 P50/P95/P99、派发情况、路由策略分布、最近分片批次、在线调度实例数（`minutes` 窗口参数） |
+
+### 分片批次
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/shard-batches/{batchId}/logs` | GET | 分片批次日志（按时间排序聚合） |
+| `/api/shard-batches/{batchId}/logs/info` | GET | 分片日志文件信息 |
 
 ### 回调配置管理
 
@@ -449,27 +469,45 @@ task-engine bucket/
 
 ### Redis 缓存
 
-| Key | 说明 | 过期 |
-|-----|------|------|
-| `scheduler:worker:heartbeat:{workerId}` | Worker 存活状态 | 30s |
-| `scheduler:worker:info:{workerId}` | Worker 负载信息（CPU/内存/运行任务数） | 无 |
-| `scheduler:lock:scan` | 调度扫描分布式锁（多实例互斥） | 4s |
-| `scheduler:route:rr` | 轮询路由游标（ROUND_ROBIN 共享计数器） | 无 |
+| Key | 类型 | 说明 | 过期 |
+|-----|------|------|------|
+| `scheduler:worker:heartbeat:{workerId}` | String | Worker 存活状态 | 30s |
+| `scheduler:worker:info:{workerId}` | Hash | Worker 负载信息（CPU/内存/运行任务数） | 无 |
+| `scheduler:lock:*` | String | 定时任务分布式锁（scan / heartbeat / timeout / queued，`@SchedulerLocked` AOP 统一管理，TTL 按调度周期自动推导） | 自动过期 |
+| `scheduler:route:rr` | String | 轮询路由游标（ROUND_ROBIN 共享计数器） | 无 |
+| `scheduler:shard:settle:{batchId}` | String | 分片批次结算幂等标记（同批次只结算一次） | 结算后过期 |
+| `scheduler:instances` | ZSet | 调度实例注册表（member=实例ID，score=心跳时间戳，30s 内有心跳视为在线） | 死成员定期清理 |
 
 ---
 
 ## 高可用设计
 
-### Worker离线检测
+### 调度器多实例互斥
+
+所有定时任务（任务扫描 / 心跳检查 / 超时监控 / 排队推进）由 `@SchedulerLocked` AOP 分布式锁互斥：
+
+- 多实例部署时，同一时刻只有一个实例执行扫描，**不会重复触发任务**；
+- 锁 TTL 按调度周期自动推导（周期 × 80%，cron 型兜底 30s）；
+- 启动期校验：漏加锁或注解位置错误的定时任务会在启动时直接报错。
+
+### Worker离线检测与任务转移
 
 ```
 Worker启动 ──→ 注册 ──→ 正常运行 ──→ 心跳/状态上报
                                  │
-                                 └── 超时(30s) ──→ 标记离线
+                                 └── 心跳超时 ──→ 标记离线
                                                       │
                                                       ↓
-                              离线Worker的任务 ──→ 重新分配
+                              离线Worker的运行中任务 ──→ 10s 内转移到健康 Worker 继续执行
 ```
+
+### 阻塞与排队（触发并发控制，仅非分片任务）
+
+| 策略 | 行为 |
+|------|------|
+| **DISCARD_LATER** | 上一轮未结束时丢弃本次触发（run 记为 `skipped`） |
+| **COVER_EARLY** | 上一轮未结束时覆盖先前（旧 run 记为 `skipped`） |
+| **SERIAL** | 上一轮未结束时排队（run 记为 `queued`），上一轮终态后自动推进派发 |
 
 ### 任务重试策略
 
