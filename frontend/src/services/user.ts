@@ -1,4 +1,4 @@
-import { get, post, del } from '@/utils/request'
+import { get, post, del, put } from '@/utils/request'
 import type { User, UserVO, LoginRequest, LoginResponse } from '@/types'
 
 export const userApi = {
@@ -30,8 +30,4 @@ export const userApi = {
   delete: (id: string) => {
     return del(`/api/users/${id}`)
   },
-}
-
-function put(url: string, data?: any): Promise<any> {
-  return import('@/utils/request').then(module => module.default.put(url, data))
 }

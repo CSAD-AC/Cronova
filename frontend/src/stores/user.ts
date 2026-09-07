@@ -1,9 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { UserVO, LoginRequest } from '@/types'
-import { userApi } from '@/services'
+import type { UserVO } from '@/types'
 import router from '@/router'
 
+/**
+ * 用户会话 store（纯状态管理，不调用 API）
+ *
+ * 设计说明：登录 API 调用由 Login.vue 编排（userApi.login → setSession），
+ * 本 store 不再依赖 services 层——否则形成
+ * stores/user → services → utils/request → stores/user 的模块循环依赖，
+ * 导致 Rollup 分包出现循环 chunk 警告（执行顺序可能破坏）。
+ */
 export const useUserStore = defineStore('user', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   const user = ref<UserVO | null>(null)
@@ -11,26 +18,16 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!token.value)
 
-  async function login(data: LoginRequest) {
-    try {
-      const response = await userApi.login(data)
-      console.log('登录响应:', response)
-      if (response) {
-        // 兼容后端返回格式：可能是 {token, user} 或直接在response中
-        const tokenValue = response.token || response.data?.token || (typeof response === 'string' ? response : '')
-        const userValue = response.user || response.data?.user || null
-        
-        token.value = tokenValue
-        user.value = userValue
-        localStorage.setItem('token', String(tokenValue))
-        console.log('登录成功，token:', tokenValue)
-        return true
-      }
-      return false
-    } catch (error: any) {
-      console.error('登录失败:', error)
-      return false
-    }
+  /**
+   * 登录成功后写入会话（token + 用户信息）。
+   *
+   * @param tokenValue 登录令牌
+   * @param userValue  用户信息（可能为 null）
+   */
+  function setSession(tokenValue: string, userValue: UserVO | null) {
+    token.value = tokenValue
+    user.value = userValue
+    localStorage.setItem('token', String(tokenValue))
   }
 
   async function fetchUserInfo() {
@@ -50,7 +47,7 @@ export const useUserStore = defineStore('user', () => {
     user,
     roles,
     isLoggedIn,
-    login,
+    setSession,
     fetchUserInfo,
     logout,
   }

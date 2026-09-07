@@ -81,6 +81,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Clock, Cpu, Monitor, Connection } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { userApi } from '@/services'
 import type { FormInstance, FormRules } from 'element-plus'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 
@@ -121,8 +122,8 @@ const features = [
 ]
 
 /**
- * 提交登录：校验通过后调用 userStore.login，
- * 成功后跳转 redirect 参数或仪表盘
+ * 提交登录：校验通过后直接调用 userApi.login（避免 store → services 循环依赖），
+ * 成功后 userStore.setSession 写入会话，跳转 redirect 参数或仪表盘
  */
 async function handleLogin(): Promise<void> {
   if (!formRef.value) return
@@ -132,8 +133,12 @@ async function handleLogin(): Promise<void> {
 
     loading.value = true
     try {
-      const success = await userStore.login(loginForm)
-      if (success) {
+      const response = await userApi.login(loginForm)
+      // 兼容后端返回格式：可能是 {token, user} 或直接在response中
+      const tokenValue = response?.token || response?.data?.token
+        || (typeof response === 'string' ? response : '')
+      if (tokenValue) {
+        userStore.setSession(String(tokenValue), response?.user || response?.data?.user || null)
         ElMessage.success('登录成功')
         const redirect = route.query.redirect as string
         router.push(redirect || '/dashboard')
