@@ -96,7 +96,7 @@
         </el-table-column>
         <el-table-column prop="exitCode" label="退出码" width="80">
           <template #default="{ row }">
-            <span v-if="row.exitCode !== undefined && row.exitCode !== null" class="sjdt-mono exit-code" :class="row.exitCode === 0 ? 'code-success' : 'code-fail'">
+            <span v-if="row.exitCode !== undefined && row.exitCode !== null" class="cronova-mono exit-code" :class="row.exitCode === 0 ? 'code-success' : 'code-fail'">
               {{ row.exitCode }}
             </span>
             <span v-else class="empty-text">-</span>
@@ -104,7 +104,7 @@
         </el-table-column>
         <el-table-column prop="durationMs" label="耗时" width="100">
           <template #default="{ row }">
-            <span v-if="row.durationMs" class="sjdt-mono time-text">
+            <span v-if="row.durationMs" class="cronova-mono time-text">
               {{ formatDuration(row.durationMs) }}
             </span>
             <span v-else class="empty-text">-</span>
@@ -112,7 +112,7 @@
         </el-table-column>
         <el-table-column prop="startTime" label="开始时间" width="170">
           <template #default="{ row }">
-            <span class="sjdt-mono time-text">{{ formatDateTime(row.startTime) }}</span>
+            <span class="cronova-mono time-text">{{ formatDateTime(row.startTime) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="250" fixed="right">
@@ -1424,14 +1424,14 @@ onUnmounted(() => {
 /* ---------- 表格面板 ---------- */
 .table-panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 8px 16px 16px;
 }
 
 .empty-text {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .exit-code {
@@ -1440,16 +1440,16 @@ onUnmounted(() => {
 }
 
 .code-success {
-  color: var(--sjdt-success);
+  color: var(--cronova-success);
 }
 
 .code-fail {
-  color: var(--sjdt-danger);
+  color: var(--cronova-danger);
 }
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .filter-form {
@@ -1462,7 +1462,7 @@ onUnmounted(() => {
 }
 
 .error-message {
-  color: var(--sjdt-danger);
+  color: var(--cronova-danger);
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -1482,7 +1482,7 @@ onUnmounted(() => {
 .log-title {
   font-weight: 600;
   font-size: 16px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .log-content-wrapper {
@@ -1505,7 +1505,7 @@ onUnmounted(() => {
 
 .log-text {
   margin: 0;
-  font-family: var(--sjdt-mono);
+  font-family: var(--cronova-mono);
   font-size: 12px;
   line-height: 1.4;
   color: #E2EAF4;
@@ -1574,7 +1574,7 @@ onUnmounted(() => {
   padding: 12px;
 }
 .shard-log-stream {
-  font-family: var(--sjdt-mono);
+  font-family: var(--cronova-mono);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -1667,7 +1667,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .log-loading .el-icon {
@@ -1688,17 +1688,17 @@ onUnmounted(() => {
 .callback-title {
   font-weight: 600;
   font-size: 16px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .callback-content {
-  border: 1px solid var(--sjdt-border);
+  border: 1px solid var(--cronova-border);
   border-radius: 6px;
-  background: var(--sjdt-bg);
+  background: var(--cronova-bg);
 }
 
 .callback-content-text {
-  font-family: var(--sjdt-mono);
+  font-family: var(--cronova-mono);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1708,7 +1708,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .callback-loading .el-icon {
@@ -1720,16 +1720,16 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  background: var(--sjdt-danger-soft);
-  border: 1px solid var(--sjdt-danger);
+  background: var(--cronova-danger-soft);
+  border: 1px solid var(--cronova-danger);
   border-radius: 8px;
   margin-bottom: 20px;
-  color: var(--sjdt-danger);
+  color: var(--cronova-danger);
   line-height: 1.5;
 }
 
 .warning-icon {
-  color: var(--sjdt-danger);
+  color: var(--cronova-danger);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -1740,7 +1740,7 @@ onUnmounted(() => {
 
 .control-task-info {
   padding: 16px;
-  background: var(--sjdt-bg);
+  background: var(--cronova-bg);
   border-radius: 8px;
 }
 

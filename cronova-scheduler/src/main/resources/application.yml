@@ -33,7 +33,7 @@ mybatis-plus:
   # Mapper.xml文件位置
   mapper-locations: classpath*:/mapper/**/*.xml
   # 实体类别名扫描路径
-  type-aliases-package: com.sjdt.scheduler.domain.po
+  type-aliases-package: com.cronova.scheduler.domain.po
   # 全局配置
   global-config:
     db-config:
@@ -52,11 +52,11 @@ sa-token:
   is-read-header: true
 
 # 任务超时配置（支持环境变量覆盖）
-sjdt:
+cronova:
   timeout:
     # 派发超时（秒）：run 保持 pending 超过该值判定派发失败
-    dispatch-seconds: ${SJDT_TIMEOUT_DISPATCH_SECONDS:60}
+    dispatch-seconds: ${CRONOVA_TIMEOUT_DISPATCH_SECONDS:60}
     # 执行总时长上限（秒）：任务级 timeoutSeconds 配置了则优先使用
-    execution-max-seconds: ${SJDT_TIMEOUT_EXECUTION_MAX_SECONDS:3600}
+    execution-max-seconds: ${CRONOVA_TIMEOUT_EXECUTION_MAX_SECONDS:3600}
     # 无心跳阈值（秒）：执行期间超过该值无状态上报判定超时
-    execution-heartbeat-seconds: ${SJDT_TIMEOUT_EXECUTION_HEARTBEAT_SECONDS:30}
+    execution-heartbeat-seconds: ${CRONOVA_TIMEOUT_EXECUTION_HEARTBEAT_SECONDS:30}

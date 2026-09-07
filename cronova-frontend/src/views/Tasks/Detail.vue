@@ -35,7 +35,7 @@
           <div class="desc-grid">
             <div class="desc-item">
               <div class="desc-label">任务ID</div>
-              <div class="desc-value sjdt-mono">{{ task?.id }}</div>
+              <div class="desc-value cronova-mono">{{ task?.id }}</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">任务名称</div>
@@ -68,14 +68,14 @@
             <div class="desc-item">
               <div class="desc-label">Cron表达式</div>
               <div v-if="task?.cronExpr" class="desc-value">
-                <div class="cron-expr sjdt-mono">{{ task.cronExpr }}</div>
+                <div class="cron-expr cronova-mono">{{ task.cronExpr }}</div>
                 <div class="cron-desc" v-if="cronDescription">{{ cronDescription }}</div>
               </div>
               <div v-else class="desc-value empty-text">无</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">超时时间</div>
-              <div class="desc-value sjdt-mono">{{ task?.timeoutSeconds }}秒</div>
+              <div class="desc-value cronova-mono">{{ task?.timeoutSeconds }}秒</div>
             </div>
             <div v-if="task?.executeType === 'script'" class="desc-item">
               <div class="desc-label">分片数量</div>
@@ -93,23 +93,23 @@
             <template v-if="task?.executeType === 'callback' && task?.callbackConfig">
               <div class="desc-item">
                 <div class="desc-label">回调URL</div>
-                <div class="desc-value sjdt-mono">{{ task.callbackConfig.callbackUrl || '-' }}</div>
+                <div class="desc-value cronova-mono">{{ task.callbackConfig.callbackUrl || '-' }}</div>
               </div>
               <div class="desc-item">
                 <div class="desc-label">请求方法</div>
-                <div class="desc-value sjdt-mono">{{ task.callbackConfig.callbackMethod || '-' }}</div>
+                <div class="desc-value cronova-mono">{{ task.callbackConfig.callbackMethod || '-' }}</div>
               </div>
               <div class="desc-item">
                 <div class="desc-label">密钥</div>
-                <div class="desc-value sjdt-mono">{{ task.callbackConfig.secretKey || '-' }}</div>
+                <div class="desc-value cronova-mono">{{ task.callbackConfig.secretKey || '-' }}</div>
               </div>
               <div class="desc-item">
                 <div class="desc-label">重试次数</div>
-                <div class="desc-value sjdt-mono">{{ task.callbackConfig.retryCount || 0 }}次</div>
+                <div class="desc-value cronova-mono">{{ task.callbackConfig.retryCount || 0 }}次</div>
               </div>
               <div class="desc-item">
                 <div class="desc-label">重试间隔</div>
-                <div class="desc-value sjdt-mono">{{ task.callbackConfig.retryIntervalSeconds || 60 }}秒</div>
+                <div class="desc-value cronova-mono">{{ task.callbackConfig.retryIntervalSeconds || 60 }}秒</div>
               </div>
             </template>
             <div class="desc-item">
@@ -118,11 +118,11 @@
             </div>
             <div class="desc-item">
               <div class="desc-label">创建时间</div>
-              <div class="desc-value sjdt-mono">{{ formatDateTime(task?.createTime) }}</div>
+              <div class="desc-value cronova-mono">{{ formatDateTime(task?.createTime) }}</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">更新时间</div>
-              <div class="desc-value sjdt-mono">{{ formatDateTime(task?.updateTime) }}</div>
+              <div class="desc-value cronova-mono">{{ formatDateTime(task?.updateTime) }}</div>
             </div>
             <div class="desc-item desc-item--full">
               <div class="desc-label">任务描述</div>
@@ -148,7 +148,7 @@
           >
             <el-table-column prop="id" label="执行ID" min-width="170">
               <template #default="{ row }">
-                <span class="sjdt-mono time-text">{{ row.id }}</span>
+                <span class="cronova-mono time-text">{{ row.id }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="status" label="状态" width="100">
@@ -158,7 +158,7 @@
             </el-table-column>
             <el-table-column label="分片" width="110">
               <template #default="{ row }">
-                <span v-if="row.shardTotal && row.shardTotal > 1" class="sjdt-mono time-text">
+                <span v-if="row.shardTotal && row.shardTotal > 1" class="cronova-mono time-text">
                   {{ row.shardIndex + 1 }} / {{ row.shardTotal }}
                 </span>
                 <span v-else class="empty-text">-</span>
@@ -166,24 +166,24 @@
             </el-table-column>
             <el-table-column prop="workerId" label="执行器" min-width="110">
               <template #default="{ row }">
-                <span v-if="row.workerId" class="sjdt-mono time-text">{{ row.workerId }}</span>
+                <span v-if="row.workerId" class="cronova-mono time-text">{{ row.workerId }}</span>
                 <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
             <el-table-column prop="startTime" label="开始时间" width="160">
               <template #default="{ row }">
-                <span class="sjdt-mono time-text">{{ formatDateTime(row.startTime) }}</span>
+                <span class="cronova-mono time-text">{{ formatDateTime(row.startTime) }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="durationMs" label="耗时" width="90">
               <template #default="{ row }">
-                <span v-if="row.durationMs" class="sjdt-mono time-text">{{ formatDuration(row.durationMs) }}</span>
+                <span v-if="row.durationMs" class="cronova-mono time-text">{{ formatDuration(row.durationMs) }}</span>
                 <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
             <el-table-column prop="exitCode" label="退出码" width="80">
               <template #default="{ row }">
-                <span v-if="row.exitCode !== undefined && row.exitCode !== null" class="sjdt-mono" :class="row.exitCode === 0 ? 'code-success' : 'code-fail'">{{ row.exitCode }}</span>
+                <span v-if="row.exitCode !== undefined && row.exitCode !== null" class="cronova-mono" :class="row.exitCode === 0 ? 'code-success' : 'code-fail'">{{ row.exitCode }}</span>
                 <span v-else class="empty-text">-</span>
               </template>
             </el-table-column>
@@ -253,15 +253,15 @@
           <div class="stats-list">
             <div class="stat-item">
               <span class="stat-label">执行总次数</span>
-              <span class="stat-value sjdt-mono">{{ runsTotal }}</span>
+              <span class="stat-value cronova-mono">{{ runsTotal }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">成功率</span>
-              <span class="stat-value sjdt-mono">{{ successRate }}</span>
+              <span class="stat-value cronova-mono">{{ successRate }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">平均耗时</span>
-              <span class="stat-value sjdt-mono">{{ avgDuration }}</span>
+              <span class="stat-value cronova-mono">{{ avgDuration }}</span>
             </div>
           </div>
         </div>
@@ -1004,9 +1004,9 @@ onUnmounted(() => {
 /* ---------- 面板 ---------- */
 .panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 18px 20px;
 }
 
@@ -1020,7 +1020,7 @@ onUnmounted(() => {
 .panel-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 /* ---------- 描述网格 ---------- */
@@ -1036,13 +1036,13 @@ onUnmounted(() => {
 
 .desc-label {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-bottom: 4px;
 }
 
 .desc-value {
   font-size: 14px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   word-break: break-all;
 }
 
@@ -1058,58 +1058,58 @@ onUnmounted(() => {
 }
 
 .chip-script {
-  background: var(--sjdt-success-soft);
-  color: var(--sjdt-success);
+  background: var(--cronova-success-soft);
+  color: var(--cronova-success);
 }
 
 .chip-callback {
-  background: var(--sjdt-accent-soft);
-  color: var(--sjdt-accent);
+  background: var(--cronova-accent-soft);
+  color: var(--cronova-accent);
 }
 
 .chip-cron {
-  background: var(--sjdt-primary-soft);
-  color: var(--sjdt-primary);
+  background: var(--cronova-primary-soft);
+  color: var(--cronova-primary);
 }
 
 .chip-once {
-  background: var(--sjdt-pending-soft);
-  color: var(--sjdt-pending);
+  background: var(--cronova-pending-soft);
+  color: var(--cronova-pending);
 }
 
 .chip-shard {
-  background: var(--sjdt-accent-soft);
-  color: var(--sjdt-accent);
+  background: var(--cronova-accent-soft);
+  color: var(--cronova-accent);
 }
 
 .empty-text {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .code-success {
-  color: var(--sjdt-success);
+  color: var(--cronova-success);
   font-weight: 600;
 }
 
 .code-fail {
-  color: var(--sjdt-danger);
+  color: var(--cronova-danger);
   font-weight: 600;
 }
 
 .cron-expr {
   font-size: 13px;
-  color: var(--sjdt-primary);
+  color: var(--cronova-primary);
   margin-bottom: 2px;
 }
 
 .cron-desc {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   line-height: 1.3;
 }
 
@@ -1136,7 +1136,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid var(--sjdt-border);
+  border-bottom: 1px solid var(--cronova-border);
 }
 
 .stat-item:last-child {
@@ -1145,13 +1145,13 @@ onUnmounted(() => {
 
 .stat-label {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .stat-value {
   font-size: 18px;
   font-weight: 700;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .pagination-container {
@@ -1182,7 +1182,7 @@ onUnmounted(() => {
   gap: 8px;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--sjdt-border);
+  border-bottom: 1px solid var(--cronova-border);
   align-items: center;
 }
 
@@ -1198,7 +1198,7 @@ onUnmounted(() => {
 
 .log-text {
   margin: 0;
-  font-family: var(--sjdt-mono);
+  font-family: var(--cronova-mono);
   font-size: 13px;
   line-height: 1.4;
   color: #E2EAF4;

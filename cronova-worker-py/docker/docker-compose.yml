@@ -1,9 +1,9 @@
 # 本地测试docker-compose
 services:
-  sjdt-worker:
-    image: sjdt-worker:1.0
+  cronova-worker:
+    image: cronova-worker:1.0
     network_mode: host
-    container_name: sjdt-worker
+    container_name: cronova-worker
     restart: always
     env_file:
       - .env

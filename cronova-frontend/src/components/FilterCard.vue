@@ -15,9 +15,9 @@
 .filter-card {
   padding: 16px 20px;
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   margin-bottom: 16px;
   transition: background-color .25s ease, border-color .25s ease;
 }
@@ -28,7 +28,7 @@
 }
 
 .filter-card :deep(.el-form-item__label) {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   font-size: 13px;
 }
 </style>

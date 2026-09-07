@@ -37,16 +37,16 @@ function handleToggle(): void {
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  color: var(--sjdt-muted);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  color: var(--cronova-muted);
   cursor: pointer;
   transition: all .18s ease;
 }
 
 .theme-toggle:hover {
-  color: var(--sjdt-primary);
-  border-color: var(--sjdt-primary);
-  background: var(--sjdt-primary-soft);
+  color: var(--cronova-primary);
+  border-color: var(--cronova-primary);
+  background: var(--cronova-primary-soft);
 }
 </style>

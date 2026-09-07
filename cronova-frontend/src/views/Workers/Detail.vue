@@ -19,7 +19,7 @@
           <div class="desc-grid">
             <div class="desc-item">
               <div class="desc-label">执行器ID</div>
-              <div class="desc-value sjdt-mono">{{ worker?.id }}</div>
+              <div class="desc-value cronova-mono">{{ worker?.id }}</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">主机名</div>
@@ -32,19 +32,19 @@
             </div>
             <div class="desc-item">
               <div class="desc-label">IP地址</div>
-              <div class="desc-value sjdt-mono">{{ worker?.ip }}</div>
+              <div class="desc-value cronova-mono">{{ worker?.ip }}</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">运行任务数</div>
-              <div class="desc-value sjdt-mono">{{ worker?.runningTasks || 0 }}</div>
+              <div class="desc-value cronova-mono">{{ worker?.runningTasks || 0 }}</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">最后心跳</div>
-              <div class="desc-value sjdt-mono">{{ formatDateTime(worker?.lastHeartbeat) }}</div>
+              <div class="desc-value cronova-mono">{{ formatDateTime(worker?.lastHeartbeat) }}</div>
             </div>
             <div class="desc-item">
               <div class="desc-label">创建时间</div>
-              <div class="desc-value sjdt-mono">{{ formatDateTime(worker?.createTime) }}</div>
+              <div class="desc-value cronova-mono">{{ formatDateTime(worker?.createTime) }}</div>
             </div>
           </div>
         </div>
@@ -58,7 +58,7 @@
             <div class="resource-item">
               <div class="resource-head">
                 <span class="resource-label">CPU使用率</span>
-                <span class="resource-num sjdt-mono" :style="{ color: getCpuColor(worker?.cpuUsage || 0) }">
+                <span class="resource-num cronova-mono" :style="{ color: getCpuColor(worker?.cpuUsage || 0) }">
                   {{ worker?.cpuUsage?.toFixed(1) || '0.0' }}%
                 </span>
               </div>
@@ -72,7 +72,7 @@
             <div class="resource-item">
               <div class="resource-head">
                 <span class="resource-label">内存使用率</span>
-                <span class="resource-num sjdt-mono" :style="{ color: getMemColor(worker?.memUsage || 0) }">
+                <span class="resource-num cronova-mono" :style="{ color: getMemColor(worker?.memUsage || 0) }">
                   {{ worker?.memUsage?.toFixed(1) || '0.0' }}%
                 </span>
               </div>
@@ -189,9 +189,9 @@ const hostRules = {
  * @param usage CPU 使用率
  */
 function getCpuColor(usage: number): string {
-  if (usage < 50) return 'var(--sjdt-success)'
-  if (usage < 80) return 'var(--sjdt-running)'
-  return 'var(--sjdt-danger)'
+  if (usage < 50) return 'var(--cronova-success)'
+  if (usage < 80) return 'var(--cronova-running)'
+  return 'var(--cronova-danger)'
 }
 
 /**
@@ -199,9 +199,9 @@ function getCpuColor(usage: number): string {
  * @param usage 内存使用率
  */
 function getMemColor(usage: number): string {
-  if (usage < 60) return 'var(--sjdt-success)'
-  if (usage < 85) return 'var(--sjdt-running)'
-  return 'var(--sjdt-danger)'
+  if (usage < 60) return 'var(--cronova-success)'
+  if (usage < 85) return 'var(--cronova-running)'
+  return 'var(--cronova-danger)'
 }
 
 /**
@@ -321,9 +321,9 @@ onMounted(() => {
 /* ---------- 面板 ---------- */
 .panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 18px 20px;
 }
 
@@ -337,7 +337,7 @@ onMounted(() => {
 .panel-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 /* ---------- 描述网格 ---------- */
@@ -349,13 +349,13 @@ onMounted(() => {
 
 .desc-label {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-bottom: 4px;
 }
 
 .desc-value {
   font-size: 14px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   word-break: break-all;
 }
 
@@ -387,7 +387,7 @@ onMounted(() => {
 
 .resource-label {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .resource-num {
@@ -420,7 +420,7 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
-  background: var(--sjdt-primary-soft);
-  color: var(--sjdt-primary);
+  background: var(--cronova-primary-soft);
+  color: var(--cronova-primary);
 }
 </style>

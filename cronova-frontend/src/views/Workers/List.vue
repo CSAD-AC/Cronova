@@ -54,10 +54,10 @@
                 </el-icon>
               </div>
               <div class="worker-details">
-                <el-link type="primary" class="sjdt-mono" @click="$router.push(`/workers/${row.id}`)">
+                <el-link type="primary" class="cronova-mono" @click="$router.push(`/workers/${row.id}`)">
                   {{ row.host }}
                 </el-link>
-                <div class="worker-ip sjdt-mono">{{ row.ip }}</div>
+                <div class="worker-ip cronova-mono">{{ row.ip }}</div>
               </div>
             </div>
           </template>
@@ -91,12 +91,12 @@
         </el-table-column>
         <el-table-column prop="runningTasks" label="运行任务" width="100" align="center">
           <template #default="{ row }">
-            <span class="running-count sjdt-mono">{{ row.runningTasks || 0 }}</span>
+            <span class="running-count cronova-mono">{{ row.runningTasks || 0 }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="lastHeartbeat" label="最后心跳" width="180">
           <template #default="{ row }">
-            <span class="sjdt-mono time-text">{{ formatDateTime(row.lastHeartbeat) }}</span>
+            <span class="cronova-mono time-text">{{ formatDateTime(row.lastHeartbeat) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
@@ -136,8 +136,8 @@
     <el-dialog v-model="tagDialogVisible" title="编辑标签" width="500px">
       <div class="tag-dialog-content">
         <div class="worker-info-header">
-          <h4 class="sjdt-mono">{{ currentWorker?.host }}</h4>
-          <span class="worker-ip sjdt-mono">{{ currentWorker?.ip }}</span>
+          <h4 class="cronova-mono">{{ currentWorker?.host }}</h4>
+          <span class="worker-ip cronova-mono">{{ currentWorker?.ip }}</span>
         </div>
 
         <div class="tag-selection">
@@ -292,9 +292,9 @@ async function fetchWorkers(): Promise<void> {
  * @param usage CPU 使用率
  */
 function getCpuColor(usage: number): string {
-  if (usage < 50) return 'var(--sjdt-success)'
-  if (usage < 80) return 'var(--sjdt-running)'
-  return 'var(--sjdt-danger)'
+  if (usage < 50) return 'var(--cronova-success)'
+  if (usage < 80) return 'var(--cronova-running)'
+  return 'var(--cronova-danger)'
 }
 
 /**
@@ -302,9 +302,9 @@ function getCpuColor(usage: number): string {
  * @param usage 内存使用率
  */
 function getMemColor(usage: number): string {
-  if (usage < 60) return 'var(--sjdt-success)'
-  if (usage < 85) return 'var(--sjdt-running)'
-  return 'var(--sjdt-danger)'
+  if (usage < 60) return 'var(--cronova-success)'
+  if (usage < 85) return 'var(--cronova-running)'
+  return 'var(--cronova-danger)'
 }
 
 /**
@@ -444,9 +444,9 @@ onMounted(() => {
 /* ---------- 表格面板 ---------- */
 .table-panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 8px 16px 16px;
 }
 
@@ -466,13 +466,13 @@ onMounted(() => {
 }
 
 .avatar-online {
-  background: var(--sjdt-success-soft);
-  color: var(--sjdt-success);
+  background: var(--cronova-success-soft);
+  color: var(--cronova-success);
 }
 
 .avatar-offline {
-  background: var(--sjdt-danger-soft);
-  color: var(--sjdt-danger);
+  background: var(--cronova-danger-soft);
+  color: var(--cronova-danger);
 }
 
 .worker-details {
@@ -482,7 +482,7 @@ onMounted(() => {
 
 .worker-ip {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .usage-cell {
@@ -491,12 +491,12 @@ onMounted(() => {
 
 .running-count {
   font-weight: 600;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .pagination-container {
@@ -513,24 +513,24 @@ onMounted(() => {
 .worker-info-header {
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--sjdt-border);
+  border-bottom: 1px solid var(--cronova-border);
 }
 
 .worker-info-header h4 {
   margin: 0 0 4px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   font-size: 15px;
   font-weight: 600;
 }
 
 .worker-info-header .worker-ip {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .tag-selection h5 {
   margin: 0 0 16px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   font-size: 14px;
   font-weight: 500;
 }
@@ -538,7 +538,7 @@ onMounted(() => {
 .no-tags-hint {
   text-align: center;
   padding: 40px 0;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .dialog-footer {
@@ -548,7 +548,7 @@ onMounted(() => {
 }
 
 .selected-count {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   font-size: 13px;
 }
 

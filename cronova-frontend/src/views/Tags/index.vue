@@ -58,7 +58,7 @@
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="170">
           <template #default="{ row }">
-            <span class="sjdt-mono time-text">{{ formatDateTime(row.createTime) }}</span>
+            <span class="cronova-mono time-text">{{ formatDateTime(row.createTime) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
@@ -451,9 +451,9 @@ onMounted(() => {
 /* ---------- 表格面板 ---------- */
 .table-panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 8px 16px 16px;
 }
 
@@ -464,18 +464,18 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
-  background: var(--sjdt-primary-soft);
-  color: var(--sjdt-primary);
+  background: var(--cronova-primary-soft);
+  color: var(--cronova-primary);
   white-space: nowrap;
 }
 
 .no-description {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   font-size: 13px;
 }
 
 .description-text {
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   font-size: 13px;
 }
 
@@ -486,7 +486,7 @@ onMounted(() => {
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .pagination-container {

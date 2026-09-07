@@ -11,10 +11,10 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.sjdt</groupId>
-    <artifactId>sjdt-worker</artifactId>
+    <groupId>com.cronova</groupId>
+    <artifactId>cronova-worker-java</artifactId>
     <version>1.0.0</version>
-    <name>sjdt-worker</name>
+    <name>cronova-worker-java</name>
     <description>任务调度系统 Java 执行器</description>
 
     <properties>
@@ -92,7 +92,7 @@
     </dependencies>
 
     <build>
-        <finalName>sjdt-worker</finalName>
+        <finalName>cronova-worker-java</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

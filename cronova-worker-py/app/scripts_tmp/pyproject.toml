@@ -3,15 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sjdt-utils"
+name = "cronova-utils"
 version = "0.1.0"
-description = "sjdt-task-engine utilities"
+description = "cronova-task-engine utilities"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/example/sjdt-utils"
+Homepage = "https://github.com/example/cronova-utils"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["sjdt_utils*"]
+include = ["cronova_utils*"]

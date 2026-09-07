@@ -148,7 +148,7 @@ class GoHandler(BaseHandler):
                                              log_bucket=log_bucket,
                                              log_object=log_object)
 
-            # 5. 启动子进程执行程序（注入 SJDT_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
+            # 5. 启动子进程执行程序（注入 CRONOVA_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始运行二进制程序，超时时间：%d秒", timeout_seconds)
 

@@ -10,11 +10,11 @@
         <version>3.3.6</version>
         <relativePath/>
     </parent>
-    <groupId>com.sjdt</groupId>
-    <artifactId>sjdt-task-engine</artifactId>
+    <groupId>com.cronova</groupId>
+    <artifactId>cronova-scheduler</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>sjdt-task-engine</name>
-    <description>sjdt-task-engine</description>
+    <name>cronova-scheduler</name>
+    <description>cronova-scheduler</description>
     <url/>
     <licenses>
         <license/>

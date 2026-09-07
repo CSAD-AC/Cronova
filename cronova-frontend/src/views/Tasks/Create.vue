@@ -545,9 +545,9 @@ async function handleSubmit() {
 /* ---------- 表单面板（主题 Token） ---------- */
 .panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
 }
 
 .form-panel {
@@ -561,21 +561,21 @@ async function handleSubmit() {
 .form-tip {
   margin-left: 8px;
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 /* ---------- 分区标题 ---------- */
 :deep(.el-divider__text) {
   font-size: 13px;
   font-weight: 600;
-  color: var(--sjdt-text);
-  background: var(--sjdt-surface);
+  color: var(--cronova-text);
+  background: var(--cronova-surface);
 }
 
 .cron-help {
   font-size: 12px;
   line-height: 1.8;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .cron-help p {
@@ -583,6 +583,6 @@ async function handleSubmit() {
 }
 
 .cron-help b {
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 </style>

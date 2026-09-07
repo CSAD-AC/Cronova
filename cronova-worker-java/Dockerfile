@@ -20,6 +20,6 @@ RUN apt-get update && \
 RUN mkdir -p scripts_tmp task_instances
 
 # -------------- 复制并启动 --------------
-COPY target/sjdt-worker.jar /app/sjdt-worker.jar
+COPY target/cronova-worker-java.jar /app/cronova-worker-java.jar
 
-CMD ["java", "-jar", "/app/sjdt-worker.jar"]
+CMD ["java", "-jar", "/app/cronova-worker-java.jar"]

@@ -5,7 +5,7 @@ import { defineStore } from 'pinia'
 export type ThemeMode = 'light' | 'dark'
 
 /** localStorage 持久化键名 */
-const STORAGE_KEY = 'sjdt-theme'
+const STORAGE_KEY = 'cronova-theme'
 
 /**
  * 主题 Store（"调度脉搏"设计系统）

@@ -8,7 +8,7 @@
             <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
           </svg>
         </div>
-        <span v-if="!isCollapsed" class="logo-name">SJDT 调度器</span>
+        <span v-if="!isCollapsed" class="logo-name">Cronova 调度器</span>
       </div>
 
       <nav class="menu-scroll">
@@ -69,7 +69,7 @@
           <ThemeToggle />
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="user-info">
-              <div class="user-avatar" :style="{ background: 'var(--sjdt-avatar-grad)' }">
+              <div class="user-avatar" :style="{ background: 'var(--cronova-avatar-grad)' }">
                 {{ userStore.user?.nickname?.charAt(0) || 'U' }}
               </div>
               <span class="username">{{ userStore.user?.nickname || userStore.user?.username }}</span>
@@ -211,8 +211,8 @@ onMounted(() => {
 /* ---------- 侧边栏（随主题切换，与内容区分层） ---------- */
 .sidebar {
   width: 224px;
-  background: var(--sjdt-sidebar-bg);
-  border-right: 1px solid var(--sjdt-sidebar-border);
+  background: var(--cronova-sidebar-bg);
+  border-right: 1px solid var(--cronova-sidebar-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -230,7 +230,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 0 18px;
-  border-bottom: 1px solid var(--sjdt-sidebar-divider);
+  border-bottom: 1px solid var(--cronova-sidebar-divider);
   flex-shrink: 0;
 }
 
@@ -243,7 +243,7 @@ onMounted(() => {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: var(--sjdt-logo-grad);
+  background: var(--cronova-logo-grad);
   color: #FFFFFF;
   display: grid;
   place-items: center;
@@ -258,7 +258,7 @@ onMounted(() => {
 .logo-name {
   font-size: 15px;
   font-weight: 700;
-  color: var(--sjdt-sidebar-heading);
+  color: var(--cronova-sidebar-heading);
   letter-spacing: .5px;
   white-space: nowrap;
 }
@@ -276,7 +276,7 @@ onMounted(() => {
 }
 
 .menu-scroll::-webkit-scrollbar-thumb {
-  background: var(--sjdt-sidebar-border);
+  background: var(--cronova-sidebar-border);
   border-radius: 4px;
 }
 
@@ -284,13 +284,13 @@ onMounted(() => {
   font-size: 11px;
   letter-spacing: 2px;
   padding: 14px 10px 6px;
-  color: var(--sjdt-sidebar-group);
+  color: var(--cronova-sidebar-group);
   white-space: nowrap;
 }
 
 .menu-group-divider {
   height: 1px;
-  background: var(--sjdt-sidebar-divider);
+  background: var(--cronova-sidebar-divider);
   margin: 10px 8px;
 }
 
@@ -301,7 +301,7 @@ onMounted(() => {
   gap: 10px;
   padding: 9px 12px;
   border-radius: 8px;
-  color: var(--sjdt-sidebar-text);
+  color: var(--cronova-sidebar-text);
   font-size: 14px;
   text-decoration: none;
   margin-bottom: 2px;
@@ -314,13 +314,13 @@ onMounted(() => {
 }
 
 .menu-item:hover {
-  background: var(--sjdt-sidebar-hover);
-  color: var(--sjdt-sidebar-hover-text);
+  background: var(--cronova-sidebar-hover);
+  color: var(--cronova-sidebar-hover-text);
 }
 
 .menu-item.active {
-  background: var(--sjdt-sidebar-active-bg);
-  color: var(--sjdt-sidebar-active-text);
+  background: var(--cronova-sidebar-active-bg);
+  color: var(--cronova-sidebar-active-text);
   font-weight: 600;
 }
 
@@ -333,7 +333,7 @@ onMounted(() => {
   height: 60%;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--sjdt-primary);
+  background: var(--cronova-primary);
 }
 
 .menu-item-text {
@@ -350,8 +350,8 @@ onMounted(() => {
   font-weight: 600;
   padding: 1px 8px;
   border-radius: 999px;
-  background: var(--sjdt-success-soft);
-  color: var(--sjdt-success);
+  background: var(--cronova-success-soft);
+  color: var(--cronova-success);
 }
 
 .menu-badge.collapsed {
@@ -365,14 +365,14 @@ onMounted(() => {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--sjdt-success);
-  animation: sjdt-pulse-success 2s infinite;
+  background: var(--cronova-success);
+  animation: cronova-pulse-success 2s infinite;
 }
 
 /* ---------- 侧边栏底部 ---------- */
 .sidebar-foot {
   padding: 12px;
-  border-top: 1px solid var(--sjdt-sidebar-divider);
+  border-top: 1px solid var(--cronova-sidebar-divider);
   display: flex;
   justify-content: center;
   flex-shrink: 0;
@@ -386,9 +386,9 @@ onMounted(() => {
   width: 100%;
   padding: 7px;
   border-radius: 8px;
-  border: 1px solid var(--sjdt-border);
+  border: 1px solid var(--cronova-border);
   background: transparent;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   font-size: 12px;
   cursor: pointer;
   transition: all .18s ease;
@@ -396,9 +396,9 @@ onMounted(() => {
 }
 
 .collapse-btn:hover {
-  background: var(--sjdt-sidebar-hover);
-  color: var(--sjdt-sidebar-hover-text);
-  border-color: var(--sjdt-primary);
+  background: var(--cronova-sidebar-hover);
+  color: var(--cronova-sidebar-hover-text);
+  border-color: var(--cronova-primary);
 }
 
 /* ---------- 右侧主体（内容区底色为三层阶梯中最暗层） ---------- */
@@ -407,14 +407,14 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--sjdt-bg);
+  background: var(--cronova-bg);
 }
 
 .layout-header {
   height: 60px;
   flex-shrink: 0;
-  background: var(--sjdt-surface);
-  border-bottom: 1px solid var(--sjdt-border);
+  background: var(--cronova-surface);
+  border-bottom: 1px solid var(--cronova-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -439,7 +439,7 @@ onMounted(() => {
 }
 
 .user-info:hover {
-  background: var(--sjdt-primary-soft);
+  background: var(--cronova-primary-soft);
 }
 
 .user-avatar {
@@ -456,7 +456,7 @@ onMounted(() => {
 
 .username {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -464,7 +464,7 @@ onMounted(() => {
 }
 
 .user-info .el-icon {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 /* ---------- 内容区 ---------- */

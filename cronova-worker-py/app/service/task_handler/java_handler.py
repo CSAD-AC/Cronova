@@ -190,7 +190,7 @@ class JavaHandler(BaseHandler):
                     config_arg = "--spring.config.location=" + ",".join(config_params)
                     cmd = cmd[0:1] + [config_arg] + cmd[1:]
 
-            # 5. 启动子进程执行脚本（注入 SJDT_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
+            # 5. 启动子进程执行脚本（注入 CRONOVA_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行Java命令，超时时间：%d秒", timeout_seconds)
 

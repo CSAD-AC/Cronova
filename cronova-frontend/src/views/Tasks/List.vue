@@ -89,7 +89,7 @@
         <el-table-column prop="cronExpr" label="Cron表达式" width="200">
           <template #default="{ row }">
             <div v-if="row.cronExpr && row.taskType === 'cron'" class="cron-cell">
-              <div class="cron-expr sjdt-mono">{{ row.cronExpr }}</div>
+              <div class="cron-expr cronova-mono">{{ row.cronExpr }}</div>
               <div class="cron-desc" v-if="cronDescriptions.get(row.id)">
                 {{ cronDescriptions.get(row.id) }}
               </div>
@@ -109,7 +109,7 @@
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="170">
           <template #default="{ row }">
-            <span class="sjdt-mono time-text">{{ formatDateTime(row.createTime) }}</span>
+            <span class="cronova-mono time-text">{{ formatDateTime(row.createTime) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="260" fixed="right">
@@ -448,9 +448,9 @@ onMounted(() => {
 /* ---------- 表格面板 ---------- */
 .table-panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 8px 16px 16px;
 }
 
@@ -466,32 +466,32 @@ onMounted(() => {
 }
 
 .chip-script {
-  background: var(--sjdt-success-soft);
-  color: var(--sjdt-success);
+  background: var(--cronova-success-soft);
+  color: var(--cronova-success);
 }
 
 .chip-callback {
-  background: var(--sjdt-accent-soft);
-  color: var(--sjdt-accent);
+  background: var(--cronova-accent-soft);
+  color: var(--cronova-accent);
 }
 
 .chip-cron {
-  background: var(--sjdt-primary-soft);
-  color: var(--sjdt-primary);
+  background: var(--cronova-primary-soft);
+  color: var(--cronova-primary);
 }
 
 .chip-once {
-  background: var(--sjdt-pending-soft);
-  color: var(--sjdt-pending);
+  background: var(--cronova-pending-soft);
+  color: var(--cronova-pending);
 }
 
 .chip-lang {
-  background: var(--sjdt-running-soft);
-  color: var(--sjdt-running);
+  background: var(--cronova-running-soft);
+  color: var(--cronova-running);
 }
 
 .empty-text {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 /* ---------- Cron 单元格 ---------- */
@@ -501,19 +501,19 @@ onMounted(() => {
 
 .cron-expr {
   font-size: 13px;
-  color: var(--sjdt-primary);
+  color: var(--cronova-primary);
   margin-bottom: 2px;
 }
 
 .cron-desc {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   line-height: 1.3;
 }
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .pagination-container {

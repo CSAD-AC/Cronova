@@ -9,7 +9,7 @@ WORKDIR /app
 ENV TZ=UTC
 
 # -------------- 复制并启动 --------------
-COPY target/sjdt-task-engine-0.0.1-SNAPSHOT.jar /app/scheduler.jar
+COPY target/cronova-scheduler-0.0.1-SNAPSHOT.jar /app/scheduler.jar
 
 EXPOSE 8085
 

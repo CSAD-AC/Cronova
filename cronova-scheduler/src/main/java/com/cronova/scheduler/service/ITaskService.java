@@ -1,0 +1,114 @@
+package com.cronova.scheduler.service;
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import com.cronova.scheduler.domain.dto.TaskCreateDTO;
+import com.cronova.scheduler.domain.dto.TaskUpdateDTO;
+import com.cronova.scheduler.domain.po.Task;
+import com.cronova.scheduler.domain.vo.TaskVO;
+
+import java.util.List;
+
+/**
+ * Task Service 接口
+ * 提供 Task 任务的管理和操作
+ */
+public interface ITaskService extends IService<Task> {
+
+    /**
+     * 创建任务
+     *
+     * @param taskCreateDTO 任务创建DTO
+     * @return 创建的任务ID
+     */
+    String createTask(TaskCreateDTO taskCreateDTO);
+
+    /**
+     * 更新任务及其配置
+     *
+     * @param taskUpdateDTO 任务更新DTO
+     */
+    void updateTask(TaskUpdateDTO taskUpdateDTO);
+
+    /**
+     * 获取任务详情VO（包含回调配置）
+     *
+     * @param id 任务ID
+     * @return 任务VO
+     */
+    TaskVO getTaskVO(String id);
+
+    /**
+     * 获取任务列表VO
+     *
+     * @return 任务VO列表
+     */
+    List<TaskVO> listTaskVOs();
+
+    /**
+     * 获取所有活跃的定时任务
+     * @return 活跃定时任务列表
+     */
+    List<Task> listActiveCronTasks();
+
+    /**
+     * 根据 Worker ID 更新任务的 target_worker 为 null
+     * @param workerId Worker ID
+     */
+    void updateTargetWorkerToNullByWorkerId(String workerId);
+
+    /**
+     * 获取最近的任务列表
+     * @param limit 限制数量
+     * @return 任务VO列表
+     */
+    List<TaskVO> listRecentTasks(int limit);
+
+    /**
+     * 发布任务
+     * 根据任务类型（公共/定向）发送到RocketMQ
+     *
+     * @param taskId 任务ID
+     */
+    void publishTask(String taskId);
+
+    /**
+     * 发布任务（支持指定重试次数和延时）
+     *
+     * @param taskId 任务ID
+     * @param retryNum 当前重试次数
+     * @param delaySeconds 延时秒数
+     */
+    void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds);
+
+    /**
+     * 发布任务（支持指定重试次数、延时与分片身份）
+     * 分片身份非空时表示"单片重试"：新 run 沿用原片的 shardIndex/shardTotal/shardBatchId，
+     * 重试仍处理同一段数据（分片由 hash 固定，不重不漏）；为空时按任务自身配置决定是否分片
+     *
+     * @param taskId 任务ID
+     * @param retryNum 当前重试次数
+     * @param delaySeconds 延时秒数
+     * @param shardIndex 原片分片序号（重试场景传入；可为 null）
+     * @param shardTotal 原片分片总数（重试场景传入；可为 null）
+     * @param shardBatchId 原片分片批次ID（重试场景传入；可为 null）
+     */
+    void publishTaskWithRetryAndDelay(String taskId, int retryNum, int delaySeconds,
+                                      Integer shardIndex, Integer shardTotal, String shardBatchId);
+
+    /**
+     * 发布立即执行的任务
+     * 用于一次性任务的立即执行
+     *
+     * @param task 任务对象
+     */
+    void publishImmediateTask(Task task);
+
+    /**
+     * 重新发布已存在的任务实例（用于超时重试）
+     * 不创建新的TaskRun，而是重用现有的TaskRunID
+     *
+     * @param taskRunId 任务运行实例ID
+     * @param delaySeconds 延时秒数
+     */
+    void republishTaskRun(String taskRunId, int delaySeconds);
+}

@@ -7,7 +7,7 @@
     </div>
     <div class="stat-body">
       <div class="stat-label">{{ title }}</div>
-      <div class="stat-value sjdt-mono">
+      <div class="stat-value cronova-mono">
         {{ formattedValue
         }}<span v-if="unit" class="stat-unit">{{ unit }}</span>
         <span v-if="pulse" class="stat-pulse" title="运行中" />
@@ -60,16 +60,16 @@ const formattedValue = computed(() => {
   gap: 14px;
   padding: 18px 20px;
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   transition: all .18s ease;
   position: relative;
   overflow: hidden;
 }
 
 .stat-card:hover {
-  border-color: var(--sjdt-border-strong);
+  border-color: var(--cronova-border-strong);
   transform: translateY(-1px);
 }
 
@@ -82,19 +82,19 @@ const formattedValue = computed(() => {
   flex-shrink: 0;
 }
 
-.tone-primary .stat-icon { background: var(--sjdt-primary-soft); color: var(--sjdt-primary); }
-.tone-success .stat-icon { background: var(--sjdt-success-soft); color: var(--sjdt-success); }
-.tone-running .stat-icon { background: var(--sjdt-running-soft); color: var(--sjdt-running); }
-.tone-accent .stat-icon { background: var(--sjdt-accent-soft); color: var(--sjdt-accent); }
-.tone-pending .stat-icon { background: var(--sjdt-pending-soft); color: var(--sjdt-pending); }
-.tone-danger .stat-icon { background: var(--sjdt-danger-soft); color: var(--sjdt-danger); }
+.tone-primary .stat-icon { background: var(--cronova-primary-soft); color: var(--cronova-primary); }
+.tone-success .stat-icon { background: var(--cronova-success-soft); color: var(--cronova-success); }
+.tone-running .stat-icon { background: var(--cronova-running-soft); color: var(--cronova-running); }
+.tone-accent .stat-icon { background: var(--cronova-accent-soft); color: var(--cronova-accent); }
+.tone-pending .stat-icon { background: var(--cronova-pending-soft); color: var(--cronova-pending); }
+.tone-danger .stat-icon { background: var(--cronova-danger-soft); color: var(--cronova-danger); }
 
-.tone-primary .stat-value { color: var(--sjdt-primary); }
-.tone-success .stat-value { color: var(--sjdt-success); }
-.tone-running .stat-value { color: var(--sjdt-running); }
-.tone-accent .stat-value { color: var(--sjdt-accent); }
-.tone-pending .stat-value { color: var(--sjdt-pending); }
-.tone-danger .stat-value { color: var(--sjdt-danger); }
+.tone-primary .stat-value { color: var(--cronova-primary); }
+.tone-success .stat-value { color: var(--cronova-success); }
+.tone-running .stat-value { color: var(--cronova-running); }
+.tone-accent .stat-value { color: var(--cronova-accent); }
+.tone-pending .stat-value { color: var(--cronova-pending); }
+.tone-danger .stat-value { color: var(--cronova-danger); }
 
 .stat-body {
   flex: 1;
@@ -103,7 +103,7 @@ const formattedValue = computed(() => {
 
 .stat-label {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-bottom: 4px;
 }
 
@@ -126,9 +126,9 @@ const formattedValue = computed(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--sjdt-running);
+  background: var(--cronova-running);
   margin-left: 8px;
   vertical-align: middle;
-  animation: sjdt-pulse-running 2s infinite;
+  animation: cronova-pulse-running 2s infinite;
 }
 </style>

@@ -36,14 +36,14 @@ defineProps<{
 .page-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   margin: 0 0 6px;
   letter-spacing: .3px;
 }
 
 .page-subtitle {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin: 0;
 }
 

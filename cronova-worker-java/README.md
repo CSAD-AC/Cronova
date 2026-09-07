@@ -1,6 +1,6 @@
 # Java 执行器（worker-JAVA）
 
-任务调度系统的 Java 实现执行器，与调度器（scheduler-JAVA）通过 RocketMQ + HTTP + MinIO 通信，功能对等 Python 执行器（sjdt_worker），可独立部署、并行共存。
+任务调度系统的 Java 实现执行器，与调度器（scheduler-JAVA）通过 RocketMQ + HTTP + MinIO 通信，功能对等 Python 执行器（cronova_worker），可独立部署、并行共存。
 
 ## 技术栈
 - Java 21 + Spring Boot 3.3.6（非 Web 应用，仅核心容器 + 定时任务）
@@ -14,7 +14,7 @@ worker-JAVA/
 ├── Dockerfile                 # JRE21 + python3 + setsid 运行时镜像
 ├── docker-compose.yml         # 本地测试编排（host 网络 + env_file .env）
 ├── .env.example               # 环境变量模板（复制为 .env）
-└── src/main/java/com/sjdt/worker/
+└── src/main/java/com/cronova/worker/
     ├── WorkerApplication.java       # 启动入口（@EnableScheduling）
     ├── config/                      # 配置装配（WorkerProperties / MinioConfig）
     ├── common/                      # 本地配置存储 / Worker上下文 / 标签 / 系统指标
@@ -34,8 +34,8 @@ worker-JAVA/
 ## 构建与部署
 ```bash
 cd worker-JAVA
-mvn clean package -DskipTests        # 产出 target/sjdt-worker.jar
-docker build -t sjdt-worker-java:1.0 .
+mvn clean package -DskipTests        # 产出 target/cronova-worker-java.jar
+docker build -t cronova-worker-java:1.0 .
 cd docker 2>/dev/null || cd .
 cp ../.env.example .env              # 按需修改
 docker compose up -d

@@ -1,10 +1,10 @@
 # 调度器部署编排（云服务器）
 # 前置条件：MySQL / Redis / RocketMQ / MinIO 已就绪并在 .env 中配置
 services:
-  sjdt-scheduler:
-    image: sjdt-scheduler-java:1.0
+  cronova-scheduler:
+    image: cronova-scheduler-java:1.0
     network_mode: host
-    container_name: sjdt-scheduler
+    container_name: cronova-scheduler
     restart: always
     env_file:
       - .env

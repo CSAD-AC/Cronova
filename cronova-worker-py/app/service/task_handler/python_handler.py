@@ -172,7 +172,7 @@ class PythonHandler(BaseHandler):
                                              log_object=log_object)
             logger.info("任务状态已更新为运行中，taskRunId：%s", task_run_id)
 
-            # 启动子进程执行脚本（注入 SJDT_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
+            # 启动子进程执行脚本（注入 CRONOVA_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
             timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
             logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
 

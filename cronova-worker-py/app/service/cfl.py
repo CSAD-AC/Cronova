@@ -11,7 +11,7 @@
 
 归一化规则（捕获时逐行执行）：
     1. 幂等：已是 CFL 的行直接解析；
-    2. 命中既有 sjdt_utils 统一格式（ts | LEVEL | loc - msg）→ 时间转 UTC 毫秒；
+    2. 命中既有 cronova_utils 统一格式（ts | LEVEL | loc - msg）→ 时间转 UTC 毫秒；
     3. 命中第三方前缀（Java [LEVEL] 等）→ 提取可识别字段；
     4. 裸 print → worker 读取时刻 + 关键词推断级别（推断不出 → INFO）。
 
@@ -41,8 +41,8 @@ _CFL_RE = re.compile(
     r"\s*\|\s*(?P<level>\w+)\s*\|\s*(?P<loc>[^|]*?)(?:\s*-\s*)(?P<msg>.*)$"
 )
 
-# 既有 sjdt_utils 统一格式：2026-02-04 14:25:27 | INFO | module.py:function:123 - msg
-_SJDT_RE = re.compile(
+# 既有 cronova_utils 统一格式：2026-02-04 14:25:27 | INFO | module.py:function:123 - msg
+_CRONOVA_RE = re.compile(
     r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*\|\s*(?P<level>\w+)\s*\|\s*(?P<loc>[^|]*?)(?:\s*-\s*)(?P<msg>.*)$"
 )
 
@@ -65,7 +65,7 @@ def _pad_level(level: str) -> str:
 
 
 def _parse_ts_to_millis(ts: str) -> int:
-    """解析 sjdt_utils 本地时间 → UTC 毫秒时间戳。"""
+    """解析 cronova_utils 本地时间 → UTC 毫秒时间戳。"""
     try:
         dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
         # 视作本地时间，转 UTC（worker 容器通常 UTC；时区由环境决定）
@@ -183,7 +183,7 @@ class CflFormatter:
             loc = m.group("loc").strip()
             msg = m.group("msg")
         else:
-            m2 = _SJDT_RE.match(line)
+            m2 = _CRONOVA_RE.match(line)
             if m2:
                 ts = _parse_ts_to_millis(m2.group("ts")) or receive_ts_millis
                 level = self._norm_level(m2.group("level"))

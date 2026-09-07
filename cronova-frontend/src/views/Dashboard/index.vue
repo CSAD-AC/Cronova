@@ -42,12 +42,12 @@
           </el-table-column>
           <el-table-column prop="startTime" label="执行时间" width="180">
             <template #default="{ row }">
-              <span class="sjdt-mono time-text">{{ formatDateTime(row.startTime) }}</span>
+              <span class="cronova-mono time-text">{{ formatDateTime(row.startTime) }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="duration" label="耗时" width="100">
             <template #default="{ row }">
-              <span class="sjdt-mono time-text">{{ formatDuration(row.duration) }}</span>
+              <span class="cronova-mono time-text">{{ formatDuration(row.duration) }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -60,13 +60,13 @@
         </div>
         <div class="worker-stats">
           <div class="worker-stat-item">
-            <div class="worker-stat-value st-online sjdt-mono">{{ workerStore.onlineCount }}</div>
+            <div class="worker-stat-value st-online cronova-mono">{{ workerStore.onlineCount }}</div>
             <div class="worker-stat-label">
               <span class="mini-dot online" />在线
             </div>
           </div>
           <div class="worker-stat-item">
-            <div class="worker-stat-value st-offline sjdt-mono">{{ workerStore.offlineCount }}</div>
+            <div class="worker-stat-value st-offline cronova-mono">{{ workerStore.offlineCount }}</div>
             <div class="worker-stat-label">
               <span class="mini-dot offline" />离线
             </div>
@@ -84,7 +84,7 @@
               <span class="status-dot" :class="worker.status === 'online' ? 'dot-online' : 'dot-offline'" />
               <span class="worker-name">{{ worker.host }}</span>
             </div>
-            <div class="worker-resource sjdt-mono">
+            <div class="worker-resource cronova-mono">
               <span>CPU {{ worker.cpuUsage?.toFixed(1) || '-' }}%</span>
               <span>MEM {{ worker.memUsage?.toFixed(1) || '-' }}%</span>
             </div>
@@ -108,7 +108,7 @@
           <div class="ring-wrap">
             <div class="ring" :style="ringStyle" />
             <div class="ring-center">
-              <div class="ring-total sjdt-mono">{{ typeTotal }}</div>
+              <div class="ring-total cronova-mono">{{ typeTotal }}</div>
               <div class="ring-total-label">总次数</div>
             </div>
           </div>
@@ -116,7 +116,7 @@
             <div v-for="(item, index) in taskTypeDistribution" :key="item.type" class="legend-item">
               <span class="legend-dot" :style="{ background: ringColor(index) }" />
               <span class="legend-label">{{ item.label }}</span>
-              <span class="legend-value sjdt-mono">{{ item.percentage.toFixed(1) }}% · {{ item.count }}</span>
+              <span class="legend-value cronova-mono">{{ item.percentage.toFixed(1) }}% · {{ item.count }}</span>
             </div>
             <div v-if="!taskTypeDistribution.length" class="legend-empty">暂无数据</div>
           </div>
@@ -138,23 +138,23 @@
         <!-- 触发延迟分位（负值=扫描窗口内提前派发） -->
         <div class="metric-row">
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.p50Ms) }}</div>
+            <div class="metric-value cronova-mono">{{ formatLatency(metrics.latency.p50Ms) }}</div>
             <div class="metric-label">P50 延迟</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.p95Ms) }}</div>
+            <div class="metric-value cronova-mono">{{ formatLatency(metrics.latency.p95Ms) }}</div>
             <div class="metric-label">P95 延迟</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.p99Ms) }}</div>
+            <div class="metric-value cronova-mono">{{ formatLatency(metrics.latency.p99Ms) }}</div>
             <div class="metric-label">P99 延迟</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ formatLatency(metrics.latency.avgMs) }}</div>
+            <div class="metric-value cronova-mono">{{ formatLatency(metrics.latency.avgMs) }}</div>
             <div class="metric-label">平均延迟</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ metrics.latency.count }}</div>
+            <div class="metric-value cronova-mono">{{ metrics.latency.count }}</div>
             <div class="metric-label">样本数</div>
           </div>
         </div>
@@ -162,23 +162,23 @@
         <!-- 派发与状态计数 -->
         <div class="metric-row">
           <div class="metric-item">
-            <div class="metric-value st-online sjdt-mono">{{ metrics.dispatch.dispatched }}</div>
+            <div class="metric-value st-online cronova-mono">{{ metrics.dispatch.dispatched }}</div>
             <div class="metric-label">已派发</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ metrics.dispatch.pendingNotDispatched }}</div>
+            <div class="metric-value cronova-mono">{{ metrics.dispatch.pendingNotDispatched }}</div>
             <div class="metric-label">待派发</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value st-offline sjdt-mono">{{ metrics.dispatch.parkTimeout }}</div>
+            <div class="metric-value st-offline cronova-mono">{{ metrics.dispatch.parkTimeout }}</div>
             <div class="metric-label">park 超时</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ metrics.statusCounts.timeout || 0 }}</div>
+            <div class="metric-value cronova-mono">{{ metrics.statusCounts.timeout || 0 }}</div>
             <div class="metric-label">执行超时</div>
           </div>
           <div class="metric-item">
-            <div class="metric-value sjdt-mono">{{ (metrics.statusCounts.skipped || 0) + (metrics.statusCounts.queued || 0) }}</div>
+            <div class="metric-value cronova-mono">{{ (metrics.statusCounts.skipped || 0) + (metrics.statusCounts.queued || 0) }}</div>
             <div class="metric-label">跳过/排队</div>
           </div>
         </div>
@@ -193,7 +193,7 @@
               <div class="route-bar" :style="{ width: routePercent(count) + '%' }" />
             </div>
             <span class="route-name">{{ strategy }}</span>
-            <span class="route-value sjdt-mono">{{ count }}</span>
+            <span class="route-value cronova-mono">{{ count }}</span>
           </div>
           <div v-if="!Object.keys(metrics.routeDistribution).length" class="legend-empty">暂无数据</div>
         </div>
@@ -204,9 +204,9 @@
         <div class="section-label">最近分片批次</div>
         <div class="batch-list">
           <div v-for="batch in metrics.recentShardBatches" :key="batch.batchId" class="batch-item">
-            <span class="batch-id sjdt-mono" :title="batch.batchId">{{ batch.batchId.slice(0, 8) }}</span>
-            <span class="batch-shards sjdt-mono">{{ batch.shardTotal }} 片</span>
-            <span class="batch-result sjdt-mono">
+            <span class="batch-id cronova-mono" :title="batch.batchId">{{ batch.batchId.slice(0, 8) }}</span>
+            <span class="batch-shards cronova-mono">{{ batch.shardTotal }} 片</span>
+            <span class="batch-result cronova-mono">
               <span class="st-online">{{ batch.successCount }}</span> / <span class="st-offline">{{ batch.failedCount }}</span>
             </span>
           </div>
@@ -245,7 +245,7 @@
     >
       <el-descriptions :column="2" border v-if="currentRun">
         <el-descriptions-item label="执行记录ID" :span="2">
-          <span class="sjdt-mono">{{ currentRun.id }}</span>
+          <span class="cronova-mono">{{ currentRun.id }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="任务名称">
           {{ currentRun.taskName }}
@@ -257,19 +257,19 @@
           <StatusTag :status="currentRun.status" />
         </el-descriptions-item>
         <el-descriptions-item label="退出码">
-          <span class="sjdt-mono">{{ currentRun.exitCode !== undefined && currentRun.exitCode !== null ? currentRun.exitCode : '-' }}</span>
+          <span class="cronova-mono">{{ currentRun.exitCode !== undefined && currentRun.exitCode !== null ? currentRun.exitCode : '-' }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="执行耗时">
-          <span class="sjdt-mono">{{ formatDuration(currentRun.duration) }}</span>
+          <span class="cronova-mono">{{ formatDuration(currentRun.duration) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="开始时间">
-          <span class="sjdt-mono">{{ formatDateTime(currentRun.startTime) }}</span>
+          <span class="cronova-mono">{{ formatDateTime(currentRun.startTime) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="结束时间">
-          <span class="sjdt-mono">{{ formatDateTime(currentRun.endTime) }}</span>
+          <span class="cronova-mono">{{ formatDateTime(currentRun.endTime) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">
-          <span class="sjdt-mono">{{ formatDateTime(currentRun.createTime) }}</span>
+          <span class="cronova-mono">{{ formatDateTime(currentRun.createTime) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="错误信息" :span="2">
           <div v-if="currentRun.errorMessage" class="error-message">
@@ -340,11 +340,11 @@ const currentRun = ref<any>(null)
 
 /** 环形图色板（按序取色，循环兜底） */
 const RING_COLORS = [
-  'var(--sjdt-primary)',
-  'var(--sjdt-success)',
-  'var(--sjdt-running)',
-  'var(--sjdt-accent)',
-  'var(--sjdt-pending)',
+  'var(--cronova-primary)',
+  'var(--cronova-success)',
+  'var(--cronova-running)',
+  'var(--cronova-accent)',
+  'var(--cronova-pending)',
 ]
 
 /**
@@ -352,7 +352,7 @@ const RING_COLORS = [
  * @param index 分段下标
  */
 function ringColor(index: number): string {
-  return RING_COLORS[index % RING_COLORS.length] || 'var(--sjdt-primary)'
+  return RING_COLORS[index % RING_COLORS.length] || 'var(--cronova-primary)'
 }
 
 /** 任务类型分布总次数 */
@@ -365,7 +365,7 @@ const ringStyle = computed(() => {
   const items = taskTypeDistribution.value
   const total = typeTotal.value
   if (!total) {
-    return { background: 'var(--sjdt-row-stripe)' }
+    return { background: 'var(--cronova-row-stripe)' }
   }
   let acc = 0
   const stops = items.map((item, idx) => {
@@ -542,9 +542,9 @@ onUnmounted(() => {
 
 .panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 18px 20px;
   min-width: 0;
 }
@@ -559,17 +559,17 @@ onUnmounted(() => {
 .panel-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .type-text {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 /* ---------- 执行器状态面板 ---------- */
@@ -589,8 +589,8 @@ onUnmounted(() => {
   line-height: 1.2;
 }
 
-.st-online { color: var(--sjdt-success); }
-.st-offline { color: var(--sjdt-danger); }
+.st-online { color: var(--cronova-success); }
+.st-offline { color: var(--cronova-danger); }
 
 .worker-stat-label {
   display: flex;
@@ -598,7 +598,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-top: 4px;
 }
 
@@ -609,17 +609,17 @@ onUnmounted(() => {
 }
 
 .mini-dot.online {
-  background: var(--sjdt-success);
-  animation: sjdt-pulse-success 2s infinite;
+  background: var(--cronova-success);
+  animation: cronova-pulse-success 2s infinite;
 }
 
 .mini-dot.offline {
-  background: var(--sjdt-danger);
+  background: var(--cronova-danger);
 }
 
 .divider {
   height: 1px;
-  background: var(--sjdt-border);
+  background: var(--cronova-border);
   margin: 12px 0;
 }
 
@@ -634,7 +634,7 @@ onUnmounted(() => {
 }
 
 .worker-item:hover {
-  background: var(--sjdt-primary-soft);
+  background: var(--cronova-primary-soft);
 }
 
 .worker-info {
@@ -646,8 +646,8 @@ onUnmounted(() => {
 
 .worker-name {
   font-size: 13px;
-  color: var(--sjdt-text);
-  font-family: var(--sjdt-mono);
+  color: var(--cronova-text);
+  font-family: var(--cronova-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -661,19 +661,19 @@ onUnmounted(() => {
 }
 
 .dot-online {
-  background: var(--sjdt-success);
-  animation: sjdt-pulse-success 2s infinite;
+  background: var(--cronova-success);
+  animation: cronova-pulse-success 2s infinite;
 }
 
 .dot-offline {
-  background: var(--sjdt-danger);
+  background: var(--cronova-danger);
 }
 
 .worker-resource {
   display: flex;
   gap: 12px;
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   flex-shrink: 0;
 }
 
@@ -693,7 +693,7 @@ onUnmounted(() => {
 .metric-value {
   font-size: 17px;
   font-weight: 700;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
@@ -702,13 +702,13 @@ onUnmounted(() => {
 
 .metric-label {
   font-size: 11px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-top: 2px;
 }
 
 .section-label {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-bottom: 8px;
 }
 
@@ -728,21 +728,21 @@ onUnmounted(() => {
 .route-bar-wrap {
   height: 8px;
   border-radius: 4px;
-  background: var(--sjdt-row-stripe);
+  background: var(--cronova-row-stripe);
   overflow: hidden;
 }
 
 .route-bar {
   height: 100%;
   border-radius: 4px;
-  background: var(--sjdt-primary);
+  background: var(--cronova-primary);
   min-width: 2px;
   transition: width .3s ease;
 }
 
 .route-name {
   font-size: 12px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -750,7 +750,7 @@ onUnmounted(() => {
 
 .route-value {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   text-align: right;
 }
 
@@ -771,18 +771,18 @@ onUnmounted(() => {
 }
 
 .batch-id {
-  color: var(--sjdt-primary);
+  color: var(--cronova-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .batch-shards {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .batch-result {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   text-align: right;
 }
 
@@ -820,7 +820,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 26px;
   border-radius: 50%;
-  background: var(--sjdt-surface);
+  background: var(--cronova-surface);
 }
 
 .ring-center {
@@ -836,12 +836,12 @@ onUnmounted(() => {
 .ring-total {
   font-size: 26px;
   font-weight: 700;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .ring-total-label {
   font-size: 11px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin-top: 2px;
 }
 
@@ -866,18 +866,18 @@ onUnmounted(() => {
 
 .legend-label {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   flex: 1;
 }
 
 .legend-value {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .legend-empty {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   text-align: center;
   padding: 20px 0;
 }
@@ -903,27 +903,27 @@ onUnmounted(() => {
   gap: 10px;
   padding: 24px 12px;
   border-radius: 10px;
-  border: 1px solid var(--sjdt-border);
-  color: var(--sjdt-muted);
+  border: 1px solid var(--cronova-border);
+  color: var(--cronova-muted);
   cursor: pointer;
   transition: all .18s ease;
   font-size: 13px;
 }
 
 .quick-action:hover {
-  color: var(--sjdt-primary);
-  border-color: var(--sjdt-primary);
-  background: var(--sjdt-primary-soft);
+  color: var(--cronova-primary);
+  border-color: var(--cronova-primary);
+  background: var(--cronova-primary-soft);
   transform: translateY(-2px);
 }
 
 /* ---------- 错误信息 ---------- */
 .error-message {
-  background-color: var(--sjdt-danger-soft);
-  border: 1px solid var(--sjdt-danger);
+  background-color: var(--cronova-danger-soft);
+  border: 1px solid var(--cronova-danger);
   border-radius: 6px;
   padding: 8px 12px;
-  color: var(--sjdt-danger);
+  color: var(--cronova-danger);
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;

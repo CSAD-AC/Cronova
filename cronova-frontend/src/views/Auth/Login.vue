@@ -15,7 +15,7 @@
             <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
           </svg>
         </div>
-        <h1 class="login-title">SJDT 任务调度器</h1>
+        <h1 class="login-title">Cronova 任务调度器</h1>
         <p class="login-subtitle">分布式任务调度管理系统</p>
       </div>
 
@@ -161,7 +161,7 @@ async function handleLogin(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--sjdt-bg);
+  background: var(--cronova-bg);
   padding: 20px;
   overflow: hidden;
   transition: background-color .25s ease;
@@ -181,7 +181,7 @@ async function handleLogin(): Promise<void> {
   height: 480px;
   top: -140px;
   right: -100px;
-  background: radial-gradient(circle, var(--sjdt-primary) 0%, transparent 70%);
+  background: radial-gradient(circle, var(--cronova-primary) 0%, transparent 70%);
 }
 
 .glow-2 {
@@ -189,7 +189,7 @@ async function handleLogin(): Promise<void> {
   height: 420px;
   bottom: -120px;
   left: -110px;
-  background: radial-gradient(circle, var(--sjdt-accent) 0%, transparent 70%);
+  background: radial-gradient(circle, var(--cronova-accent) 0%, transparent 70%);
   opacity: .3;
 }
 
@@ -203,13 +203,13 @@ async function handleLogin(): Promise<void> {
 .login-card {
   position: relative;
   z-index: 1;
-  background: var(--sjdt-surface);
-  border: 1px solid var(--sjdt-border);
+  background: var(--cronova-surface);
+  border: 1px solid var(--cronova-border);
   border-radius: 16px;
   padding: 44px 40px 36px;
   width: 100%;
   max-width: 420px;
-  box-shadow: var(--sjdt-card-shadow);
+  box-shadow: var(--cronova-card-shadow);
   transition: background-color .25s ease, border-color .25s ease;
 }
 
@@ -223,11 +223,11 @@ async function handleLogin(): Promise<void> {
   height: 60px;
   margin: 0 auto 16px;
   border-radius: 16px;
-  background: var(--sjdt-logo-grad);
+  background: var(--cronova-logo-grad);
   color: #FFFFFF;
   display: grid;
   place-items: center;
-  box-shadow: 0 10px 26px var(--sjdt-primary-glow);
+  box-shadow: 0 10px 26px var(--cronova-primary-glow);
 }
 
 .login-logo svg {
@@ -238,14 +238,14 @@ async function handleLogin(): Promise<void> {
 .login-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   margin: 0 0 8px;
   letter-spacing: .5px;
 }
 
 .login-subtitle {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin: 0;
 }
 
@@ -264,7 +264,7 @@ async function handleLogin(): Promise<void> {
 .login-footer {
   text-align: center;
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 /* 底部特性条 */
@@ -283,11 +283,11 @@ async function handleLogin(): Promise<void> {
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .feature-item .el-icon {
-  color: var(--sjdt-primary);
+  color: var(--cronova-primary);
 }
 
 @media (max-width: 768px) {

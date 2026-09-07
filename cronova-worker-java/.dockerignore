@@ -1,5 +1,5 @@
 target/*
-!target/sjdt-worker.jar
+!target/cronova-worker-java.jar
 .idea/
 *.iml
 local_config.json

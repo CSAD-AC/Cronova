@@ -66,39 +66,39 @@ const isPulsing = computed(() => !!STATUS_MAP[props.status]?.pulse)
 
 /* 成功/在线 */
 .st-success {
-  background: var(--sjdt-success-soft);
-  color: var(--sjdt-success);
+  background: var(--cronova-success-soft);
+  color: var(--cronova-success);
 }
-.st-success .status-dot { background: var(--sjdt-success); }
+.st-success .status-dot { background: var(--cronova-success); }
 
 /* 运行中：琥珀 + 呼吸脉冲 */
 .st-running {
-  background: var(--sjdt-running-soft);
-  color: var(--sjdt-running);
+  background: var(--cronova-running-soft);
+  color: var(--cronova-running);
 }
 .st-running .status-dot {
-  background: var(--sjdt-running);
-  animation: sjdt-pulse-running 2s infinite;
+  background: var(--cronova-running);
+  animation: cronova-pulse-running 2s infinite;
 }
 
 /* 失败/离线 */
 .st-danger {
-  background: var(--sjdt-danger-soft);
-  color: var(--sjdt-danger);
+  background: var(--cronova-danger-soft);
+  color: var(--cronova-danger);
 }
-.st-danger .status-dot { background: var(--sjdt-danger); }
+.st-danger .status-dot { background: var(--cronova-danger); }
 
 /* 超时/已暂停 */
 .st-warning {
-  background: var(--sjdt-running-soft);
-  color: var(--sjdt-running);
+  background: var(--cronova-running-soft);
+  color: var(--cronova-running);
 }
-.st-warning .status-dot { background: var(--sjdt-running); }
+.st-warning .status-dot { background: var(--cronova-running); }
 
 /* 等待中/禁用 */
 .st-pending {
-  background: var(--sjdt-pending-soft);
-  color: var(--sjdt-pending);
+  background: var(--cronova-pending-soft);
+  color: var(--cronova-pending);
 }
-.st-pending .status-dot { background: var(--sjdt-pending); }
+.st-pending .status-dot { background: var(--cronova-pending); }
 </style>

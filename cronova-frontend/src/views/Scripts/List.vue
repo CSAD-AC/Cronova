@@ -91,7 +91,7 @@
             </el-table-column>
             <el-table-column prop="createTime" label="创建时间" width="170">
               <template #default="{ row }">
-                <span class="sjdt-mono time-text">{{ formatDateTime(row.createTime) }}</span>
+                <span class="cronova-mono time-text">{{ formatDateTime(row.createTime) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="230" fixed="right">
@@ -653,8 +653,8 @@ onMounted(() => {
 
 /* ---------- 左侧文件夹树 ---------- */
 .script-sidebar {
-  background: var(--sjdt-surface);
-  border-right: 1px solid var(--sjdt-border);
+  background: var(--cronova-surface);
+  border-right: 1px solid var(--cronova-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -662,12 +662,12 @@ onMounted(() => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid var(--sjdt-border);
+  border-bottom: 1px solid var(--cronova-border);
 }
 
 .sidebar-title {
   font-weight: 600;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   font-size: 14px;
 }
 
@@ -676,7 +676,7 @@ onMounted(() => {
   background: transparent;
   overflow-y: auto;
   flex: 1;
-  --el-tree-node-hover-bg-color: var(--sjdt-row-hover);
+  --el-tree-node-hover-bg-color: var(--cronova-row-hover);
 }
 
 .custom-tree-node {
@@ -687,17 +687,17 @@ onMounted(() => {
 }
 
 .custom-tree-node.is-directory {
-  color: var(--sjdt-running);
+  color: var(--cronova-running);
   font-weight: 500;
 }
 
 .custom-tree-node.is-file {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .script-main {
   padding: 24px;
-  background: var(--sjdt-bg);
+  background: var(--cronova-bg);
   overflow-y: auto;
 }
 
@@ -711,19 +711,19 @@ onMounted(() => {
 .page-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   margin: 0 0 4px;
 }
 
 .page-subtitle {
   font-size: 13px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   margin: 0;
 }
 
 .breadcrumb-clickable {
   cursor: pointer;
-  color: var(--sjdt-primary);
+  color: var(--cronova-primary);
 }
 
 .breadcrumb-clickable:hover {
@@ -733,9 +733,9 @@ onMounted(() => {
 /* ---------- 表格面板 ---------- */
 .table-panel {
   border-radius: 12px;
-  border: 1px solid var(--sjdt-border);
-  background: var(--sjdt-surface);
-  box-shadow: var(--sjdt-card-shadow);
+  border: 1px solid var(--cronova-border);
+  background: var(--cronova-surface);
+  box-shadow: var(--cronova-card-shadow);
   padding: 8px 16px 16px;
 }
 
@@ -759,18 +759,18 @@ onMounted(() => {
 }
 
 .avatar-dir {
-  background: var(--sjdt-running-soft);
-  color: var(--sjdt-running);
+  background: var(--cronova-running-soft);
+  color: var(--cronova-running);
 }
 
 .avatar-file {
-  background: var(--sjdt-primary-soft);
-  color: var(--sjdt-primary);
+  background: var(--cronova-primary-soft);
+  color: var(--cronova-primary);
 }
 
 .file-name {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .file-name.is-dir {
@@ -779,7 +779,7 @@ onMounted(() => {
 
 .time-text {
   font-size: 13px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
 }
 
 .tags-cell {
@@ -794,14 +794,14 @@ onMounted(() => {
   border-radius: 999px;
   font-size: 12px;
   line-height: 18px;
-  background: var(--sjdt-pending-soft);
-  color: var(--sjdt-pending);
+  background: var(--cronova-pending-soft);
+  color: var(--cronova-pending);
   white-space: nowrap;
 }
 
 .no-tags {
   font-size: 12px;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .action-buttons {
@@ -818,19 +818,19 @@ onMounted(() => {
 .script-info {
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--sjdt-border);
+  border-bottom: 1px solid var(--cronova-border);
 }
 
 .script-info h4 {
   margin: 0;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   font-size: 16px;
   font-weight: 600;
 }
 
 .tag-selection h5 {
   margin: 0 0 16px;
-  color: var(--sjdt-text);
+  color: var(--cronova-text);
   font-size: 14px;
   font-weight: 500;
 }
@@ -838,7 +838,7 @@ onMounted(() => {
 .no-tags-hint {
   text-align: center;
   padding: 40px 0;
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
 }
 
 .dialog-footer {
@@ -848,11 +848,11 @@ onMounted(() => {
 }
 
 .selected-count {
-  color: var(--sjdt-muted);
+  color: var(--cronova-muted);
   font-size: 13px;
 }
 
 .font-mono {
-  font-family: var(--sjdt-mono);
+  font-family: var(--cronova-mono);
 }
 </style>
