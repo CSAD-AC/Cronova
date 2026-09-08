@@ -6,11 +6,12 @@ Cronova 双引擎分布式任务调度系统是一个分布式任务调度系统
 
 | 目录 | 说明 |
 |---|---|
-| `scheduler-JAVA/` | 调度中心（Spring Boot）：任务管理、到期触发、路由派发、分片、结果消费、Worker 管理 |
-| `worker-Python/` | Worker 执行器（Python）：脚本任务接收、执行、状态汇报、日志管理 |
-| `worker-JAVA/` | Worker 执行器（Java）：功能对等 Python 执行器，可独立部署并行共存 |
-| `frontend/` | 前端（Vue 3 + Element Plus） |
-| `examples/` | 各语言回调任务模板示例（java / python / go） |
+| `cronova-scheduler/` | 调度中心（Spring Boot）：任务管理、到期触发、路由派发、分片、结果消费、Worker 管理 |
+| `cronova-worker-py/` | Worker 执行器（Python）：脚本任务接收、执行、状态汇报、日志管理 |
+| `cronova-worker-java/` | Worker 执行器（Java）：功能对等 Python 执行器，可独立部署并行共存 |
+| `cronova-frontend/` | 前端（Vue 3 + Element Plus） |
+| `cronova-examples/` | 各语言回调任务模板示例（java / python / go） |
+| `scripts-tests/` | 压测工具与脚本（模拟 Worker、施压/采集/校验），gitignore 不入库 |
 
 ---
 
@@ -270,7 +271,7 @@ PENDING ──→ RUNNING ──→ SUCCESS / FAILED / TIMEOUT (终态)
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS scheduler DEFAULT CHARACTER SET utf8mb4"
-cd scheduler-JAVA/
+cd cronova-scheduler/
 ./mvnw spring-boot:run   # 启动时自动迁移
 ```
 
@@ -280,12 +281,12 @@ cd scheduler-JAVA/
 mysql -u root -p -e "DROP DATABASE IF EXISTS scheduler; CREATE DATABASE scheduler DEFAULT CHARACTER SET utf8mb4"
 ```
 
-历史手动脚本（含 `DROP DATABASE` 全量重建）已归档至 `scheduler-JAVA/sql/archive/`。
+历史手动脚本（含 `DROP DATABASE` 全量重建）已归档至 `cronova-scheduler/sql/archive/`。
 
 **2. 启动调度器**
 
 ```bash
-cd scheduler-JAVA/
+cd cronova-scheduler/
 ./mvnw spring-boot:run
 # 默认端口: 8085
 # Swagger: http://localhost:8085/swagger-ui.html
@@ -294,7 +295,7 @@ cd scheduler-JAVA/
 **3. 启动前端**
 
 ```bash
-cd frontend/
+cd cronova-frontend/
 npm install
 npm run dev
 # 默认端口: 5173
@@ -303,7 +304,7 @@ npm run dev
 **4. 部署Worker**（仅脚本任务需要）
 
 ```bash
-cd worker-Python/
+cd cronova-worker-py/
 python main.py
 # 或使用Docker
 cd docker/
@@ -471,7 +472,7 @@ task-engine bucket/
 
 | Key | 类型 | 说明 | 过期 |
 |-----|------|------|------|
-| `scheduler:worker:heartbeat:{workerId}` | String | Worker 存活状态 | 30s |
+| `scheduler:worker:heartbeat:{workerId}` | String | Worker 存活状态 | 10s |
 | `scheduler:worker:info:{workerId}` | Hash | Worker 负载信息（CPU/内存/运行任务数） | 无 |
 | `scheduler:lock:*` | String | 定时任务分布式锁（scan / heartbeat / timeout / queued，`@SchedulerLocked` AOP 统一管理，TTL 按调度周期自动推导） | 自动过期 |
 | `scheduler:route:rr` | String | 轮询路由游标（ROUND_ROBIN 共享计数器） | 无 |
