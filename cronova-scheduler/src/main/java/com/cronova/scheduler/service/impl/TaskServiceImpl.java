@@ -440,9 +440,13 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .build();
 
         // 分片任务新触发（非单片重试）-> 一次触发生成 N 片 run + N 条定向消息
+        // 注意：shardTotal 必须 >1 才走分片。=1 表示"非分片单 run"，应交给正常 dispatch()
+        // （按任务配置的路由策略 LEAST_LOAD/ROUND_ROBIN 选 Worker）。历史实现用 ">0" 会把 =1
+        // 也当成分片，走入 dispatchShard 的 candidates[shardIndex % N] = 恒选候选首个，导致
+        // 突发下所有单 run 任务全压到第一台在线 Worker、路由策略空转。
         Integer taskShardTotal = task.getShardTotal();
         boolean isShardRetry = shardBatchId != null && shardIndex != null;
-        if (!isShardRetry && taskShardTotal != null && taskShardTotal > 0) {
+        if (!isShardRetry && taskShardTotal != null && taskShardTotal > 1) {
             TaskExecuteMessage template = TaskExecuteMessage.builder()
                     .taskId(task.getId())
                     .taskName(task.getName())

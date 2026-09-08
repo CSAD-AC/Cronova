@@ -197,8 +197,10 @@ public class WorkerController {
             }
         }
 
-        // 刷新心跳存活键，并更新 Hash 中的最后心跳时间
-        redisTemplate.opsForValue().set(heartbeatKey, "online", 30, TimeUnit.SECONDS);
+        // 刷新心跳存活键，并更新 Hash 中的最后心跳时间。
+        // TTL 收窄到 10s：配合 WorkerHeartbeatCheckTask(10s) 使 Worker 离线判定先于
+        // TaskTimeoutMonitor 的 run 级 30s 心跳超时，保证孤儿 run 走主动故障转移而非被动判死。
+        redisTemplate.opsForValue().set(heartbeatKey, "online", 10, TimeUnit.SECONDS);
         
         String infoKey = RedisKey.getWorkerInfoKey(workerId);
         redisTemplate.opsForHash().put(infoKey, "lastHeartbeat", LocalDateTime.now().toString());
@@ -227,8 +229,8 @@ public class WorkerController {
         
         // 写入 Redis Hash
         redisTemplate.opsForHash().putAll(infoKey, statusMap);
-        // 同时刷新心跳存活时间
-        redisTemplate.opsForValue().set(RedisKey.getWorkerHeartbeatKey(workerId), "online", 30, TimeUnit.SECONDS);
+        // 同时刷新心跳存活时间（TTL 10s，与心跳接口一致，保证离线判定先于 run 心跳超时）
+        redisTemplate.opsForValue().set(RedisKey.getWorkerHeartbeatKey(workerId), "online", 10, TimeUnit.SECONDS);
         
         return Result.success();
     }
