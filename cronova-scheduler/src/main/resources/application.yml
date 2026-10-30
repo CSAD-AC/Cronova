@@ -64,4 +64,3 @@ cronova:
     execution-max-seconds: ${CRONOVA_TIMEOUT_EXECUTION_MAX_SECONDS:3600}
     # 无心跳阈值（秒）：执行期间超过该值无状态上报判定超时
     execution-heartbeat-seconds: ${CRONOVA_TIMEOUT_EXECUTION_HEARTBEAT_SECONDS:30}
-
