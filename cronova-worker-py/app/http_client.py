@@ -5,6 +5,13 @@ from app.config import Config
 from app.utils.auth_utils import AuthUtils
 
 
+def serialize_json_body(json_data: Optional[Dict]) -> Optional[str]:
+    """Serialize a request body exactly once so the signed bytes match the wire bytes."""
+    if json_data is None:
+        return None
+    return json.dumps(json_data, sort_keys=True, ensure_ascii=False)
+
+
 class HttpClient:
     @staticmethod
     def get(url: str, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -37,7 +44,7 @@ class HttpClient:
                 from urllib.parse import urlparse
                 parsed_url = urlparse(url)
                 url_path = parsed_url.path  # 例如：/api/worker/heartbeat/worker_xxx
-                body_str = json.dumps(json_data, sort_keys=True, ensure_ascii=False) if json_data else None
+                body_str = serialize_json_body(json_data)
                 signature = AuthUtils.generate_signature(
                     timestamp=timestamp,
                     body=body_str,
@@ -65,3 +72,4 @@ class HttpClient:
         except Exception as e:
             print(f"POST请求失败（{url}）：{str(e)}")
             return None
+
