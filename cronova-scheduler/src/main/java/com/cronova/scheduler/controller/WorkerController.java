@@ -34,6 +34,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
@@ -67,7 +68,7 @@ public class WorkerController {
     /** 注册请求头中携带的注册令牌字段名 */
     private static final String HEADER_REGISTER_TOKEN = "X-Register-Token";
 
-    /** 全局 Worker 注册令牌（配置为空则跳过校验） */
+    /** 全局 Worker 注册令牌（配置为空时拒绝注册，fail-closed） */
     @Value("${cronova.security.worker-register-token:}")
     private String workerRegisterToken;
 
@@ -92,20 +93,23 @@ public class WorkerController {
      * 用于Worker首次启动时注册到调度器，获取AKSK
      */
     @PostMapping("/register")
+    @Transactional(rollbackFor = Exception.class)
     @Operation(summary = "Worker注册", description = "Worker执行器首次启动时注册到调度器，获取AKSK认证信息")
     public Result<WorkerRegisterVO> register(@RequestBody WorkerRegisterDTO registerDTO,
                                              @RequestHeader(value = HEADER_REGISTER_TOKEN, required = false) String registerToken) {
         log.info("收到Worker注册请求，主机名: {}, IP: {}", registerDTO.getHost(), registerDTO.getIp());
 
-        // 注册令牌校验：防止未授权方通过注册接口免费领取 AKSK（恒定时间比较，防时序攻击）
-        if (workerRegisterToken != null && !workerRegisterToken.isBlank()) {
-            boolean tokenOk = registerToken != null && MessageDigest.isEqual(
-                    registerToken.getBytes(StandardCharsets.UTF_8),
-                    workerRegisterToken.getBytes(StandardCharsets.UTF_8));
-            if (!tokenOk) {
-                log.warn("Worker注册被拒绝：注册令牌无效，IP: {}", registerDTO.getIp());
-                return Result.error(401, "invalid register token");
-            }
+        // 注册令牌必须显式配置；空配置时 fail-closed，避免默认部署泄露 AKSK
+        if (workerRegisterToken == null || workerRegisterToken.isBlank()) {
+            log.error("Worker注册被拒绝：cronova.security.worker-register-token 未配置");
+            return Result.error(503, "worker register token is not configured");
+        }
+        boolean tokenOk = registerToken != null && MessageDigest.isEqual(
+                registerToken.getBytes(StandardCharsets.UTF_8),
+                workerRegisterToken.getBytes(StandardCharsets.UTF_8));
+        if (!tokenOk) {
+            log.warn("Worker注册被拒绝：注册令牌无效，IP: {}", registerDTO.getIp());
+            return Result.error(401, "invalid register token");
         }
 
         Worker existingWorker = workerMapper.selectOne(
@@ -124,6 +128,11 @@ public class WorkerController {
                             .eq(AKSK::getWorkerId, existingWorker.getId())
                             .eq(AKSK::getStatus, "active")
             );
+
+            if (aksk == null) {
+                log.warn("Worker存在但缺少 active AKSK，重新生成，WorkerID: {}", existingWorker.getId());
+                aksk = akskService.generateAKSK(existingWorker.getId());
+            }
 
             existingWorker.setStatus(WorkerStatus.online);
             existingWorker.setLastHeartbeat(LocalDateTime.now());
@@ -509,3 +518,5 @@ public class WorkerController {
         }
     }
 }
+
+

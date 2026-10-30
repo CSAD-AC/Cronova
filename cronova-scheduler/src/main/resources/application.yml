@@ -54,8 +54,8 @@ sa-token:
 # 任务超时配置（支持环境变量覆盖）
 cronova:
   security:
-    # Worker 全局注册令牌：首次注册/重注册时必须携带 X-Register-Token 与该值一致，
-    # 防止未授权方通过 /api/worker/register 免费领取 AKSK。留空则跳过校验（兼容旧部署）。
+    # Worker 全局注册令牌：首次注册/重注册时必须携带 X-Register-Token 与该值一致；
+    # 防止未授权方通过 /api/worker/register 免费领取 AKSK；留空时注册接口 fail-closed。
     worker-register-token: ${WORKER_REGISTER_TOKEN:}
   timeout:
     # 派发超时（秒）：run 保持 pending 超过该值判定派发失败
@@ -64,3 +64,4 @@ cronova:
     execution-max-seconds: ${CRONOVA_TIMEOUT_EXECUTION_MAX_SECONDS:3600}
     # 无心跳阈值（秒）：执行期间超过该值无状态上报判定超时
     execution-heartbeat-seconds: ${CRONOVA_TIMEOUT_EXECUTION_HEARTBEAT_SECONDS:30}
+
