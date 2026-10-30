@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -42,8 +43,19 @@ public class CachedBodyRequestFilter implements Filter {
                 && !uri.endsWith("/register")
                 && !uri.endsWith("/validate-aksk");
 
+        HttpServletResponse response = (HttpServletResponse) servletResponse;
         if (needCache) {
-            filterChain.doFilter(new CachedBodyHttpServletRequest(request), servletResponse);
+            try {
+                filterChain.doFilter(new CachedBodyHttpServletRequest(request), servletResponse);
+            } catch (IOException e) {
+                if (e.getMessage() != null && e.getMessage().startsWith("request body exceeds")) {
+                    response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE);
+                    response.setContentType("application/json;charset=utf-8");
+                    response.getWriter().write("{\"code\":413,\"message\":\"request body too large\"}");
+                    return;
+                }
+                throw e;
+            }
         } else {
             filterChain.doFilter(request, servletResponse);
         }
