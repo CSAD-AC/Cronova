@@ -25,6 +25,7 @@ import com.cronova.scheduler.service.IAKSKService;
 import com.cronova.scheduler.service.ITaskService;
 import com.cronova.scheduler.service.ShardSettlementService;
 import com.cronova.scheduler.common.RedisKey;
+import com.cronova.scheduler.interceptor.AKSKInterceptor;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.util.List;
@@ -36,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -86,6 +88,20 @@ public class WorkerController {
         this.akskService = akskService;
         this.redisTemplate = redisTemplate;
         this.shardSettlementService = shardSettlementService;
+    }
+
+    private String authenticatedWorkerId(HttpServletRequest request) {
+        Object value = request.getAttribute(AKSKInterceptor.AUTHENTICATED_WORKER_ID);
+        return value == null ? null : value.toString();
+    }
+
+    private boolean isOwnWorker(HttpServletRequest request, String workerId) {
+        String authenticatedWorkerId = authenticatedWorkerId(request);
+        return authenticatedWorkerId != null && authenticatedWorkerId.equals(workerId);
+    }
+
+    private Result<Void> workerMismatch() {
+        return Result.error(403, "worker identity mismatch");
     }
 
     /**
@@ -210,8 +226,11 @@ public class WorkerController {
      */
     @PostMapping("/heartbeat/{workerId}")
     @Operation(summary = "Worker心跳", description = "Worker执行器定期发送心跳，保持在线状态")
-    public Result<Void> heartbeat(@PathVariable String workerId) {
+    public Result<Void> heartbeat(@PathVariable String workerId, HttpServletRequest request) {
         log.debug("收到Worker心跳请求 | WorkerID: {}", workerId);
+        if (!isOwnWorker(request, workerId)) {
+            return workerMismatch();
+        }
         
         String heartbeatKey = RedisKey.getWorkerHeartbeatKey(workerId);
         
@@ -247,9 +266,12 @@ public class WorkerController {
     public Result<Void> reportStatus(@PathVariable String workerId, 
                                      @RequestParam Double cpuUsage, 
                                      @RequestParam Double memUsage, 
-                                     @RequestParam Integer runningTasks) {
+                                     @RequestParam Integer runningTasks, HttpServletRequest request) {
         log.debug("收到Worker状态报告 | WorkerID: {}, CPU: {}%, Mem: {}%, Tasks: {}", 
                 workerId, cpuUsage, memUsage, runningTasks);
+        if (!isOwnWorker(request, workerId)) {
+            return workerMismatch();
+        }
         
         String infoKey = RedisKey.getWorkerInfoKey(workerId);
         Map<String, Object> statusMap = new HashMap<>();
@@ -272,8 +294,11 @@ public class WorkerController {
      */
     @PostMapping("/tags/{workerId}")
     @Operation(summary = "更新Worker标签", description = "Worker执行器动态更新自身标签，用于任务匹配")
-    public Result<Void> updateWorkerTags(@PathVariable String workerId, @RequestBody UpdateTagsRequest request) {
+    public Result<Void> updateWorkerTags(@PathVariable String workerId, @RequestBody UpdateTagsRequest request, HttpServletRequest httpRequest) {
         log.info("收到Worker标签更新请求 | WorkerID: {}, 新标签: {}", workerId, request.getTags());
+        if (!isOwnWorker(httpRequest, workerId)) {
+            return workerMismatch();
+        }
 
         Worker worker = workerMapper.selectById(workerId);
         if (worker == null) {
@@ -351,9 +376,12 @@ public class WorkerController {
      */
     @PostMapping("/task-result/{workerId}")
     @Operation(summary = "Worker任务结果报告", description = "Worker执行器报告任务执行结果，更新task_run表的数据")
-    public Result<Void> reportTaskResult(@PathVariable String workerId, @RequestBody TaskResultMessage resultMessage) {
+    public Result<Void> reportTaskResult(@PathVariable String workerId, @RequestBody TaskResultMessage resultMessage, HttpServletRequest request) {
         log.info("收到Worker任务结果报告，WorkerID: {}, TaskID: {}, TaskRunID: {}", 
                 workerId, resultMessage.getTaskId(), resultMessage.getTaskRunId());
+        if (!isOwnWorker(request, workerId) || (resultMessage.getWorkerId() != null && !authenticatedWorkerId(request).equals(resultMessage.getWorkerId()))) {
+            return workerMismatch();
+        }
         
         Worker worker = workerMapper.selectById(workerId);
         if (worker == null) {
@@ -446,16 +474,22 @@ public class WorkerController {
         @ApiResponse(responseCode = "400", description = "参数错误或任务不存在"),
         @ApiResponse(responseCode = "500", description = "系统内部错误")
     })
-    public Result<Void> reportTaskStatus(@PathVariable String taskRunId, @RequestBody TaskResultMessage taskStatus) {
+    public Result<Void> reportTaskStatus(@PathVariable String taskRunId, @RequestBody TaskResultMessage taskStatus, HttpServletRequest request) {
         log.info("收到任务状态持续报告，TaskRunID: {}, WorkerID: {} Status:{}", taskRunId, taskStatus.getWorkerId(), taskStatus.getStatus());
         
         try {
             TaskRun taskRun = taskRunMapper.selectById(taskRunId);
+            if (taskStatus.getWorkerId() != null && !authenticatedWorkerId(request).equals(taskStatus.getWorkerId())) {
+                return workerMismatch();
+            }
             if (taskRun == null) {
                 log.warn("任务执行记录不存在，TaskRunID: {}", taskRunId);
                 return Result.error(400, "TaskRun not found");
             }
 
+            if (taskRun.getWorkerId() != null && !authenticatedWorkerId(request).equals(taskRun.getWorkerId())) {
+                return workerMismatch();
+            }
             taskRun.setStatus(TaskRunStatus.valueOf(taskStatus.getStatus()));
 
             if ("running".equals(taskStatus.getStatus())) {
@@ -465,6 +499,7 @@ public class WorkerController {
 
                 if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
                     taskRun.setWorkerId(taskStatus.getWorkerId());
+                    taskRun.setWorkerId(authenticatedWorkerId(request));
                     log.info("更新任务Worker ID，TaskRunID: {}, WorkerID: {}", taskRunId, taskStatus.getWorkerId());
                 }
             }
@@ -518,5 +553,6 @@ public class WorkerController {
         }
     }
 }
+
 
 

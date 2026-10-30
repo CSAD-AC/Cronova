@@ -21,6 +21,9 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class AKSKInterceptor implements HandlerInterceptor {
 
+    /** 认证成功后写入请求属性的 WorkerID，供 Controller 做资源归属校验 */
+    public static final String AUTHENTICATED_WORKER_ID = "cronova.authenticatedWorkerId";
+
     @Autowired
     private IAKSKService akskService;
     
@@ -84,6 +87,15 @@ public class AKSKInterceptor implements HandlerInterceptor {
             return false;
         }
 
+        var aksk = akskService.getByAccessKey(accessKey);
+        if (aksk == null || aksk.getWorkerId() == null || aksk.getWorkerId().isBlank()) {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            response.setContentType("application/json;charset=utf-8");
+            response.getWriter().write(objectMapper.writeValueAsString(
+                    Result.error(HttpStatus.UNAUTHORIZED.value(), "AKSK has no bound worker")));
+            return false;
+        }
+        request.setAttribute(AUTHENTICATED_WORKER_ID, aksk.getWorkerId());
         return true;
     }
 
