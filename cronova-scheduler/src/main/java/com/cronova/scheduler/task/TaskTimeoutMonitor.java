@@ -11,6 +11,7 @@ import com.cronova.scheduler.mapper.TaskMapper;
 import com.cronova.scheduler.mapper.TaskRunMapper;
 import com.cronova.scheduler.service.ITaskService;
 import com.cronova.scheduler.service.ShardSettlementService;
+import com.cronova.scheduler.service.TaskRunFinalizer;
 import com.cronova.scheduler.service.TaskProducerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,7 @@ public class TaskTimeoutMonitor {
     private final ITaskService taskService;
     private final TaskProducerService taskProducerService;
     private final ShardSettlementService shardSettlementService;
+    private final TaskRunFinalizer taskRunFinalizer;
 
     /** 派发超时（秒） */
     @Value("${cronova.timeout.dispatch-seconds:60}")
@@ -60,7 +62,9 @@ public class TaskTimeoutMonitor {
     @Autowired
     public TaskTimeoutMonitor(TaskRunMapper taskRunMapper, TaskMapper taskMapper,
                               ITaskService taskService, TaskProducerService taskProducerService,
+                              TaskRunFinalizer taskRunFinalizer,
                               ShardSettlementService shardSettlementService) {
+        this.taskRunFinalizer = taskRunFinalizer;
         this.taskRunMapper = taskRunMapper;
         this.taskMapper = taskMapper;
         this.taskService = taskService;
@@ -105,7 +109,9 @@ public class TaskTimeoutMonitor {
         Task task = taskMapper.selectById(taskRun.getTaskId());
         if (task == null) {
             log.warn("任务定义不存在，标记实例为失败，TaskRunID: {}", taskRun.getId());
-            updateTaskRunStatus(taskRun, TaskRunStatus.failed, "任务定义已被删除");
+            if (!updateTaskRunStatus(taskRun, TaskRunStatus.failed, "任务定义已被删除")) {
+                return;
+            }
             // 终态 -> 触发分片结算检查（任务已删除无重试预算，结算服务会按最终失败处理）
             shardSettlementService.onRunTerminal(taskRun.getId());
             return;
@@ -153,14 +159,28 @@ public class TaskTimeoutMonitor {
         }
     }
 
-    private void updateTaskRunStatus(TaskRun taskRun, TaskRunStatus status, String errorMsg) {
+    private boolean updateTaskRunStatus(TaskRun taskRun, TaskRunStatus status, String errorMsg) {
+        LocalDateTime endTime = LocalDateTime.now();
+        Long durationMs = taskRun.getStartTime() == null
+                ? null : Duration.between(taskRun.getStartTime(), endTime).toMillis();
+        TaskRun terminal = TaskRun.builder()
+                .id(taskRun.getId())
+                .workerId(taskRun.getWorkerId())
+                .status(status)
+                .endTime(endTime)
+                .durationMs(durationMs)
+                .errorMessage(errorMsg)
+                .retryNum(taskRun.getRetryNum())
+                .lastHeartbeatTime(LocalDateTime.now())
+                .build();
+        if (!taskRunFinalizer.tryAdvanceToTerminal(terminal)) {
+            return false;
+        }
         taskRun.setStatus(status);
         taskRun.setErrorMessage(errorMsg);
-        taskRun.setEndTime(LocalDateTime.now());
-        if (taskRun.getStartTime() != null) {
-            taskRun.setDurationMs(Duration.between(taskRun.getStartTime(), taskRun.getEndTime()).toMillis());
-        }
-        taskRunMapper.updateById(taskRun);
+        taskRun.setEndTime(endTime);
+        taskRun.setDurationMs(durationMs);
+        return true;
     }
 
     private void sendStopMessage(TaskRun taskRun, String reason) {
@@ -191,7 +211,10 @@ public class TaskTimeoutMonitor {
         if (oldRetryNum == null) oldRetryNum = 0;
 
         // 1. 更新状态为超时 (这一步是为了如果后续逻辑都成功，数据库状态是正确的)
-        updateTaskRunStatus(taskRun, TaskRunStatus.timeout, reason);
+        if (!updateTaskRunStatus(taskRun, TaskRunStatus.timeout, reason)) {
+            log.info("超时状态写入失败，run已被其他路径推进终态，跳过重试，TaskRunID: {}", taskRun.getId());
+            return;
+        }
 
         // 终态 -> 触发分片结算检查：若该 run 的 retryNum 仍有重试预算（即将 republish），
         // 结算服务内部会跳过，不会提前判死批次；预算耗尽时才真正结算
