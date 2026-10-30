@@ -2,6 +2,7 @@ package com.cronova.scheduler.interceptor;
 
 import cn.hutool.core.io.IoUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.cronova.scheduler.common.CachedBodyHttpServletRequest;
 import com.cronova.scheduler.common.Result;
 import com.cronova.scheduler.service.IAKSKService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,8 +66,16 @@ public class AKSKInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 3. 验证 AKSK 签名（不再需要请求体）
-        boolean isValid = akskService.validateAKSK(accessKey, signature, timestamp, "");
+        // 3. 读取请求体（已由 CachedBodyRequestFilter 缓存），参与签名校验以防中间人篡改
+        String requestBody;
+        if (request instanceof CachedBodyHttpServletRequest cached) {
+            requestBody = cached.getBody();
+        } else {
+            requestBody = IoUtil.read(request.getInputStream(), StandardCharsets.UTF_8);
+        }
+
+        // 4. 验证 AKSK 签名（签名串 = timestamp + "\n" + body）
+        boolean isValid = akskService.validateAKSK(accessKey, signature, timestamp, requestBody);
         if (!isValid) {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.setContentType("application/json;charset=utf-8");

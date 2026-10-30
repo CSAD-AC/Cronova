@@ -13,6 +13,9 @@ public class WorkerProperties {
     /** 调度器地址 */
     private String schedulerBaseUrl;
 
+    /** 全局注册令牌（首次注册/重注册时带回调度器校验，禁止 SK 白嫖） */
+    private String registerToken;
+
     /** 本地配置路径（WorkerID / AK / SK 持久化文件） */
     private String localConfigPath;
 

@@ -15,6 +15,9 @@ class Config:
     WORKER_HEARTBEAT_URL_TEMPLATE = f"{SCHEDULER_BASE_URL}/api/worker/heartbeat/{{worker_id}}"  # 心跳接口
     WORKER_STATUS_REPORT_URL_TEMPLATE = f"{SCHEDULER_BASE_URL}/api/worker/status/{{worker_id}}"  # 状态上报接口
 
+    # 全局注册令牌（首次注册/重注册时携带，与调度器 WORKER_REGISTER_TOKEN 一致）
+    REGISTER_TOKEN = os.getenv("REGISTER_TOKEN", "")
+
     # 定时配置
     HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "2"))  # 心跳间隔（秒）
     STATUS_REPORT_INTERVAL = int(os.getenv("STATUS_REPORT_INTERVAL", "10"))  # 状态上报间隔（秒）

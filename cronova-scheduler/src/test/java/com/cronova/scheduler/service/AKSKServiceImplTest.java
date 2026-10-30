@@ -50,11 +50,12 @@ class AKSKServiceImplTest {
         String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
         String requestBody = "test request body";
         
-        // 使用HMAC-SHA256生成签名
+        // 使用HMAC-SHA256生成签名（签名串 = timestamp + "\n" + body，与生产逻辑一致）
         cn.hutool.crypto.digest.HMac hMac = new cn.hutool.crypto.digest.HMac(
                 cn.hutool.crypto.digest.HmacAlgorithm.HmacSHA256, 
                 aksk.getSecretKey().getBytes());
-        String signature = hMac.digestHex(timestamp);
+        String signString = timestamp + "\n" + requestBody;
+        String signature = hMac.digestHex(signString);
 
         // 验证有效的AKSK
         boolean isValid = akskService.validateAKSK(

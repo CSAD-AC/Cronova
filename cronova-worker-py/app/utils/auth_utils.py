@@ -14,23 +14,17 @@ class AuthUtils:
     @staticmethod
     def generate_signature(
         timestamp: str,
-        json_data: dict = None,
-        params: dict = None,  # 查询参数
+        body: str = None,  # 实际发送的请求体字符串（服务端以此原文验签）
+        params: dict = None,  # 查询参数（保留字段）
         method: str = "POST",
         url_path: str = ""
     ) -> str:
-        """生成签名（算法须与服务端保持一致）"""
+        """生成签名（算法须与服务端保持一致：HMAC-SHA256(SK, timestamp + "\\n" + body)）"""
         if not all([Config.ACCESS_KEY, Config.SECRET_KEY]):
             raise ValueError("ACCESS_KEY或SECRET_KEY未初始化")
 
-        # 生成请求体字符串
-        if json_data:
-            body_str = json.dumps(json_data, sort_keys=True, ensure_ascii=False)
-        else:
-            body_str = "{}"
-
-        # 待签名字符串仅用timestamp（不含请求体）
-        sign_str = timestamp
+        # 生成待签名字符串：无 body 时仅 timestamp，有 body 时追加 body 原文
+        sign_str = timestamp if not body else timestamp + "\n" + body
         signature = hmac.new(
             Config.SECRET_KEY.encode("utf-8"),
             sign_str.encode("utf-8"),

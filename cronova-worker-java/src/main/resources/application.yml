@@ -6,7 +6,9 @@
 worker:
   # 调度器地址
   scheduler-base-url: ${SCHEDULER_BASE_URL:http://localhost:8085}
-  # 本地配置路径（WorkerID / AK / SK / 标签持久化）
+  # 全局注册令牌（首次注册/重注册时带回调度器校验）
+  register-token: ${REGISTER_TOKEN:}
+  # 本地配置路径（WorkerID / AK / SK 持久化）
   local-config-path: ${LOCAL_CONFIG_PATH:./local_config.json}
   # 脚本下载目录（容器内）
   scripts-dir: ${WORKER_SCRIPTS_DIR:/app/scripts_tmp}

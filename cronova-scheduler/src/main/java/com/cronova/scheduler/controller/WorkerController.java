@@ -33,8 +33,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -61,6 +64,13 @@ public class WorkerController {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ShardSettlementService shardSettlementService;
 
+    /** 注册请求头中携带的注册令牌字段名 */
+    private static final String HEADER_REGISTER_TOKEN = "X-Register-Token";
+
+    /** 全局 Worker 注册令牌（配置为空则跳过校验） */
+    @Value("${cronova.security.worker-register-token:}")
+    private String workerRegisterToken;
+
     public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper,
                            TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper,
                            ITaskService taskService, IAKSKService akskService, RedisTemplate<String, Object> redisTemplate,
@@ -83,9 +93,21 @@ public class WorkerController {
      */
     @PostMapping("/register")
     @Operation(summary = "Worker注册", description = "Worker执行器首次启动时注册到调度器，获取AKSK认证信息")
-    public Result<WorkerRegisterVO> register(@RequestBody WorkerRegisterDTO registerDTO) {
+    public Result<WorkerRegisterVO> register(@RequestBody WorkerRegisterDTO registerDTO,
+                                             @RequestHeader(value = HEADER_REGISTER_TOKEN, required = false) String registerToken) {
         log.info("收到Worker注册请求，主机名: {}, IP: {}", registerDTO.getHost(), registerDTO.getIp());
-        
+
+        // 注册令牌校验：防止未授权方通过注册接口免费领取 AKSK（恒定时间比较，防时序攻击）
+        if (workerRegisterToken != null && !workerRegisterToken.isBlank()) {
+            boolean tokenOk = registerToken != null && MessageDigest.isEqual(
+                    registerToken.getBytes(StandardCharsets.UTF_8),
+                    workerRegisterToken.getBytes(StandardCharsets.UTF_8));
+            if (!tokenOk) {
+                log.warn("Worker注册被拒绝：注册令牌无效，IP: {}", registerDTO.getIp());
+                return Result.error(401, "invalid register token");
+            }
+        }
+
         Worker existingWorker = workerMapper.selectOne(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Worker>()
                         .eq(Worker::getHost, registerDTO.getHost())

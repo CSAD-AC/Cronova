@@ -113,7 +113,7 @@ public class WorkerLifecycleService implements ApplicationRunner {
                 .ip(ip)
                 .tags(tags)
                 .build();
-        AkskHttpClient.ApiResponse resp = httpClient.postUnsigned(url, request, null);
+        AkskHttpClient.ApiResponse resp = httpClient.postRegister(url, request, null, properties.getRegisterToken());
         if (!resp.isOk() || resp.data() == null) {
             log.error("注册请求失败，code={}, msg={}", resp.code(), resp.message());
             return false;
