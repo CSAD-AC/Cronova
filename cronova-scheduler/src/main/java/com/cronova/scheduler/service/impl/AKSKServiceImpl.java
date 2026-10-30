@@ -15,6 +15,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
@@ -77,6 +79,9 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
     @Override
     public boolean validateAKSK(String accessKey, String signature, String timestamp, String requestBody) {
         log.debug("开始验证AKSK签名，AccessKey: {}", accessKey);
+        if (accessKey == null || signature == null || timestamp == null) {
+            return false;
+        }
         
         // 1. 根据 Access Key 查询 AKSK 信息 (带缓存)
         AKSK aksk = this.getByAccessKey(accessKey);
@@ -110,11 +115,13 @@ public class AKSKServiceImpl extends ServiceImpl<AKSKMapper, AKSK> implements IA
                 : timestamp + "\n" + requestBody;
 
         // 4. 使用 Secret Key 生成 HMAC-SHA256 签名
-        HMac hMac = new HMac(HmacAlgorithm.HmacSHA256, aksk.getSecretKey().getBytes());
+        HMac hMac = new HMac(HmacAlgorithm.HmacSHA256, aksk.getSecretKey().getBytes(StandardCharsets.UTF_8));
         String generatedSignature = hMac.digestHex(signString);
 
         // 5. 比较签名是否一致
-        boolean isValid = generatedSignature.equals(signature);
+        boolean isValid = MessageDigest.isEqual(
+                generatedSignature.getBytes(StandardCharsets.UTF_8),
+                signature.getBytes(StandardCharsets.UTF_8));
         if (isValid) {
             log.debug("AKSK签名验证通过，AccessKey: {}", accessKey);
         } else {
