@@ -2,6 +2,10 @@ package com.cronova.scheduler.controller;
 
 import com.cronova.scheduler.common.Result;
 import com.cronova.scheduler.domain.message.WorkerRegisterDTO;
+import com.cronova.scheduler.domain.message.TaskResultMessage;
+import com.cronova.scheduler.domain.enums.TaskRunStatus;
+import com.cronova.scheduler.domain.po.TaskRun;
+import com.cronova.scheduler.interceptor.AKSKInterceptor;
 import com.cronova.scheduler.domain.po.AKSK;
 import com.cronova.scheduler.domain.po.Worker;
 import com.cronova.scheduler.domain.vo.WorkerRegisterVO;
@@ -22,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.util.Set;
 
@@ -107,6 +112,36 @@ class WorkerControllerSecurityTest {
         assertEquals(200, result.getCode());
         assertEquals("AK-1", result.getData().getAccessKey());
         verify(akskService).generateAKSK("worker-1");
+    }
+
+    @Test
+    void rejectsTaskStatusFromAnotherWorker() {
+        TaskRun run = TaskRun.builder().id("run-1").workerId("worker-2").status(TaskRunStatus.running).build();
+        when(taskRunMapper.selectById("run-1")).thenReturn(run);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute(AKSKInterceptor.AUTHENTICATED_WORKER_ID, "worker-1");
+        TaskResultMessage message = TaskResultMessage.builder()
+                .taskRunId("run-1").workerId("worker-1").status("running").build();
+
+        Result<Void> result = controller.reportTaskStatus("run-1", message, request);
+
+        assertEquals(403, result.getCode());
+    }
+
+    @Test
+    void rejectsLateTerminalStatusReport() {
+        TaskRun run = TaskRun.builder().id("run-1").workerId("worker-1").status(TaskRunStatus.running).build();
+        when(taskRunMapper.selectById("run-1")).thenReturn(run);
+        when(taskRunFinalizer.isTerminal(TaskRunStatus.success)).thenReturn(true);
+        when(taskRunFinalizer.tryAdvanceToTerminal(any())).thenReturn(false);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute(AKSKInterceptor.AUTHENTICATED_WORKER_ID, "worker-1");
+        TaskResultMessage message = TaskResultMessage.builder()
+                .taskRunId("run-1").workerId("worker-1").status("success").build();
+
+        Result<Void> result = controller.reportTaskStatus("run-1", message, request);
+
+        assertEquals(409, result.getCode());
     }
 
     private WorkerRegisterDTO registerRequest() {
