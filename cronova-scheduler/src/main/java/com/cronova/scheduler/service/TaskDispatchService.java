@@ -357,7 +357,7 @@ public class TaskDispatchService {
             return objectMapper.readValue(requiredTagsJson, new TypeReference<Set<String>>() {});
         } catch (Exception e) {
             log.warn("解析任务requiredTags失败: {}", requiredTagsJson, e);
-            return null;
+            throw new IllegalArgumentException("invalid requiredTags: " + requiredTagsJson, e);
         }
     }
 }
