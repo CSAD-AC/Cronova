@@ -24,6 +24,7 @@ import com.cronova.scheduler.domain.message.TaskResultMessage;
 import com.cronova.scheduler.service.IAKSKService;
 import com.cronova.scheduler.service.ITaskService;
 import com.cronova.scheduler.service.ShardSettlementService;
+import com.cronova.scheduler.service.TaskRunFinalizer;
 import com.cronova.scheduler.common.RedisKey;
 import com.cronova.scheduler.interceptor.AKSKInterceptor;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -66,6 +67,7 @@ public class WorkerController {
     private final IAKSKService akskService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ShardSettlementService shardSettlementService;
+    private final TaskRunFinalizer taskRunFinalizer;
 
     /** 注册请求头中携带的注册令牌字段名 */
     private static final String HEADER_REGISTER_TOKEN = "X-Register-Token";
@@ -77,7 +79,7 @@ public class WorkerController {
     public WorkerController(WorkerMapper workerMapper, AKSKMapper akskMapper, WorkerTagMapper workerTagMapper,
                            TagMapper tagMapper, TaskRunMapper taskRunMapper, TaskLogMapper taskLogMapper,
                            ITaskService taskService, IAKSKService akskService, RedisTemplate<String, Object> redisTemplate,
-                           ShardSettlementService shardSettlementService) {
+                           ShardSettlementService shardSettlementService, TaskRunFinalizer taskRunFinalizer) {
         this.workerMapper = workerMapper;
         this.akskMapper = akskMapper;
         this.workerTagMapper = workerTagMapper;
@@ -88,6 +90,7 @@ public class WorkerController {
         this.akskService = akskService;
         this.redisTemplate = redisTemplate;
         this.shardSettlementService = shardSettlementService;
+        this.taskRunFinalizer = taskRunFinalizer;
     }
 
     private String authenticatedWorkerId(HttpServletRequest request) {
@@ -389,25 +392,34 @@ public class WorkerController {
             return Result.error(404, "Worker not found");
         }
 
+        TaskRunStatus resultStatus = TaskRunStatus.of(resultMessage.getStatus());
+        if (!taskRunFinalizer.isTerminal(resultStatus)) {
+            return Result.error(400, "task result must be a terminal status");
+        }
+
+        TaskRun existingTaskRun = taskRunMapper.selectById(resultMessage.getTaskRunId());
         TaskRun taskRun = TaskRun.builder()
                 .id(resultMessage.getTaskRunId())
                 .taskId(resultMessage.getTaskId())
                 .workerId(workerId)
-                .status(TaskRunStatus.of(resultMessage.getStatus()))
+                .status(resultStatus)
                 .exitCode(resultMessage.getExitCode())
                 .startTime(resultMessage.getStartTime())
                 .endTime(resultMessage.getEndTime())
                 .durationMs(resultMessage.getDurationMs())
                 .errorMessage(resultMessage.getErrorMessage())
+                .retryNum(existingTaskRun == null ? 0 : existingTaskRun.getRetryNum())
+                .lastHeartbeatTime(LocalDateTime.now())
                 .build();
 
-        TaskRun existingTaskRun = taskRunMapper.selectById(resultMessage.getTaskRunId());
-        if (existingTaskRun != null) {
-            taskRunMapper.updateById(taskRun);
-            log.info("任务执行结果更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
-        } else {
+        if (existingTaskRun == null) {
             taskRunMapper.insert(taskRun);
             log.info("任务执行结果插入成功，TaskRunID: {}", resultMessage.getTaskRunId());
+        } else if (!taskRunFinalizer.tryAdvanceToTerminal(taskRun)) {
+            log.info("迟到或重复结果已丢弃，TaskRunID: {}", resultMessage.getTaskRunId());
+            return Result.error(409, "task run already terminal");
+        } else {
+            log.info("任务执行结果更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
         }
 
         // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
@@ -479,37 +491,50 @@ public class WorkerController {
         
         try {
             TaskRun taskRun = taskRunMapper.selectById(taskRunId);
-            if (taskStatus.getWorkerId() != null && !authenticatedWorkerId(request).equals(taskStatus.getWorkerId())) {
+            String authenticatedId = authenticatedWorkerId(request);
+            if (taskStatus.getWorkerId() != null && !java.util.Objects.equals(authenticatedId, taskStatus.getWorkerId())) {
                 return workerMismatch();
             }
             if (taskRun == null) {
                 log.warn("任务执行记录不存在，TaskRunID: {}", taskRunId);
                 return Result.error(400, "TaskRun not found");
             }
-
-            if (taskRun.getWorkerId() != null && !authenticatedWorkerId(request).equals(taskRun.getWorkerId())) {
+            if (taskRun.getWorkerId() != null && !java.util.Objects.equals(authenticatedId, taskRun.getWorkerId())) {
                 return workerMismatch();
             }
-            taskRun.setStatus(TaskRunStatus.valueOf(taskStatus.getStatus()));
 
-            if ("running".equals(taskStatus.getStatus())) {
-                taskRun.setDurationMs(taskStatus.getDurationMs());
-                // 刷新 run 级心跳，供执行超时判断
-                taskRun.setLastHeartbeatTime(LocalDateTime.now());
-
-                if (taskRun.getWorkerId() == null || taskRun.getWorkerId().isEmpty()) {
-                    taskRun.setWorkerId(taskStatus.getWorkerId());
-                    taskRun.setWorkerId(authenticatedWorkerId(request));
-                    log.info("更新任务Worker ID，TaskRunID: {}, WorkerID: {}", taskRunId, taskStatus.getWorkerId());
+            TaskRunStatus nextStatus = TaskRunStatus.of(taskStatus.getStatus());
+            LocalDateTime now = LocalDateTime.now();
+            if (taskRunFinalizer.isTerminal(nextStatus)) {
+                TaskRun terminal = TaskRun.builder()
+                        .id(taskRunId)
+                        .taskId(taskRun.getTaskId())
+                        .workerId(authenticatedId)
+                        .status(nextStatus)
+                        .endTime(now)
+                        .durationMs(taskStatus.getDurationMs())
+                        .errorMessage(taskStatus.getErrorMessage())
+                        .retryNum(taskRun.getRetryNum())
+                        .lastHeartbeatTime(now)
+                        .build();
+                if (!taskRunFinalizer.tryAdvanceToTerminal(terminal)) {
+                    log.info("迟到或重复状态已丢弃，TaskRunID: {}", taskRunId);
+                    return Result.error(409, "task run already terminal");
                 }
+                shardSettlementService.onRunTerminal(taskRunId);
+            } else if (nextStatus == TaskRunStatus.running) {
+                int updated = taskRunMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<TaskRun>()
+                        .eq(TaskRun::getId, taskRunId)
+                        .in(TaskRun::getStatus, TaskRunStatus.pending, TaskRunStatus.running)
+                        .set(TaskRun::getDurationMs, taskStatus.getDurationMs())
+                        .set(TaskRun::getLastHeartbeatTime, now)
+                        .set(taskRun.getWorkerId() == null, TaskRun::getWorkerId, authenticatedId));
+                if (updated == 0) {
+                    return Result.error(409, "task run already terminal");
+                }
+            } else {
+                return Result.error(400, "unsupported task status");
             }
-
-            taskRunMapper.updateById(taskRun);
-            log.debug("任务状态更新成功，TaskRunID: {}, 状态: {}, 持续时间: {}ms, WorkerID: {}",
-                    taskRunId, taskStatus.getStatus(), taskStatus.getDurationMs(), taskStatus.getWorkerId());
-
-            // 状态上报也可能携带终态 -> 触发分片结算检查（内部自行判断是否终态）
-            shardSettlementService.onRunTerminal(taskRunId);
 
             if (taskStatus.getLogPath() != null && !taskStatus.getLogPath().isEmpty()) {
                 List<TaskLog> taskLogs = taskLogMapper.selectList(
@@ -553,6 +578,7 @@ public class WorkerController {
         }
     }
 }
+
 
 
 
