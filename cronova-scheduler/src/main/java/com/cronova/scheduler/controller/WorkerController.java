@@ -382,7 +382,7 @@ public class WorkerController {
     public Result<Void> reportTaskResult(@PathVariable String workerId, @RequestBody TaskResultMessage resultMessage, HttpServletRequest request) {
         log.info("收到Worker任务结果报告，WorkerID: {}, TaskID: {}, TaskRunID: {}", 
                 workerId, resultMessage.getTaskId(), resultMessage.getTaskRunId());
-        if (!isOwnWorker(request, workerId) || (resultMessage.getWorkerId() != null && !authenticatedWorkerId(request).equals(resultMessage.getWorkerId()))) {
+        if (!isOwnWorker(request, workerId) || (resultMessage.getWorkerId() != null && !java.util.Objects.equals(authenticatedWorkerId(request), resultMessage.getWorkerId()))) {
             return workerMismatch();
         }
         
