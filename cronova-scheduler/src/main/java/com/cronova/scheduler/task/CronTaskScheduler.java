@@ -15,6 +15,7 @@ import com.cronova.scheduler.mapper.TaskRunMapper;
 import com.cronova.scheduler.service.BlockStrategyService;
 import com.cronova.scheduler.service.ITaskService;
 import com.cronova.scheduler.service.ScriptMessageBuilder;
+import com.cronova.scheduler.service.TaskRunFinalizer;
 import com.cronova.scheduler.service.TaskDispatchService;
 import com.cronova.scheduler.util.CronNextTimeUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +76,9 @@ public class CronTaskScheduler {
 
     @Autowired
     private com.cronova.scheduler.service.ShardSettlementService shardSettlementService;
+
+    @Autowired
+    private TaskRunFinalizer taskRunFinalizer;
 
     /**
      * 到期驱动扫描：查询窗口内到期的活跃 cron 任务并逐个触发
@@ -354,16 +358,24 @@ public class CronTaskScheduler {
         try {
             TaskRun taskRun = taskRunMapper.selectById(taskRunId);
             if (taskRun != null) {
-                taskRun.setStatus(status);
-                taskRun.setEndTime(LocalDateTime.now());
-                taskRun.setErrorMessage(errorMessage);
-                taskRunMapper.updateById(taskRun);
+                LocalDateTime now = LocalDateTime.now();
+                TaskRun terminal = TaskRun.builder()
+                        .id(taskRunId)
+                        .taskId(taskRun.getTaskId())
+                        .workerId(taskRun.getWorkerId())
+                        .status(status)
+                        .endTime(now)
+                        .errorMessage(errorMessage)
+                        .retryNum(taskRun.getRetryNum())
+                        .lastHeartbeatTime(now)
+                        .build();
+                if (!taskRunFinalizer.tryAdvanceToTerminal(terminal)) {
+                    log.info("任务运行状态未更新：run 已进入终态，RunID: {}, Status: {}", taskRunId, status);
+                    return;
+                }
                 log.info("任务运行状态已更新，RunID: {}, Status: {}", taskRunId, status);
-
-                // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
                 shardSettlementService.onRunTerminal(taskRunId);
 
-                // 如果是失败状态，触发重试逻辑
                 if (status == TaskRunStatus.failed || status == TaskRunStatus.timeout) {
                     Task task = taskService.getById(taskRun.getTaskId());
                     if (task != null) {

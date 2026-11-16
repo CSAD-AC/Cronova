@@ -225,6 +225,9 @@ public class TaskDispatchService {
      */
     public boolean dispatchSharded(Task task, TaskExecuteMessage template,
                                    int shardTotal, int retryNum, int delaySeconds) {
+        if (shardTotal < 0 || shardTotal > 256) {
+            throw new IllegalArgumentException("shardTotal must be between 0 and 256");
+        }
         String batchId = UUID.randomUUID().toString().replace("-", "");
 
         // 1. 并行提交各分片任务（每片：建 run + 路由派发），分片间互不依赖

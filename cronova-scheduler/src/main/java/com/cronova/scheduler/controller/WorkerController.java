@@ -392,12 +392,22 @@ public class WorkerController {
             return Result.error(404, "Worker not found");
         }
 
+        TaskRun existingTaskRun = taskRunMapper.selectById(resultMessage.getTaskRunId());
+        if (existingTaskRun == null) {
+            return Result.error(404, "TaskRun not found");
+        }
+        String authenticatedId = authenticatedWorkerId(request);
+        if (existingTaskRun.getWorkerId() != null
+                && !java.util.Objects.equals(existingTaskRun.getWorkerId(), authenticatedId)) {
+            return workerMismatch();
+        }
+        if (!java.util.Objects.equals(existingTaskRun.getTaskId(), resultMessage.getTaskId())) {
+            return Result.error(400, "taskId does not match task run");
+        }
         TaskRunStatus resultStatus = TaskRunStatus.of(resultMessage.getStatus());
         if (!taskRunFinalizer.isTerminal(resultStatus)) {
             return Result.error(400, "task result must be a terminal status");
         }
-
-        TaskRun existingTaskRun = taskRunMapper.selectById(resultMessage.getTaskRunId());
         TaskRun taskRun = TaskRun.builder()
                 .id(resultMessage.getTaskRunId())
                 .taskId(resultMessage.getTaskId())
@@ -408,19 +418,15 @@ public class WorkerController {
                 .endTime(resultMessage.getEndTime())
                 .durationMs(resultMessage.getDurationMs())
                 .errorMessage(resultMessage.getErrorMessage())
-                .retryNum(existingTaskRun == null ? 0 : existingTaskRun.getRetryNum())
+                .retryNum(existingTaskRun.getRetryNum())
                 .lastHeartbeatTime(LocalDateTime.now())
                 .build();
 
-        if (existingTaskRun == null) {
-            taskRunMapper.insert(taskRun);
-            log.info("任务执行结果插入成功，TaskRunID: {}", resultMessage.getTaskRunId());
-        } else if (!taskRunFinalizer.tryAdvanceToTerminal(taskRun)) {
+        if (!taskRunFinalizer.tryAdvanceToTerminal(taskRun)) {
             log.info("迟到或重复结果已丢弃，TaskRunID: {}", resultMessage.getTaskRunId());
             return Result.error(409, "task run already terminal");
-        } else {
-            log.info("任务执行结果更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
         }
+        log.info("任务执行结果更新成功，TaskRunID: {}", resultMessage.getTaskRunId());
 
         // 终态 -> 触发分片结算检查（非分片任务为 N=1 特例，同路径）
         shardSettlementService.onRunTerminal(resultMessage.getTaskRunId());

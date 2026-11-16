@@ -1,5 +1,6 @@
 package com.cronova.scheduler.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.cronova.scheduler.common.Result;
 import com.cronova.scheduler.domain.enums.TaskRunStatus;
 import com.cronova.scheduler.domain.message.TaskPauseMessage;
@@ -378,6 +379,7 @@ public class TaskRunController {
      * 暂停任务运行实例
      */
     @PostMapping("/{taskRunId}/pause")
+    @SaCheckRole("admin")
     @Operation(summary = "暂停任务运行实例", description = "通过MQ向执行器发送暂停指令，暂停正在运行的任务实例")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "暂停指令发送成功"),
@@ -423,6 +425,7 @@ public class TaskRunController {
      * 恢复任务运行实例
      */
     @PostMapping("/{taskRunId}/resume")
+    @SaCheckRole("admin")
     @Operation(summary = "恢复任务运行实例", description = "通过MQ向执行器发送恢复指令，恢复已暂停的任务实例")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "恢复指令发送成功"),
@@ -468,6 +471,7 @@ public class TaskRunController {
      * 停止任务运行实例（SIGTERM信号）
      */
     @PostMapping("/{taskRunId}/stop")
+    @SaCheckRole("admin")
     @Operation(summary = "停止任务运行实例", description = "通过MQ向执行器发送停止指令，使用SIGTERM信号正常终止任务")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "停止指令发送成功"),
@@ -512,6 +516,7 @@ public class TaskRunController {
      * 强制终止任务运行实例（SIGKILL信号）
      */
     @PostMapping("/{taskRunId}/kill")
+    @SaCheckRole("admin")
     @Operation(summary = "强制终止任务运行实例", description = "通过MQ向执行器发送强制终止指令，使用SIGKILL信号立即终止任务")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "强制终止指令发送成功"),
@@ -556,6 +561,7 @@ public class TaskRunController {
      * 删除任务运行实例
      */
     @DeleteMapping("/{taskRunId}")
+    @SaCheckRole("admin")
     @Operation(summary = "删除任务运行实例", description = "删除任务运行实例记录，如果任务正在运行则先停止")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "删除成功"),

@@ -69,6 +69,25 @@ class TaskTimeoutMonitorTest {
         verify(shardSettlementService).onRunTerminal("run-1");
     }
 
+    @Test
+    void createsNewRunForTimeoutRetry() {
+        TaskRun pending = pendingRun();
+        pending.setRetryNum(0);
+        pending.setShardIndex(2);
+        pending.setShardTotal(4);
+        pending.setShardBatchId("batch-1");
+        when(taskRunMapper.selectList(any())).thenReturn(List.of(pending));
+        when(taskMapper.selectById("task-1")).thenReturn(Task.builder()
+                .id("task-1").retryCount(1).retryIntervalSeconds(60).build());
+        when(taskRunFinalizer.tryAdvanceToTerminal(any())).thenReturn(true);
+
+        monitor.checkTimeoutTasks();
+
+        verify(taskService).publishTaskWithRetryAndDelay(
+                "task-1", 1, 60, 2, 4, "batch-1");
+        verify(taskRunMapper, never()).updateById(any(TaskRun.class));
+    }
+
     private TaskRun pendingRun() {
         return TaskRun.builder()
                 .id("run-1")

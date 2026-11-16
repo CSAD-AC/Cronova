@@ -1,5 +1,6 @@
 package com.cronova.scheduler.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.cronova.scheduler.common.ErrorCodeEnum;
 import com.cronova.scheduler.common.RedisKey;
 import com.cronova.scheduler.common.Result;
@@ -111,6 +112,7 @@ public class WorkerFrontController {
      * @return 更新结果
      */
     @PutMapping("/{id}/host")
+    @SaCheckRole("admin")
     @Operation(summary = "更新Worker主机名", description = "根据Worker ID更新指定Worker的主机名")
     public Result<Void> updateWorkerHost(@PathVariable String id, @RequestBody WorkerUpdateDTO updateDTO) {
         log.info("开始更新Worker主机名，WorkerID: {}, 新主机名: {}", id, updateDTO.getHost());
@@ -125,6 +127,7 @@ public class WorkerFrontController {
      * @return 删除结果
      */
     @DeleteMapping("/{id}")
+    @SaCheckRole("admin")
     @Operation(summary = "删除Worker", description = "根据Worker ID删除指定Worker，并同步删除关联的AKSK和任务")
     public Result<Void> deleteWorker(@PathVariable String id) {
         log.info("开始删除Worker，WorkerID: {}", id);

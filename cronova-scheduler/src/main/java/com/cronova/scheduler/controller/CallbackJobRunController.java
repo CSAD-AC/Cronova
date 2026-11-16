@@ -1,6 +1,7 @@
 package com.cronova.scheduler.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.stp.StpUtil;
 import com.cronova.scheduler.common.ErrorCodeEnum;
 import com.cronova.scheduler.common.Result;
@@ -442,6 +443,7 @@ public class CallbackJobRunController {
      * 手动重试回调
      */
     @PostMapping("/{id}/retry")
+    @SaCheckRole("admin")
     @Operation(summary = "手动重试回调", description = "手动触发对失败回调的重试")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "重试指令已发送"),
@@ -466,6 +468,7 @@ public class CallbackJobRunController {
      * 删除执行记录
      */
     @DeleteMapping("/{id}")
+    @SaCheckRole("admin")
     @Operation(summary = "删除执行记录", description = "删除指定的回调执行记录")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "删除成功"),
@@ -490,6 +493,7 @@ public class CallbackJobRunController {
      * 根据任务ID删除执行记录
      */
     @DeleteMapping("/task/{taskId}")
+    @SaCheckRole("admin")
     @Operation(summary = "根据任务ID删除执行记录", description = "删除指定任务关联的所有回调执行记录")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "删除成功"),

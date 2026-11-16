@@ -1,5 +1,6 @@
 package com.cronova.scheduler.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.cronova.scheduler.common.Result;
 import com.cronova.scheduler.domain.po.Script;
 import com.cronova.scheduler.domain.vo.ScriptVO;
@@ -102,6 +103,7 @@ public class ScriptController {
      * @return 上传结果
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @SaCheckRole("admin")
     @Operation(summary = "上传脚本文件", description = "上传脚本文件到MinIO")
     public Result<ScriptVO> uploadScript(@RequestPart("file") MultipartFile file) {
         return Result.success(scriptService.uploadScript(file));
@@ -113,6 +115,7 @@ public class ScriptController {
      * @return 上传结果
      */
     @PostMapping(value = "/upload-directory", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @SaCheckRole("admin")
     @Operation(summary = "上传文件夹", description = "上传ZIP压缩包到MinIO，解压后保持目录结构")
     public Result<ScriptVO> uploadDirectory(@RequestPart("file") MultipartFile file) {
         return Result.success(scriptService.uploadDirectory(file));
@@ -149,6 +152,7 @@ public class ScriptController {
      * @return 操作结果
      */
     @PostMapping("/add")
+    @SaCheckRole("admin")
     @Operation(summary = "为脚本添加标签", description = "为指定脚本添加单个标签")
     public Result<Void> addTagToScript(@RequestParam String scriptId, @RequestParam Integer tagId) {
         return scriptTagService.addTagToScript(scriptId, tagId);
@@ -161,6 +165,7 @@ public class ScriptController {
      * @return 操作结果
      */
     @PostMapping("/adds")
+    @SaCheckRole("admin")
     @Operation(summary = "为脚本批量添加标签", description = "为指定脚本批量添加标签")
     public Result<Void> batchAddTagsToScript(@RequestParam String scriptId, @RequestBody List<Integer> tagIds) {
         return scriptTagService.batchAddTagsToScript(scriptId, tagIds);
@@ -173,6 +178,7 @@ public class ScriptController {
      * @return 操作结果
      */
     @DeleteMapping("/remove")
+    @SaCheckRole("admin")
     @Operation(summary = "从脚本移除标签", description = "从指定脚本移除单个标签")
     public Result<Void> removeTagFromScript(@RequestParam String scriptId, @RequestParam Integer tagId) {
         return scriptTagService.removeTagFromScript(scriptId, tagId);
@@ -184,6 +190,7 @@ public class ScriptController {
      * @return 操作结果
      */
     @DeleteMapping("/clear")
+    @SaCheckRole("admin")
     @Operation(summary = "清空脚本标签", description = "清空指定脚本的所有标签")
     public Result<Void> clearTagsFromScript(@RequestParam String scriptId) {
         return scriptTagService.clearTagsFromScript(scriptId);
@@ -206,6 +213,7 @@ public class ScriptController {
      * @return 操作结果
      */
     @DeleteMapping("/{id}")
+    @SaCheckRole("admin")
     @Operation(summary = "删除脚本", description = "根据脚本ID删除脚本及其MinIO文件")
     public Result<Void> deleteScript(@PathVariable String id) {
         if (scriptService.deleteScript(id)) {
@@ -221,6 +229,7 @@ public class ScriptController {
      * @return 操作结果
      */
     @PutMapping(value = "/{id}", consumes = MediaType.TEXT_PLAIN_VALUE)
+    @SaCheckRole("admin")
     @Operation(summary = "更新脚本内容", description = "更新指定脚本在MinIO中的内容")
     public Result<Void> updateScriptContent(@PathVariable String id, @RequestBody String content) {
         if (scriptService.updateScriptContent(id, content)) {

@@ -1,4 +1,5 @@
 import os
+import signal
 import tempfile
 import subprocess
 import threading
@@ -19,6 +20,7 @@ from app.utils.log_utils import get_logger
 
 # 初始化日志器
 logger = get_logger(__name__)
+KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 
 class PythonHandler(BaseHandler):
@@ -59,6 +61,7 @@ class PythonHandler(BaseHandler):
         """异步执行任务的具体实现"""
         start_time = datetime.utcnow()
         task_run_id = task.taskRunId
+        run_root = None
         
         try:
             logger.info("开始执行Python脚本，任务ID：%s，脚本路径：%s，taskRunId：%s", task.taskId, task.script.path, task_run_id)
@@ -92,6 +95,8 @@ class PythonHandler(BaseHandler):
             # 确保scripts_tmp目录存在
             scripts_dir = "/app/app/scripts_tmp"
             os.makedirs(scripts_dir, exist_ok=True)
+            run_root = self._run_root(scripts_dir, task_run_id)
+            os.makedirs(run_root, exist_ok=True)
             
             # 获取入口文件信息（优先使用main_file字段）
             main_file = getattr(task.script, 'main_file', None)
@@ -118,7 +123,7 @@ class PythonHandler(BaseHandler):
                 dir_name = folder_prefix.rstrip('/').split('/')[-1]
                 if not dir_name:
                     dir_name = 'root'
-                temp_dir = os.path.join(scripts_dir, dir_name)
+                temp_dir = os.path.join(run_root, dir_name)
                 
                 logger.info("开始下载目录，prefix：%s，local_dir：%s", folder_prefix, temp_dir)
                 file_count = download_directory(script_bucket, folder_prefix, temp_dir)
@@ -148,7 +153,7 @@ class PythonHandler(BaseHandler):
                 if not script_name.endswith('.py'):
                     script_name = f"{script_name}.py"
                 unique_filename = script_name
-                temp_script_path = os.path.join(scripts_dir, unique_filename)
+                temp_script_path = os.path.join(run_root, unique_filename)
                 
                 # 从MinIO下载脚本内容
                 from app.utils.minio_utils import get_minio_file_object
@@ -173,8 +178,8 @@ class PythonHandler(BaseHandler):
             logger.info("任务状态已更新为运行中，taskRunId：%s", task_run_id)
 
             # 启动子进程执行脚本（注入 CRONOVA_SHARD_* 分片环境变量，业务脚本按分片约定切分数据）
-            timeout_seconds = task.timeoutSeconds if task.timeoutSeconds > 0 else 300
-            logger.info("开始执行脚本，超时时间：%d秒", timeout_seconds)
+            timeout_seconds = task.timeoutSeconds if task.timeoutSeconds and task.timeoutSeconds > 0 else None
+            logger.info("开始执行脚本，超时时间：%s", f"{timeout_seconds}秒" if timeout_seconds else "未设置")
 
             env = {**os.environ, **task.to_shard_env()}
             # start_new_session：独立进程组，便于整组暂停/终止（SIGSTOP/killpg）
@@ -227,7 +232,8 @@ class PythonHandler(BaseHandler):
             # 7. 启动状态监控线程（只负责 wait，从管道取尾部缓冲）
             status_thread = threading.Thread(
                 target=self._monitor_process_status,
-                args=(process, task, task_run_id, start_time, log_bucket, log_object, temp_script_path, pipeline),
+                args=(process, task, task_run_id, start_time, log_bucket, log_object,
+                      temp_script_path, pipeline, run_root),
                 daemon=True
             )
             status_thread.start()
@@ -235,6 +241,8 @@ class PythonHandler(BaseHandler):
             
         except Exception as e:
             logger.error("异步任务执行失败（%s）：%s", task.taskId, str(e), exc_info=True)
+            if run_root:
+                shutil.rmtree(run_root, ignore_errors=True)
             self._handle_task_error(task, task_run_id, str(e), start_time)
 
     def _monitor_log_output(self, process, log_bucket: str, log_object: str, task_run_id: str, pipeline: TaskLogPipeline):
@@ -249,13 +257,21 @@ class PythonHandler(BaseHandler):
 
     def _monitor_process_status(self, process, task: TaskExecuteMessage, task_run_id: str, 
                              start_time: datetime, log_bucket: str, log_object: str, 
-                             temp_script_path: str, pipeline: TaskLogPipeline):
+                             temp_script_path: str, pipeline: TaskLogPipeline, run_root: str):
         """状态监控线程：只 wait 进程，从管道尾部缓冲构建 errorMessage（不全量缓存）"""
         try:
             logger.info("启动状态监控线程，taskRunId: %s", task_run_id)
             
-            # 等待进程完成
-            exit_code = process.wait()
+            timeout_seconds = task.timeoutSeconds if task.timeoutSeconds and task.timeoutSeconds > 0 else None
+            timed_out = False
+            try:
+                exit_code = process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                logger.warning("任务执行超时，终止进程组，taskRunId: %s，超时: %ss",
+                               task_run_id, timeout_seconds)
+                self._terminate_process_group(process)
+                exit_code = process.wait()
             
             # 从管道取尾部日志（环形缓冲，限制 1000 字符）
             all_output = pipeline.error_tail(1000)
@@ -266,7 +282,9 @@ class PythonHandler(BaseHandler):
             
             # 构建错误信息，包含具体输出
             error_message = None
-            if exit_code != 0:
+            if timed_out:
+                error_message = f"任务执行超时（{timeout_seconds}秒），已强制终止"
+            elif exit_code != 0:
                 error_message = all_output if all_output else f"退出码：{exit_code}"
             
             # 发送最终结果
@@ -274,7 +292,7 @@ class PythonHandler(BaseHandler):
                 workerId=Config.WORKER_ID,
                 taskId=task.taskId,
                 taskRunId=task_run_id,
-                status="success" if exit_code == 0 else "failed",
+                status="timeout" if timed_out else ("success" if exit_code == 0 else "failed"),
                 exitCode=exit_code,
                 startTime=start_time.isoformat() + "Z",
                 endTime=end_time.isoformat() + "Z",
@@ -292,7 +310,7 @@ class PythonHandler(BaseHandler):
             # 更新任务实例状态
             task_instance_manager.update_status(
                 task_run_id, 
-                "success" if exit_code == 0 else "failed",
+                "timeout" if timed_out else ("success" if exit_code == 0 else "failed"),
                 exit_code=exit_code,
                 duration_ms=duration_ms
             )
@@ -307,9 +325,21 @@ class PythonHandler(BaseHandler):
             logger.error("状态监控异常，taskRunId: %s，错误: %s", task_run_id, str(e), exc_info=True)
             self._handle_task_error(task, task_run_id, str(e), start_time)
         finally:
-            # 清理临时文件
-            if os.path.exists(temp_script_path):
-                os.unlink(temp_script_path)
+            shutil.rmtree(run_root, ignore_errors=True)
+
+    @staticmethod
+    def _terminate_process_group(process) -> None:
+        try:
+            os.killpg(os.getpgid(process.pid), KILL_SIGNAL)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                logger.exception("强制终止任务进程失败")
+
+    @staticmethod
+    def _run_root(scripts_dir: str, task_run_id: str) -> str:
+        return os.path.join(scripts_dir, task_run_id)
 
     def _handle_task_error(self, task: TaskExecuteMessage, task_run_id: str, 
                           error_msg: str, start_time: datetime):

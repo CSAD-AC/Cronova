@@ -41,4 +41,15 @@ class TaskDispatchServiceTest {
                 () -> service.dispatch(task, TaskExecuteMessage.builder().build(), 0));
         verifyNoInteractions(router, taskProducerService);
     }
+
+    @Test
+    void rejectsOversizedShardCountBeforeAllocatingFutures() {
+        TaskDispatchService service = new TaskDispatchService(
+                workerRegistry, router, taskProducerService, new ObjectMapper(), taskRunMapper);
+
+        assertThrows(IllegalArgumentException.class, () -> service.dispatchSharded(
+                Task.builder().id("task-1").build(),
+                TaskExecuteMessage.builder().build(),
+                257, 0, 0));
+    }
 }

@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +29,9 @@ public class AuthController {
 
     private final IUserService userService;
 
+    @Value("${cronova.security.registration-enabled:false}")
+    private boolean registrationEnabled;
+
     /**
      * 用户注册
      * @param registerDTO 注册信息
@@ -37,6 +41,10 @@ public class AuthController {
     @Operation(summary = "用户注册", description = "用户注册接口")
     public Result<UserVO> register(@RequestBody UserRegisterDTO registerDTO) {
         log.info("收到用户注册请求,username={}", registerDTO.getUsername());
+        if (!registrationEnabled) {
+            log.warn("公开注册已关闭，拒绝用户注册,username={}", registerDTO.getUsername());
+            return Result.error(403, "registration disabled");
+        }
         return userService.register(registerDTO);
     }
 

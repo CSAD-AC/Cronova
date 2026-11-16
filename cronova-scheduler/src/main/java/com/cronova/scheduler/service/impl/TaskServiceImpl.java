@@ -32,9 +32,12 @@ import com.cronova.scheduler.util.CronNextTimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -70,6 +73,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
     private final TaskCallbackExecutor taskCallbackExecutor;
 
     private final ObjectMapper objectMapper;
+
+    @Autowired
+    @Qualifier("callbackRetryScheduler")
+    private TaskScheduler callbackRetryScheduler;
 
     @Autowired
     public TaskServiceImpl(TaskDispatchService taskDispatchService,
@@ -181,7 +188,10 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         );
 
         if (config != null) {
-            BeanUtils.copyProperties(configDTO, config, "id", "taskId", "createdBy", "createTime");
+            BeanUtils.copyProperties(configDTO, config, "id", "taskId", "createdBy", "createTime", "secretKey");
+            if (configDTO.getSecretKey() != null && !configDTO.getSecretKey().isBlank()) {
+                config.setSecretKey(configDTO.getSecretKey());
+            }
             config.setUpdateTime(LocalDateTime.now());
             callbackJobConfigMapper.updateById(config);
             log.info("回调配置更新成功，配置ID：{}", config.getId());
@@ -250,9 +260,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                             .eq(CallbackJobConfig::getTaskId, task.getId())
             );
             if (config != null) {
-                CallbackJobConfigVO configVO = new CallbackJobConfigVO();
-                BeanUtils.copyProperties(config, configVO);
-                taskVO.setCallbackConfig(configVO);
+                taskVO.setCallbackConfig(CallbackJobConfigVO.from(config));
             }
         }
 
@@ -380,7 +388,7 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
         if (task.getExecuteType() == ExecuteType.script) {
             publishScriptTask(task, retryNum, delaySeconds, shardIndex, shardTotal, shardBatchId);
         } else if (task.getExecuteType() == ExecuteType.callback) {
-            publishCallbackTask(task, retryNum, delaySeconds);
+            publishCallbackTask(task, retryNum, delaySeconds, shardIndex, shardTotal, shardBatchId);
         }
     }
 
@@ -517,15 +525,29 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
      * @param task 任务对象
      */
     private void publishCallbackTask(Task task) {
-        publishCallbackTask(task, 0, 0);
+        publishCallbackTask(task, 0, 0, null, null, null);
     }
 
-    private void publishCallbackTask(Task task, int retryNum, int delaySeconds) {
-        // 回调任务当前由调度器同步执行；延时重试统一由 TaskResultConsumer 异步触发，不走 MQ 延时消息
+    private void publishCallbackTask(Task task, int retryNum, int delaySeconds,
+                                     Integer shardIndex, Integer shardTotal, String shardBatchId) {
         if (delaySeconds > 0) {
+            callbackRetryScheduler.schedule(
+                    () -> {
+                        try {
+                            publishTaskWithRetryAndDelay(
+                                    task.getId(), retryNum, 0, shardIndex, shardTotal, shardBatchId);
+                        } catch (Exception e) {
+                            log.error("回调任务延时发布失败，TaskID: {}, Retry: {}",
+                                    task.getId(), retryNum, e);
+                        }
+                    },
+                    Instant.now().plusSeconds(delaySeconds));
+            log.info("回调任务延时发布已调度，TaskID: {}, Retry: {}, Delay: {}s",
+                    task.getId(), retryNum, delaySeconds);
+            return;
         }
-
         CallbackJobConfig config = getCallbackConfigByTaskId(task.getId());
+        boolean isShardRetry = shardIndex != null && shardTotal != null && shardBatchId != null;
 
         TaskRun taskRun = TaskRun.builder()
                 .taskId(task.getId())
@@ -533,9 +555,9 @@ public class TaskServiceImpl extends ServiceImpl<TaskMapper, Task> implements IT
                 .retryNum(retryNum)
                 .createTime(LocalDateTime.now())
                 // 回调任务不分片，统一按 N=1 特例写分片字段，与分片结算路径保持一致
-                .shardIndex(0)
-                .shardTotal(1)
-                .shardBatchId(UUID.randomUUID().toString().replace("-", ""))
+                .shardIndex(isShardRetry ? shardIndex : 0)
+                .shardTotal(isShardRetry ? shardTotal : 1)
+                .shardBatchId(isShardRetry ? shardBatchId : UUID.randomUUID().toString().replace("-", ""))
                 .build();
         taskRunMapper.insert(taskRun);
         String taskRunId = taskRun.getId();

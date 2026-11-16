@@ -59,10 +59,12 @@ public class HttpCallbackClient {
 
         int totalAttempts = retryCount + 1;
         String lastError = null;
+        CallbackResult lastResult = null;
 
         for (int attempt = 0; attempt < totalAttempts; attempt++) {
             try {
                 CallbackResult result = executeSingleAttempt(url, method, headers, requestBody, secretKey, requestId);
+                lastResult = result;
 
                 if (result.isSuccess()) {
                     log.info("[{}] 回调请求成功（第{}次尝试），URL: {}, 状态码: {}, 耗时: {}ms",
@@ -93,7 +95,11 @@ public class HttpCallbackClient {
 
         log.error("[{}] 回调请求最终失败，URL: {}, 最终错误: {}, 总尝试次数: {}",
                 requestId, url, lastError, totalAttempts);
-        return CallbackResult.fail(requestId, "最终失败: " + lastError, totalAttempts);
+        if (lastResult == null) {
+            return CallbackResult.fail(requestId, "最终失败: " + lastError, totalAttempts);
+        }
+        return CallbackResult.fail(requestId, lastResult.getStatusCode(), lastResult.getDurationMs(),
+                "最终失败: " + lastError, lastResult.getResponseBody(), totalAttempts);
     }
 
     private CallbackResult executeSingleAttempt(String url,
@@ -133,7 +139,11 @@ public class HttpCallbackClient {
 
             log.debug("[{}] 请求完成，状态码: {}, 耗时: {}ms", requestId, statusCode, duration);
 
-            return CallbackResult.success(requestId, statusCode, duration, responseBody);
+            if (success) {
+                return CallbackResult.success(requestId, statusCode, duration, responseBody);
+            }
+            return CallbackResult.fail(requestId, statusCode, duration,
+                    "HTTP状态码异常: " + statusCode, responseBody);
 
         } catch (ResourceAccessException e) {
             long duration = System.currentTimeMillis() - startTime;
@@ -181,6 +191,17 @@ public class HttpCallbackClient {
 
         public static CallbackResult fail(String requestId, String errorMessage, int attemptCount) {
             return new CallbackResult(requestId, false, 0, 0, null, errorMessage, attemptCount);
+        }
+
+        public static CallbackResult fail(String requestId, int statusCode, long durationMs,
+                                          String errorMessage, String responseBody) {
+            return fail(requestId, statusCode, durationMs, errorMessage, responseBody, 1);
+        }
+
+        public static CallbackResult fail(String requestId, int statusCode, long durationMs,
+                                          String errorMessage, String responseBody, int attemptCount) {
+            return new CallbackResult(requestId, false, statusCode, durationMs,
+                    responseBody, errorMessage, attemptCount);
         }
 
         public String getRequestId() { return requestId; }

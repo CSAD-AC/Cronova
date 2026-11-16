@@ -1,5 +1,6 @@
 package com.cronova.scheduler.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.cronova.scheduler.common.ErrorCodeEnum;
 import com.cronova.scheduler.common.Result;
 import com.cronova.scheduler.domain.dto.TaskCreateDTO;
@@ -58,6 +59,7 @@ public class TaskController {
      * 支持一次性创建任务和回调配置（如果是callback类型）
      */
     @PostMapping
+    @SaCheckRole("admin")
     @Operation(summary = "创建任务", description = "创建一个新的任务，可以是一次性任务或定时任务，支持脚本执行或HTTP回调")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "任务创建成功",
@@ -137,6 +139,7 @@ public class TaskController {
      * 更新任务
      */
     @PutMapping
+    @SaCheckRole("admin")
     @Operation(summary = "更新任务", description = "更新现有任务的信息")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "任务更新成功",
@@ -163,6 +166,7 @@ public class TaskController {
      * 删除任务
      */
     @DeleteMapping("/{id}")
+    @SaCheckRole("admin")
     @Operation(summary = "删除任务", description = "软删除任务，将任务状态更新为deleted")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "任务删除成功",
@@ -198,6 +202,7 @@ public class TaskController {
      * 启用任务（仅适用于定时任务）
      */
     @PutMapping("/{id}/enable")
+    @SaCheckRole("admin")
     @Operation(summary = "启用任务", description = "启用定时任务，使其可以按照设定的Cron表达式执行")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "任务启用成功",
@@ -232,6 +237,7 @@ public class TaskController {
      * 禁用任务（仅适用于定时任务）
      */
     @PutMapping("/{id}/disable")
+    @SaCheckRole("admin")
     @Operation(summary = "禁用任务", description = "禁用定时任务，使其停止按照设定的Cron表达式执行")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "任务禁用成功",
@@ -266,6 +272,7 @@ public class TaskController {
      * 发布任务
      */
     @PostMapping("/{id}/publish")
+    @SaCheckRole("admin")
     @Operation(summary = "发布任务", description = "立即执行一次任务，根据执行类型发送到Worker或直接执行HTTP回调")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "任务发布成功",

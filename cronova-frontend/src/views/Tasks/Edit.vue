@@ -119,7 +119,10 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="密钥" prop="secretKey">
-                <el-input v-model="formData.secretKey" placeholder="用于回调验证的密钥" />
+                <el-input
+                  v-model="formData.secretKey"
+                  :placeholder="formData.hasSecretKey ? '留空表示保留现有密钥' : '用于回调验证的密钥'"
+                />
               </el-form-item>
             </el-col>
           </el-row>
@@ -287,6 +290,7 @@ const formData = reactive({
   callbackUrl: '',
   callbackMethod: 'POST',
   secretKey: '',
+  hasSecretKey: false,
   retryCount: 3,
   retryIntervalSeconds: 60,
   // 分片总数：0/1 不分片；>1 分片并发投递（仅脚本任务生效）
@@ -457,7 +461,8 @@ async function fetchTask() {
     if (task.executeType === 'callback' && task.callbackConfig) {
       formData.callbackUrl = task.callbackConfig.callbackUrl || ''
       formData.callbackMethod = task.callbackConfig.callbackMethod || 'POST'
-      formData.secretKey = task.callbackConfig.secretKey || ''
+      formData.hasSecretKey = Boolean(task.callbackConfig.hasSecretKey)
+      formData.secretKey = ''
     }
   }
 }

@@ -1,5 +1,6 @@
 package com.cronova.scheduler.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.cronutils.model.Cron;
 import com.cronutils.model.CronType;
 import com.cronutils.model.definition.CronDefinition;
@@ -100,6 +101,7 @@ public class HealthCheckController {
      * 回调任务配置健康检查：校验Cron合法性，并请求健康检查地址验证回调服务可用性
      */
     @PostMapping("/callback-job-configs/{id}/health-check")
+    @SaCheckRole("admin")
     @Operation(summary = "回调任务配置健康检查", description = "检验Cron表达式合法性，并请求健康检查地址验证回调服务可用性")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "健康检查成功",
@@ -150,7 +152,8 @@ public class HealthCheckController {
         }
 
         String healthUrl = buildHealthCheckUrl(callbackUrl);
-        log.info("开始请求健康检查地址：{}，密钥：{}", healthUrl, secretKey);
+        log.info("开始请求健康检查地址：{}，密钥已配置：{}", healthUrl,
+                secretKey != null && !secretKey.isBlank());
 
         HealthCheckResult urlCheckResult = requestHealthCheckUrl(healthUrl, secretKey);
         result.setUrlHealthy(urlCheckResult.isUrlHealthy());

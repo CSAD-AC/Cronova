@@ -25,10 +25,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -59,6 +62,11 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
     @Value("${minio.bucket-name-scripts}")
     private String BUCKET_NAME;
     private static final String SCRIPT_FOLDER = "scripts/";
+    private static final int MAX_ZIP_ENTRIES = 1000;
+    private static final long MAX_ZIP_UNCOMPRESSED_BYTES = 200L * 1024 * 1024;
+    private static final long MIN_ZIP_RATIO_ALLOWANCE_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_ZIP_COMPRESSION_RATIO = 100L;
+    private static final long ZIP_PART_SIZE = 10L * 1024 * 1024;
 
     @Autowired
     private MinioClient minioClient;
@@ -202,6 +210,7 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ScriptVO uploadDirectory(MultipartFile file) {
         try {
             boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(BUCKET_NAME).build());
@@ -231,63 +240,62 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
             Map<String, Script> dirScriptMap = new HashMap<>();
             dirScriptMap.put("", rootDir);
 
-            List<ZipEntry> allEntries = new ArrayList<>();
+            int entryCount = 0;
+            long totalUncompressedBytes = 0;
+            long ratioLimit = Math.max(MIN_ZIP_RATIO_ALLOWANCE_BYTES,
+                    Math.multiplyExact(Math.max(1L, file.getSize()), MAX_ZIP_COMPRESSION_RATIO));
+            long uncompressedLimit = Math.min(MAX_ZIP_UNCOMPRESSED_BYTES, ratioLimit);
+
             try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
                 ZipEntry entry;
                 while ((entry = zis.getNextEntry()) != null) {
-                    allEntries.add(entry);
-                }
-            }
-
-            for (ZipEntry entry : allEntries) {
-                if (entry.isDirectory()) {
-                    String entryName = entry.getName();
-                    if (entryName.endsWith("/")) {
-                        entryName = entryName.substring(0, entryName.length() - 1);
+                    entryCount++;
+                    if (entryCount > MAX_ZIP_ENTRIES) {
+                        throw new IllegalArgumentException("ZIP contains too many entries");
                     }
-                    if (entryName.contains("/")) {
-                        String relativeDir = entryName.substring(entryName.indexOf('/') + 1);
+
+                    String entryName = normalizeZipEntryName(entry.getName());
+                    if (entryName.isEmpty()) {
+                        continue;
+                    }
+                    String relativePath = stripZipRoot(entryName);
+                    if (relativePath.isEmpty()) {
+                        continue;
+                    }
+
+                    if (entry.isDirectory()) {
+                        String relativeDir = relativePath.endsWith("/")
+                                ? relativePath.substring(0, relativePath.length() - 1)
+                                : relativePath;
                         getOrCreateParentDir(relativeDir, rootDir, folderPath, fullPath, dirScriptMap);
-                    }
-                } else {
-                    String entryName = entry.getName();
-                    String relativePath = entryName;
-                    if (entryName.contains("/")) {
-                        relativePath = entryName.substring(entryName.indexOf('/') + 1);
-                    }
-                    if (relativePath.isEmpty()) continue;
-
-                    String parentDirPath = "";
-                    if (relativePath.contains("/")) {
-                        parentDirPath = relativePath.substring(0, relativePath.lastIndexOf('/'));
+                        continue;
                     }
 
+                    String parentDirPath = relativePath.contains("/")
+                            ? relativePath.substring(0, relativePath.lastIndexOf('/'))
+                            : "";
                     Script parentDir = getOrCreateParentDir(parentDirPath, rootDir, folderPath, fullPath, dirScriptMap);
 
-                    String objectName = folderPath + relativePath;
-                    byte[] content;
-                    try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
-                        ZipEntry fileEntry;
-                        while ((fileEntry = zis.getNextEntry()) != null) {
-                            if (fileEntry.getName().equals(entryName)) {
-                                content = zis.readAllBytes();
-                                minioClient.putObject(
-                                        PutObjectArgs.builder()
-                                                .bucket(BUCKET_NAME)
-                                                .object(objectName)
-                                                .stream(new ByteArrayInputStream(content), content.length, -1)
-                                                .contentType(getContentType(relativePath))
-                                                .build()
-                                );
-                                break;
-                            }
-                        }
+                    long remaining = uncompressedLimit - totalUncompressedBytes;
+                    if (remaining <= 0) {
+                        throw new IllegalArgumentException("ZIP uncompressed size exceeds limit");
+                    }
+                    try (EntryLimitedInputStream limited = new EntryLimitedInputStream(zis, remaining)) {
+                        String objectName = folderPath + relativePath;
+                        minioClient.putObject(
+                                PutObjectArgs.builder()
+                                        .bucket(BUCKET_NAME)
+                                        .object(objectName)
+                                        .stream(limited, -1, ZIP_PART_SIZE)
+                                        .contentType(getContentType(relativePath))
+                                        .build()
+                        );
+                        totalUncompressedBytes += limited.getCount();
                     }
 
-                    String fileName = relativePath.contains("/") 
-                            ? relativePath.substring(relativePath.lastIndexOf('/') + 1) 
+                    String fileName = relativePath.contains("/")
+                            ? relativePath.substring(relativePath.lastIndexOf('/') + 1)
                             : relativePath;
-
                     Script fileScript = Script.builder()
                             .name(fileName)
                             .path(fullPath + relativePath)
@@ -297,9 +305,6 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
                             .updateTime(LocalDateTime.now())
                             .build();
                     save(fileScript);
-
-                    log.debug("创建文件Script记录: ID={}, name={}, parentId={}",
-                            fileScript.getId(), fileName, parentDir.getId());
                 }
             }
 
@@ -315,6 +320,83 @@ public class ScriptServiceImpl extends ServiceImpl<ScriptMapper, Script> impleme
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("上传文件夹失败: " + e.getMessage(), e);
+        }
+    }
+
+    private String normalizeZipEntryName(String rawName) {
+        if (rawName == null) {
+            return "";
+        }
+        String normalized = rawName.replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:/.*")) {
+            throw new IllegalArgumentException("absolute ZIP entry paths are not allowed");
+        }
+        if (normalized.isBlank()) {
+            return "";
+        }
+        for (String segment : normalized.split("/")) {
+            if ("..".equals(segment)) {
+                throw new IllegalArgumentException("ZIP entry path traversal is not allowed");
+            }
+        }
+        return normalized;
+    }
+
+    private String stripZipRoot(String entryName) {
+        int firstSlash = entryName.indexOf('/');
+        return firstSlash >= 0 ? entryName.substring(firstSlash + 1) : entryName;
+    }
+
+    private static final class EntryLimitedInputStream extends FilterInputStream {
+        private final long limit;
+        private long count;
+
+        private EntryLimitedInputStream(InputStream inputStream, long limit) {
+            super(inputStream);
+            this.limit = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = super.read();
+            if (value >= 0) {
+                increment(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int read = super.read(buffer, offset, length);
+            if (read > 0) {
+                increment(read);
+            }
+            return read;
+        }
+
+        @Override
+        public long skip(long length) throws IOException {
+            long skipped = super.skip(length);
+            if (skipped > 0) {
+                increment(skipped);
+            }
+            return skipped;
+        }
+
+        @Override
+        public void close() {
+            // Keep the shared ZipInputStream open for the next entry.
+        }
+
+        private void increment(long amount) throws IOException {
+            count += amount;
+            if (count > limit) {
+                throw new IOException("ZIP uncompressed size exceeds limit");
+            }
+        }
+
+        private long getCount() {
+            return count;
         }
     }
 

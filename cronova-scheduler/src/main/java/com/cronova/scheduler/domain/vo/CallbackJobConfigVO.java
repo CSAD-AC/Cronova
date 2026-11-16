@@ -1,7 +1,10 @@
 package com.cronova.scheduler.domain.vo;
 
+import com.cronova.scheduler.domain.po.CallbackJobConfig;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+import org.springframework.beans.BeanUtils;
 
 import java.time.LocalDateTime;
 
@@ -29,8 +32,12 @@ public class CallbackJobConfigVO {
     private String callbackMethod;
 
     /** 认证秘钥（用于 X-Secret 请求头） */
-    @Schema(description = "认证秘钥（用于 X-Secret 请求头）")
+    @JsonIgnore
     private String secretKey;
+
+    /** 是否已配置密钥 */
+    @Schema(description = "是否已配置密钥")
+    private Boolean hasSecretKey;
 
     /** 上次回调时间 */
     @Schema(description = "上次回调时间")
@@ -63,4 +70,11 @@ public class CallbackJobConfigVO {
     /** 更新时间 */
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
+
+    public static CallbackJobConfigVO from(CallbackJobConfig config) {
+        CallbackJobConfigVO vo = new CallbackJobConfigVO();
+        BeanUtils.copyProperties(config, vo);
+        vo.setHasSecretKey(config.getSecretKey() != null && !config.getSecretKey().isBlank());
+        return vo;
+    }
 }

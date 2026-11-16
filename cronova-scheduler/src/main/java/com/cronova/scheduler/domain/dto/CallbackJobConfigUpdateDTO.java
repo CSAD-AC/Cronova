@@ -40,7 +40,6 @@ public class CallbackJobConfigUpdateDTO {
     private String callbackMethod;
 
     /** 认证密钥（用于X-Secret请求头） */
-    @Schema(description = "认证密钥，用于X-Secret请求头", example = "secret-key-123")
-    @NotBlank(message = "认证密钥不能为空")
+    @Schema(description = "认证密钥；留空表示保留现有密钥", example = "secret-key-123")
     private String secretKey;
 }

@@ -144,6 +144,58 @@ class WorkerControllerSecurityTest {
         assertEquals(409, result.getCode());
     }
 
+    @Test
+    void rejectsTaskResultForAnotherWorkersRun() {
+        Worker worker = new Worker();
+        worker.setId("worker-1");
+        TaskRun run = TaskRun.builder()
+                .id("run-1").taskId("task-1").workerId("worker-2").status(TaskRunStatus.running).build();
+        when(workerMapper.selectById("worker-1")).thenReturn(worker);
+        when(taskRunMapper.selectById("run-1")).thenReturn(run);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute(AKSKInterceptor.AUTHENTICATED_WORKER_ID, "worker-1");
+        TaskResultMessage message = TaskResultMessage.builder()
+                .taskRunId("run-1").taskId("task-1").workerId("worker-1").status("success").build();
+
+        Result<Void> result = controller.reportTaskResult("worker-1", message, request);
+
+        assertEquals(403, result.getCode());
+    }
+
+    @Test
+    void rejectsTaskResultForUnknownRun() {
+        Worker worker = new Worker();
+        worker.setId("worker-1");
+        when(workerMapper.selectById("worker-1")).thenReturn(worker);
+        when(taskRunMapper.selectById("run-1")).thenReturn(null);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute(AKSKInterceptor.AUTHENTICATED_WORKER_ID, "worker-1");
+        TaskResultMessage message = TaskResultMessage.builder()
+                .taskRunId("run-1").taskId("task-1").workerId("worker-1").status("success").build();
+
+        Result<Void> result = controller.reportTaskResult("worker-1", message, request);
+
+        assertEquals(404, result.getCode());
+    }
+
+    @Test
+    void rejectsTaskResultWithMismatchedTaskId() {
+        Worker worker = new Worker();
+        worker.setId("worker-1");
+        TaskRun run = TaskRun.builder()
+                .id("run-1").taskId("task-1").workerId("worker-1").status(TaskRunStatus.running).build();
+        when(workerMapper.selectById("worker-1")).thenReturn(worker);
+        when(taskRunMapper.selectById("run-1")).thenReturn(run);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute(AKSKInterceptor.AUTHENTICATED_WORKER_ID, "worker-1");
+        TaskResultMessage message = TaskResultMessage.builder()
+                .taskRunId("run-1").taskId("task-2").workerId("worker-1").status("success").build();
+
+        Result<Void> result = controller.reportTaskResult("worker-1", message, request);
+
+        assertEquals(400, result.getCode());
+    }
+
     private WorkerRegisterDTO registerRequest() {
         WorkerRegisterDTO dto = new WorkerRegisterDTO();
         dto.setHost("worker-1");

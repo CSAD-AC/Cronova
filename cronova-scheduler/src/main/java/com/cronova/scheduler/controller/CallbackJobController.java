@@ -1,6 +1,7 @@
 package com.cronova.scheduler.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.stp.StpUtil;
 import com.cronova.scheduler.common.ErrorCodeEnum;
 import com.cronova.scheduler.common.Result;
@@ -49,6 +50,7 @@ public class CallbackJobController {
      * 创建回调任务配置（独立创建场景；通常随任务创建接口一并创建）
      */
     @PostMapping
+    @SaCheckRole("admin")
     @Operation(summary = "创建回调任务配置", description = "创建一个新的回调任务配置，通常建议通过任务创建接口一并创建")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "创建成功", 
@@ -78,9 +80,7 @@ public class CallbackJobController {
             callbackJobConfigService.save(config);
             logger.info("[{}] 回调任务配置创建成功，配置ID：{}", userId, config.getId());
 
-            CallbackJobConfigVO vo = new CallbackJobConfigVO();
-            BeanUtils.copyProperties(config, vo);
-            return Result.success(vo);
+            return Result.success(CallbackJobConfigVO.from(config));
         } catch (Exception e) {
             logger.error("[{}] 创建回调任务配置失败，任务ID：{}", userId, dto.getTaskId(), e);
             return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
@@ -105,11 +105,7 @@ public class CallbackJobController {
             List<CallbackJobConfig> configs = callbackJobConfigService.list();
             logger.info("[{}] 获取回调任务配置列表成功，共{}个配置", userId, configs.size());
             List<CallbackJobConfigVO> vos = configs.stream()
-                    .map(config -> {
-                        CallbackJobConfigVO vo = new CallbackJobConfigVO();
-                        BeanUtils.copyProperties(config, vo);
-                        return vo;
-                    })
+                    .map(CallbackJobConfigVO::from)
                     .collect(Collectors.toList());
             return Result.success(vos);
         } catch (Exception e) {
@@ -142,9 +138,7 @@ public class CallbackJobController {
                 return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
             }
             logger.info("[{}] 获取回调任务配置详情成功，配置ID：{}", userId, id);
-            CallbackJobConfigVO vo = new CallbackJobConfigVO();
-            BeanUtils.copyProperties(config, vo);
-            return Result.success(vo);
+            return Result.success(CallbackJobConfigVO.from(config));
         } catch (Exception e) {
             logger.error("[{}] 获取回调任务配置详情失败，配置ID：{}", userId, id, e);
             return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
@@ -170,11 +164,7 @@ public class CallbackJobController {
             List<CallbackJobConfig> configs = callbackJobConfigService.getByTaskId(taskId);
             logger.info("[{}] 根据任务ID获取回调任务配置成功，任务ID：{}，共{}个配置", userId, taskId, configs.size());
             List<CallbackJobConfigVO> vos = configs.stream()
-                    .map(config -> {
-                        CallbackJobConfigVO vo = new CallbackJobConfigVO();
-                        BeanUtils.copyProperties(config, vo);
-                        return vo;
-                    })
+                    .map(CallbackJobConfigVO::from)
                     .collect(Collectors.toList());
             return Result.success(vos);
         } catch (Exception e) {
@@ -187,6 +177,7 @@ public class CallbackJobController {
      * 更新回调任务配置
      */
     @PutMapping
+    @SaCheckRole("admin")
     @Operation(summary = "更新回调任务配置", description = "更新现有回调任务配置的信息")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "更新成功", 
@@ -215,16 +206,14 @@ public class CallbackJobController {
             if (dto.getCallbackMethod() != null) {
                 existingConfig.setCallbackMethod(dto.getCallbackMethod());
             }
-            if (dto.getSecretKey() != null) {
+            if (dto.getSecretKey() != null && !dto.getSecretKey().isBlank()) {
                 existingConfig.setSecretKey(dto.getSecretKey());
             }
             existingConfig.setUpdateTime(LocalDateTime.now());
             callbackJobConfigService.updateById(existingConfig);
             logger.info("[{}] 回调任务配置更新成功，配置ID：{}", userId, dto.getId());
 
-            CallbackJobConfigVO vo = new CallbackJobConfigVO();
-            BeanUtils.copyProperties(existingConfig, vo);
-            return Result.success(vo);
+            return Result.success(CallbackJobConfigVO.from(existingConfig));
         } catch (Exception e) {
             logger.error("[{}] 更新回调任务配置失败，配置ID：{}", userId, dto.getId(), e);
             return Result.error(ErrorCodeEnum.SYSTEM_ERROR);
@@ -235,6 +224,7 @@ public class CallbackJobController {
      * 删除回调任务配置
      */
     @DeleteMapping("/{id}")
+    @SaCheckRole("admin")
     @Operation(summary = "删除回调任务配置", description = "根据配置ID删除回调任务配置")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "删除成功", 
@@ -268,6 +258,7 @@ public class CallbackJobController {
      * 根据任务ID删除回调任务配置
      */
     @DeleteMapping("/task/{taskId}")
+    @SaCheckRole("admin")
     @Operation(summary = "根据任务ID删除回调任务配置", description = "根据任务ID删除该任务关联的所有回调配置")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "删除成功", 

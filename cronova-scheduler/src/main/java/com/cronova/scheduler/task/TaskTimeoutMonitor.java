@@ -202,11 +202,9 @@ public class TaskTimeoutMonitor {
 
     /**
      * 处理超时重试逻辑
-     * 超时情况下，不创建新实例，而是重用现有实例ID重新发布
+     * 超时实例保持终态，重试通过新 run 发布
      */
     private void handleTimeoutRetry(Task task, TaskRun taskRun, String reason) {
-        // 保存旧状态以便回滚
-        TaskRunStatus oldStatus = taskRun.getStatus();
         Integer oldRetryNum = taskRun.getRetryNum();
         if (oldRetryNum == null) oldRetryNum = 0;
 
@@ -216,7 +214,7 @@ public class TaskTimeoutMonitor {
             return;
         }
 
-        // 终态 -> 触发分片结算检查：若该 run 的 retryNum 仍有重试预算（即将 republish），
+        // 终态 -> 触发分片结算检查：若该 run 的 retryNum 仍有重试预算（即将创建新 run），
         // 结算服务内部会跳过，不会提前判死批次；预算耗尽时才真正结算
         shardSettlementService.onRunTerminal(taskRun.getId());
 
@@ -229,26 +227,16 @@ public class TaskTimeoutMonitor {
             int nextRetryNum = oldRetryNum + 1;
             int intervalSeconds = task.getRetryIntervalSeconds() != null ? task.getRetryIntervalSeconds() : 60;
 
-            log.info("超时任务准备重试(重用实例)。TaskID: {}, TaskRunID: {}, 下次重试次数: {}, 间隔: {}秒", 
+            log.info("超时任务准备创建新运行实例。TaskID: {}, 原TaskRunID: {}, 下次重试次数: {}, 间隔: {}秒",
                     task.getId(), taskRun.getId(), nextRetryNum, intervalSeconds);
 
-            // 2. 更新重试次数到数据库 (因为Worker/ResultConsumer会从数据库读取此值)
-            taskRun.setRetryNum(nextRetryNum);
-            taskRunMapper.updateById(taskRun);
-
-            // 3. 重新发布现有实例 (尝试发送MQ)
             try {
-                taskService.republishTaskRun(taskRun.getId(), intervalSeconds);
+                taskService.publishTaskWithRetryAndDelay(
+                        task.getId(), nextRetryNum, intervalSeconds,
+                        taskRun.getShardIndex(), taskRun.getShardTotal(), taskRun.getShardBatchId());
             } catch (Exception e) {
-                log.error("超时重试发送MQ失败，回滚任务状态以等待下一次扫描。TaskRunID: {}", taskRun.getId(), e);
-                
-                // 4. 发送失败，回滚状态
-                taskRun.setStatus(oldStatus);
-                taskRun.setRetryNum(oldRetryNum); // 回滚重试次数
-                taskRun.setErrorMessage(null); // 清除错误信息，或者记录MQ失败
-                taskRun.setEndTime(null); // 清除结束时间
-                taskRun.setDurationMs(null); // 清除耗时
-                taskRunMapper.updateById(taskRun);
+                log.error("超时重试创建新运行实例失败，TaskID: {}, 原TaskRunID: {}",
+                        task.getId(), taskRun.getId(), e);
             }
         } else {
             log.info("超时任务已达到最大重试次数，不再重试。TaskID: {}, TaskRunID: {}", task.getId(), taskRun.getId());

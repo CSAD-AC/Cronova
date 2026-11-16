@@ -7,6 +7,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -62,14 +64,20 @@ public class TaskCreateDTO {
 
     /** 超时时间（秒），0表示不限制 */
     @Schema(description = "超时时间（秒），0表示不限制", example = "0")
+    @Min(value = 0, message = "超时时间不能小于0")
+    @Max(value = 86400, message = "超时时间不能超过86400秒")
     private Integer timeoutSeconds;
 
     /** 重试次数 */
     @Schema(description = "重试次数", example = "3")
+    @Min(value = 0, message = "重试次数不能小于0")
+    @Max(value = 10, message = "重试次数不能超过10")
     private Integer retryCount;
 
     /** 重试间隔（秒） */
     @Schema(description = "重试间隔（秒）", example = "60")
+    @Min(value = 1, message = "重试间隔不能小于1秒")
+    @Max(value = 3600, message = "重试间隔不能超过3600秒")
     private Integer retryIntervalSeconds;
 
     /** 指定Worker ID（为空表示自动调度，仅script类型有效） */
@@ -86,6 +94,8 @@ public class TaskCreateDTO {
 
     /** 分片总数（>1 时任务分片并发投递） */
     @Schema(description = "分片总数（>1 时任务分片并发投递）", example = "1")
+    @Min(value = 0, message = "分片总数不能小于0")
+    @Max(value = 256, message = "分片总数不能超过256")
     private Integer shardTotal;
 
     /** 任务需要的标签（用于自动匹配Worker） */

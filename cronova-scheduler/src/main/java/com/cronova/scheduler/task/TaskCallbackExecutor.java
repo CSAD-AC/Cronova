@@ -1,6 +1,5 @@
 package com.cronova.scheduler.task;
 
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.cronova.scheduler.domain.enums.TaskRunStatus;
 import com.cronova.scheduler.domain.message.CallbackJobExecuteMessage;
@@ -12,18 +11,25 @@ import com.cronova.scheduler.mapper.CallbackJobConfigMapper;
 import com.cronova.scheduler.mapper.CallbackJobRunMapper;
 import com.cronova.scheduler.mapper.TaskMapper;
 import com.cronova.scheduler.mapper.TaskRunMapper;
+import com.cronova.scheduler.service.ShardSettlementService;
 import com.cronova.scheduler.service.ITaskService;
+import com.cronova.scheduler.service.TaskRunFinalizer;
 import com.cronova.scheduler.util.MinioStorageUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.http.HttpMethod;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 /**
  * 任务回调执行器
@@ -46,6 +52,10 @@ public class TaskCallbackExecutor {
     private final TaskMapper taskMapper;
     private final MinioStorageUtil minioStorageUtil;
     private final ITaskService taskService;
+    private final Executor callbackExecutor;
+    private final TaskScheduler callbackRetryScheduler;
+    private final TaskRunFinalizer taskRunFinalizer;
+    private final ShardSettlementService shardSettlementService;
 
     @Autowired
     public TaskCallbackExecutor(CallbackJobConfigMapper callbackJobConfigMapper,
@@ -55,13 +65,21 @@ public class TaskCallbackExecutor {
                                 MinioStorageUtil minioStorageUtil,
                                 RestTemplate restTemplate,
                                 ObjectMapper objectMapper,
-                                @Lazy ITaskService taskService) {
+                                @Lazy ITaskService taskService,
+                                @Qualifier("callbackExecutor") Executor callbackExecutor,
+                                @Qualifier("callbackRetryScheduler") TaskScheduler callbackRetryScheduler,
+                                TaskRunFinalizer taskRunFinalizer,
+                                ShardSettlementService shardSettlementService) {
         this.callbackJobConfigMapper = callbackJobConfigMapper;
         this.callbackJobRunMapper = callbackJobRunMapper;
         this.taskRunMapper = taskRunMapper;
         this.taskMapper = taskMapper;
         this.minioStorageUtil = minioStorageUtil;
         this.taskService = taskService;
+        this.callbackExecutor = callbackExecutor;
+        this.callbackRetryScheduler = callbackRetryScheduler;
+        this.taskRunFinalizer = taskRunFinalizer;
+        this.shardSettlementService = shardSettlementService;
         this.httpCallbackClient = new HttpCallbackClient(restTemplate, objectMapper);
     }
 
@@ -72,6 +90,33 @@ public class TaskCallbackExecutor {
      * @param message 回调任务执行消息
      */
     public void executeCallbackJob(CallbackJobExecuteMessage message) {
+        log.info("提交HTTP回调任务，任务ID: {}, 配置ID: {}, URL: {}",
+            message.getTaskId(), message.getConfigId(), message.getCallbackUrl());
+
+        CallbackJobRun runRecord = createCallbackRunRecord(message);
+        try {
+            callbackJobRunMapper.insert(runRecord);
+            callbackExecutor.execute(() -> executeCallbackJobInternal(message, runRecord));
+        } catch (TaskRejectedException e) {
+            log.error("回调线程池已满，任务ID: {}, TaskRunID: {}", message.getTaskId(), message.getTaskRunId(), e);
+            long durationMs = Math.max(1L, java.time.Duration.between(
+                    runRecord.getStartTime(), LocalDateTime.now()).toMillis());
+            updateCallbackRunRecordOnError(runRecord, runRecord.getRequestId(),
+                    "callback executor rejected task", System.currentTimeMillis());
+            if (updateTaskRunStatus(message.getTaskRunId(), TaskRunStatus.failed,
+                    "callback executor rejected task", (int) durationMs)) {
+                checkAndTriggerTaskRetry(message);
+            }
+        } catch (Exception e) {
+            log.error("创建或提交HTTP回调任务失败，任务ID: {}, TaskRunID: {}", message.getTaskId(), message.getTaskRunId(), e);
+            updateCallbackRunRecordOnError(runRecord, runRecord.getRequestId(), e.getMessage(), System.currentTimeMillis());
+            if (updateTaskRunStatus(message.getTaskRunId(), TaskRunStatus.failed, e.getMessage(), 0)) {
+                checkAndTriggerTaskRetry(message);
+            }
+        }
+    }
+
+    private void executeCallbackJobInternal(CallbackJobExecuteMessage message, CallbackJobRun runRecord) {
         log.info("开始执行HTTP回调任务，任务ID: {}, 配置ID: {}, URL: {}",
             message.getTaskId(), message.getConfigId(), message.getCallbackUrl());
 
@@ -79,16 +124,11 @@ public class TaskCallbackExecutor {
         String taskRunId = message.getTaskRunId();
         String configId = message.getConfigId();
 
-        CallbackJobRun runRecord = null;
         String requestId = null;
         String requestPath = null;
         long startTime = System.currentTimeMillis();
 
         try {
-            runRecord = createCallbackRunRecord(message);
-            callbackJobRunMapper.insert(runRecord);
-            log.info("回调执行记录已创建，记录ID: {}, 请求ID: {}", runRecord.getId(), runRecord.getRequestId());
-
             requestId = runRecord.getRequestId();
             log.info("从数据库获取自动生成的请求ID: {}", requestId);
 
@@ -114,8 +154,10 @@ public class TaskCallbackExecutor {
         } catch (Exception e) {
             log.error("执行HTTP回调任务时发生异常，任务ID: {}, 配置ID: {}", taskId, configId, e);
             updateCallbackRunRecordOnError(runRecord, requestId, e.getMessage(), startTime);
-            updateTaskRunStatus(taskRunId, TaskRunStatus.failed, e.getMessage(), (int)(System.currentTimeMillis() - startTime));
-            checkAndTriggerTaskRetry(message);
+            if (updateTaskRunStatus(taskRunId, TaskRunStatus.failed, e.getMessage(),
+                    (int) (System.currentTimeMillis() - startTime))) {
+                checkAndTriggerTaskRetry(message);
+            }
         }
     }
 
@@ -234,19 +276,15 @@ public class TaskCallbackExecutor {
                                              String requestPath, long startTime) {
         String url = message.getCallbackUrl();
         HttpMethod method = HttpMethod.valueOf(message.getCallbackMethod().toUpperCase());
-        int timeoutSeconds = message.getTimeoutSeconds() != null ? message.getTimeoutSeconds() : 30;
-        int retryCount = message.getRetryCount() != null ? message.getRetryCount() : 0;
-        int retryIntervalSeconds = message.getRetryIntervalSeconds() != null ? message.getRetryIntervalSeconds() : 60;
 
         updateRunRecordStatus(runRecord, "running", requestPath, null);
 
-        log.info("发送HTTP回调请求，RequestID: {}, URL: {}, Method: {}, RetryCount: {}",
-            requestId, url, method, retryCount);
+        log.info("发送HTTP回调请求，RequestID: {}, URL: {}, Method: {}", requestId, url, method);
 
         HttpCallbackClient.CallbackResult result = httpCallbackClient.executeCallback(
             url, method, requestHeaders, callbackData,
             message.getSecretKey(), requestId,
-            retryCount, retryIntervalSeconds
+            0, 0
         );
 
         log.info("HTTP回调请求完成，RequestID: {}, StatusCode: {}, Success: {}, Duration: {}ms",
@@ -287,12 +325,14 @@ public class TaskCallbackExecutor {
             log.info("回调执行记录已更新，请求ID: {}, 状态: {}, 状态码: {}, 耗时: {}ms",
                 requestId, runRecord.getStatus(), result.getStatusCode(), durationMs);
 
-            updateTaskRunStatus(message.getTaskRunId(), result.isSuccess() ? TaskRunStatus.success : TaskRunStatus.failed, 
+            boolean terminalWritten = updateTaskRunStatus(
+                    message.getTaskRunId(),
+                    result.isSuccess() ? TaskRunStatus.success : TaskRunStatus.failed,
                     result.getErrorMessage(), durationMs);
 
             updateCallbackConfigStatistics(message, result);
 
-            if (!result.isSuccess()) {
+            if (terminalWritten && !result.isSuccess()) {
                 checkAndTriggerTaskRetry(message);
             }
 
@@ -300,29 +340,47 @@ public class TaskCallbackExecutor {
             log.error("处理回调结果时发生异常，请求ID: {}", requestId, e);
             updateCallbackRunRecordOnError(runRecord, requestId, e.getMessage(), startTime);
             // 发生异常时也尝试更新 TaskRun 为失败
-            updateTaskRunStatus(message.getTaskRunId(), TaskRunStatus.failed, e.getMessage(), 
-                    (int)(System.currentTimeMillis() - startTime));
-            checkAndTriggerTaskRetry(message);
+            if (updateTaskRunStatus(message.getTaskRunId(), TaskRunStatus.failed, e.getMessage(),
+                    (int) (System.currentTimeMillis() - startTime))) {
+                checkAndTriggerTaskRetry(message);
+            }
         }
     }
 
     /**
      * 更新 TaskRun 状态
      */
-    private void updateTaskRunStatus(String taskRunId, TaskRunStatus status, String errorMsg, int durationMs) {
-        if (taskRunId == null) return;
+    private boolean updateTaskRunStatus(String taskRunId, TaskRunStatus status, String errorMsg, int durationMs) {
+        if (taskRunId == null) {
+            return false;
+        }
         try {
             TaskRun taskRun = taskRunMapper.selectById(taskRunId);
-            if (taskRun != null) {
-                taskRun.setStatus(status);
-                taskRun.setErrorMessage(errorMsg);
-                taskRun.setEndTime(LocalDateTime.now());
-                taskRun.setDurationMs((long) durationMs);
-                taskRunMapper.updateById(taskRun);
-                log.info("任务运行状态已同步更新，RunID: {}, Status: {}", taskRunId, status);
+            if (taskRun == null) {
+                return false;
             }
+            LocalDateTime now = LocalDateTime.now();
+            TaskRun terminal = TaskRun.builder()
+                    .id(taskRunId)
+                    .taskId(taskRun.getTaskId())
+                    .workerId(taskRun.getWorkerId())
+                    .status(status)
+                    .endTime(now)
+                    .durationMs((long) durationMs)
+                    .errorMessage(errorMsg)
+                    .retryNum(taskRun.getRetryNum())
+                    .lastHeartbeatTime(now)
+                    .build();
+            if (!taskRunFinalizer.tryAdvanceToTerminal(terminal)) {
+                log.info("回调结果未写入：run 已进入终态，RunID: {}, Status: {}", taskRunId, status);
+                return false;
+            }
+            shardSettlementService.onRunTerminal(taskRunId);
+            log.info("任务运行状态已同步更新，RunID: {}, Status: {}", taskRunId, status);
+            return true;
         } catch (Exception e) {
             log.error("同步更新任务运行状态失败，RunID: {}", taskRunId, e);
+            return false;
         }
     }
 
@@ -348,7 +406,20 @@ public class TaskCallbackExecutor {
                 log.info("回调任务执行失败，准备重试。TaskID: {}, 当前重试: {}/{}, 间隔: {}秒", 
                         task.getId(), currentRetryNum, maxRetryCount, intervalSeconds);
 
-                taskService.publishTaskWithRetryAndDelay(task.getId(), nextRetryNum, intervalSeconds);
+                long delaySeconds = Math.max(1, intervalSeconds);
+                callbackRetryScheduler.schedule(() -> {
+                    try {
+                        taskService.publishTaskWithRetryAndDelay(
+                                task.getId(), nextRetryNum, 0,
+                                currentRun.getShardIndex(), currentRun.getShardTotal(),
+                                currentRun.getShardBatchId());
+                    } catch (Exception e) {
+                        log.error("回调任务延时重试发布失败，TaskID: {}, Retry: {}",
+                                task.getId(), nextRetryNum, e);
+                    }
+                }, Instant.now().plusSeconds(delaySeconds));
+                log.info("回调任务重试已调度，TaskID: {}, Retry: {}, Delay: {}s",
+                        task.getId(), nextRetryNum, delaySeconds);
             }
         } catch (Exception e) {
             log.error("回调任务重试检查异常", e);
