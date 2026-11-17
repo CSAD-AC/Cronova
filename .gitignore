@@ -53,7 +53,7 @@ build/
 ### VS Code ###
 .vscode/
 
-### 本地文档信息 ###
+### 开发过程文档（不入库；开源仓库不携带设计、压测与面试过程细节）###
 doc/
 docs/
 
@@ -65,7 +65,7 @@ docs/
 worker-JAVA/scripts_tmp/
 worker-JAVA/task_instances/
 
-### 本地测试脚本（模拟Worker黑盒验证，不入库）###
+### 本地测试脚本（模拟Worker黑盒验证，不入库；压测脚本与产物属开发过程材料）###
 scripts-tests/
 
 ### 本地联合调试环境与运行产物（日志、配置、容器数据不入库）###
