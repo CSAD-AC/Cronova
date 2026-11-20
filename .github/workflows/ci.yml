@@ -37,7 +37,8 @@ jobs:
       REDIS_PASSWORD: ''
       REDIS_DATABASE: '1'
       ROCKETMQ_NAME_SERVER: 127.0.0.1:9876
-      MINIO_ENDPOINT: http://127.0.0.1:9000
+      # SeaweedFS 提供 S3 兼容端点，替代 MinIO（官方镜像与二进制均已停止开源分发）
+      MINIO_ENDPOINT: http://127.0.0.1:8333
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: task-engine
@@ -85,19 +86,20 @@ jobs:
           }
           pull mysql:8.0
           pull redis:7-alpine
-          pull quay.io/minio/minio:latest
+          pull chrislusf/seaweedfs:latest
           pull apache/rocketmq:5.3.1
 
       # 全部走 host 网络：JVM 测试统一从 127.0.0.1 访问
-      # mysql 3306 / redis 6379 / minio 9000 / namesrv 9876 / broker 10911
+      # mysql 3306 / redis 6379 / s3 8333 / namesrv 9876 / broker 10911
       - name: 启动 MySQL / Redis / MinIO
         run: |
           docker run -d --name mysql --network host \
             -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=scheduler mysql:8.0
           docker run -d --name redis --network host redis:7-alpine
+          # SeaweedFS 单进程起 master+volume+filer+S3，S3 端口 8333
           docker run -d --name minio --network host \
-            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:latest server /data
+            -v "$RUNNER_TEMP/seaweed:/data" \
+            chrislusf/seaweedfs:latest server -s3 -dir=/data -ip=127.0.0.1 -volume.port=18080
 
       # broker 必须把 brokerIP1 固定成 127.0.0.1：否则它会把容器内网 IP 注册进
       # namesrv，runner 上的测试拿到地址后连不上
@@ -141,7 +143,7 @@ jobs:
           }
           wait_port 3306 mysql
           wait_port 6379 redis
-          wait_port 9000 minio
+          wait_port 8333 s3
           wait_port 9876 namesrv
           wait_port 10911 broker
 
@@ -153,10 +155,11 @@ jobs:
             sleep 2
           done
 
-      - name: 创建 MinIO bucket
+      - name: 创建 S3 bucket
         run: |
-          docker run --rm --network host --entrypoint sh quay.io/minio/mc:latest -c \
-            "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc mb -p local/$MINIO_BUCKET || true"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "http://127.0.0.1:8333/$MINIO_BUCKET")
+          echo "PUT bucket $MINIO_BUCKET -> $code"
+          test "$code" = "200" || test "$code" = "409"
 
       - name: scheduler 测试 + 覆盖率
         working-directory: cronova-scheduler
@@ -169,6 +172,7 @@ jobs:
       - name: 失败时输出容器日志
         if: failure()
         run: |
+          # minio 这个容器名承载的是 SeaweedFS（S3 兼容端点）
           for c in mysql redis minio rmqnamesrv rmqbroker; do
             echo "===== $c ====="
             docker logs "$c" 2>&1 | tail -40 || true
