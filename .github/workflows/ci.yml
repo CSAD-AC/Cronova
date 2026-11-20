@@ -41,38 +41,6 @@ jobs:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: task-engine
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: scheduler
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=15
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=10
-      minio:
-        image: minio/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000
-        # 不用 health-cmd：minio 镜像基于 ubi-micro，不一定带 curl，
-        # health 卡住会让整个 job 白等；改为在步骤里探端口
-        options: --health-interval=5s --health-timeout=3s --health-retries=12
     steps:
       - uses: actions/checkout@v4
 
@@ -85,8 +53,38 @@ jobs:
             cronova-scheduler/pom.xml
             cronova-worker-java/pom.xml
 
-      # RocketMQ 用 host 网络：namesrv 与 broker 都必须让 JVM 通过 127.0.0.1 访问到，
-      # 桥接网络下 broker 会把容器内网 IP 注册进 namesrv，宿主机上的测试连不上。
+      # 不用 service containers：Docker Hub 对 runner 的共享 IP 有匿名拉取限流，
+      # 拉取失败时 job 会挂在 "Initialize containers" 上，还看不出是哪个镜像。
+      # 自己 docker run：能重试、能定位、失败时能打日志。
+      - name: 拉取镜像（失败重试 3 次）
+        run: |
+          pull() {
+            local img=$1
+            for i in 1 2 3; do
+              if docker pull -q "$img"; then echo "拉取成功: $img"; return 0; fi
+              echo "拉取失败，5 秒后重试 ($i/3): $img"; sleep 5
+            done
+            echo "::error::镜像拉取失败: $img"
+            return 1
+          }
+          pull mysql:8.0
+          pull redis:7-alpine
+          pull minio/minio:latest
+          pull apache/rocketmq:5.3.1
+
+      # 全部走 host 网络：JVM 测试统一从 127.0.0.1 访问
+      # mysql 3306 / redis 6379 / minio 9000 / namesrv 9876 / broker 10911
+      - name: 启动 MySQL / Redis / MinIO
+        run: |
+          docker run -d --name mysql --network host \
+            -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=scheduler mysql:8.0
+          docker run -d --name redis --network host redis:7-alpine
+          docker run -d --name minio --network host \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data
+
+      # broker 必须把 brokerIP1 固定成 127.0.0.1：否则它会把容器内网 IP 注册进
+      # namesrv，runner 上的测试拿到地址后连不上
       - name: 启动 RocketMQ（namesrv + broker）
         run: |
           docker run -d --name rmqnamesrv --network host \
@@ -131,6 +129,14 @@ jobs:
           wait_port 9876 namesrv
           wait_port 10911 broker
 
+          # 端口通不等于能连，MySQL 初始化完成要额外等
+          for i in $(seq 1 60); do
+            if docker exec mysql mysqladmin ping -uroot -proot --silent >/dev/null 2>&1; then
+              echo "MySQL 可连接"; break
+            fi
+            sleep 2
+          done
+
       - name: 创建 MinIO bucket
         run: |
           docker run --rm --network host --entrypoint sh minio/mc:latest -c \
@@ -144,11 +150,13 @@ jobs:
         working-directory: cronova-worker-java
         run: mvn -B test
 
-      - name: 失败时输出 RocketMQ 日志
+      - name: 失败时输出容器日志
         if: failure()
         run: |
-          docker logs rmqnamesrv 2>&1 | tail -40 || true
-          docker logs rmqbroker 2>&1 | tail -60 || true
+          for c in mysql redis minio rmqnamesrv rmqbroker; do
+            echo "===== $c ====="
+            docker logs "$c" 2>&1 | tail -40 || true
+          done
 
       - name: 上传覆盖率报告
         if: always()
