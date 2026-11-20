@@ -58,13 +58,22 @@ jobs:
       # 自己 docker run：能重试、能定位、失败时能打日志。
       - name: 拉取镜像（失败重试 3 次）
         run: |
+          # 先直连 Docker Hub，失败就退到镜像代理（runner 的共享 IP 常被限流）
           pull() {
-            local img=$1
+            local img=$1 alt="docker.m.daocloud.io/$1" out=""
             for i in 1 2 3; do
-              if docker pull -q "$img"; then echo "拉取成功: $img"; return 0; fi
-              echo "拉取失败，5 秒后重试 ($i/3): $img"; sleep 5
+              if out=$(docker pull -q "$img" 2>&1); then
+                echo "拉取成功: $img"; return 0
+              fi
+              echo "::warning::直连失败 ($i/3) $img :: $(echo "$out" | tail -2 | tr '\n' ' ')"
+              if out=$(docker pull -q "$alt" 2>&1); then
+                docker tag "$alt" "$img"
+                echo "经代理拉取成功: $img"; return 0
+              fi
+              echo "::warning::代理也失败 ($i/3) $alt :: $(echo "$out" | tail -2 | tr '\n' ' ')"
+              sleep 5
             done
-            echo "::error::镜像拉取失败: $img"
+            echo "::error::镜像拉取失败: $img :: $(echo "$out" | tail -4 | tr '\n' ' ')"
             return 1
           }
           pull mysql:8.0
