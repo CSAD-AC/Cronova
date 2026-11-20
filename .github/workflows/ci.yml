@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
@@ -60,17 +60,24 @@ jobs:
         run: |
           # 先直连 Docker Hub，失败就退到镜像代理（runner 的共享 IP 常被限流）
           pull() {
-            local img=$1 alt="docker.m.daocloud.io/$1" out=""
+            local img=$1 alt="" out=""
+            # 代理只对 Docker Hub 的镜像有效，quay.io 这类直接连
+            case "$img" in
+              quay.io/*) alt="" ;;
+              *) alt="docker.m.daocloud.io/$1" ;;
+            esac
             for i in 1 2 3; do
               if out=$(docker pull -q "$img" 2>&1); then
                 echo "拉取成功: $img"; return 0
               fi
               echo "::warning::直连失败 ($i/3) $img :: $(echo "$out" | tail -2 | tr '\n' ' ')"
-              if out=$(docker pull -q "$alt" 2>&1); then
+              if [ -n "$alt" ] && out=$(docker pull -q "$alt" 2>&1); then
                 docker tag "$alt" "$img"
                 echo "经代理拉取成功: $img"; return 0
               fi
-              echo "::warning::代理也失败 ($i/3) $alt :: $(echo "$out" | tail -2 | tr '\n' ' ')"
+              if [ -n "$alt" ]; then
+                echo "::warning::代理也失败 ($i/3) $alt :: $(echo "$out" | tail -2 | tr '\n' ' ')"
+              fi
               sleep 5
             done
             echo "::error::镜像拉取失败: $img :: $(echo "$out" | tail -4 | tr '\n' ' ')"
@@ -78,7 +85,7 @@ jobs:
           }
           pull mysql:8.0
           pull redis:7-alpine
-          pull minio/minio:latest
+          pull quay.io/minio/minio:latest
           pull apache/rocketmq:5.3.1
 
       # 全部走 host 网络：JVM 测试统一从 127.0.0.1 访问
@@ -90,7 +97,7 @@ jobs:
           docker run -d --name redis --network host redis:7-alpine
           docker run -d --name minio --network host \
             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:latest server /data
+            quay.io/minio/minio:latest server /data
 
       # broker 必须把 brokerIP1 固定成 127.0.0.1：否则它会把容器内网 IP 注册进
       # namesrv，runner 上的测试拿到地址后连不上
@@ -148,7 +155,7 @@ jobs:
 
       - name: 创建 MinIO bucket
         run: |
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+          docker run --rm --network host --entrypoint sh quay.io/minio/mc:latest -c \
             "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc mb -p local/$MINIO_BUCKET || true"
 
       - name: scheduler 测试 + 覆盖率
