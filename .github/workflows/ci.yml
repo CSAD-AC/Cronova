@@ -1,0 +1,202 @@
+name: CI
+
+# 触发策略：
+#   - 所有 PR 都跑（分支保护建议把这三个 job 设为必过）
+#   - push 到 main/master 只在后端 / 前端 / workflow 本身有改动时跑，
+#     避免改文档也起一遍中间件
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+    paths:
+      - 'cronova-scheduler/**'
+      - 'cronova-worker-java/**'
+      - 'cronova-frontend/**'
+      - '.github/workflows/**'
+
+# 同分支新推送取消上一轮，省额度也省时间
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- 后端
+  backend:
+    name: 后端全量用例 + 覆盖率
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # 与 application-dev.yml 的 ${VAR:default} 占位符一一对应
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_NAME: scheduler
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '6379'
+      REDIS_PASSWORD: ''
+      REDIS_DATABASE: '1'
+      ROCKETMQ_NAME_SERVER: 127.0.0.1:9876
+      MINIO_ENDPOINT: http://127.0.0.1:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: task-engine
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: scheduler
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+        # 不用 health-cmd：minio 镜像基于 ubi-micro，不一定带 curl，
+        # health 卡住会让整个 job 白等；改为在步骤里探端口
+        options: --health-interval=5s --health-timeout=3s --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: |
+            cronova-scheduler/pom.xml
+            cronova-worker-java/pom.xml
+
+      # RocketMQ 用 host 网络：namesrv 与 broker 都必须让 JVM 通过 127.0.0.1 访问到，
+      # 桥接网络下 broker 会把容器内网 IP 注册进 namesrv，宿主机上的测试连不上。
+      - name: 启动 RocketMQ（namesrv + broker）
+        run: |
+          docker run -d --name rmqnamesrv --network host \
+            -e "JAVA_OPT_EXT=-Xms512m -Xmx512m -Xmn256m" \
+            apache/rocketmq:5.3.1 sh mqnamesrv
+
+          cat > "$RUNNER_TEMP/broker.conf" <<'EOF'
+          brokerClusterName=DefaultCluster
+          brokerName=broker-a
+          brokerId=0
+          deleteWhen=04
+          fileReservedTime=48
+          brokerRole=ASYNC_MASTER
+          flushDiskType=ASYNC_FLUSH
+          brokerIP1=127.0.0.1
+          listenPort=10911
+          autoCreateTopicEnable=true
+          autoCreateSubscriptionGroup=true
+          EOF
+
+          docker run -d --name rmqbroker --network host \
+            -e "NAMESRV_ADDR=127.0.0.1:9876" \
+            -e "JAVA_OPT_EXT=-Xms512m -Xmx512m -Xmn256m" \
+            -v "$RUNNER_TEMP/broker.conf:/home/rocketmq/broker.conf" \
+            apache/rocketmq:5.3.1 sh mqbroker -c /home/rocketmq/broker.conf
+
+      - name: 等待中间件就绪
+        run: |
+          wait_port() {
+            local port=$1 name=$2
+            for i in $(seq 1 60); do
+              if (echo > "/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+                echo "$name 已在 $port 就绪"; return 0
+              fi
+              sleep 2
+            done
+            echo "::error::$name 在 $port 上未就绪"; return 1
+          }
+          wait_port 3306 mysql
+          wait_port 6379 redis
+          wait_port 9000 minio
+          wait_port 9876 namesrv
+          wait_port 10911 broker
+
+      - name: 创建 MinIO bucket
+        run: |
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+            "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc mb -p local/$MINIO_BUCKET || true"
+
+      - name: scheduler 测试 + 覆盖率
+        working-directory: cronova-scheduler
+        run: mvn -B test
+
+      - name: worker-java 测试
+        working-directory: cronova-worker-java
+        run: mvn -B test
+
+      - name: 失败时输出 RocketMQ 日志
+        if: failure()
+        run: |
+          docker logs rmqnamesrv 2>&1 | tail -40 || true
+          docker logs rmqbroker 2>&1 | tail -60 || true
+
+      - name: 上传覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: |
+            cronova-scheduler/target/site/jacoco/
+            cronova-worker-java/target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # -------------------------------------------------------------- 前端
+  frontend:
+    name: 前端 lint + 类型检查 + 构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cronova-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cronova-frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 类型检查
+        run: npm run type-check
+
+      - name: 构建
+        run: npm run build-only
+
+  # ------------------------------------------------------------ 密钥扫描
+  secret-scan:
+    name: 密钥扫描
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
